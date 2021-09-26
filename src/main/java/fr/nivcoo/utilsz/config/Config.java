@@ -2,6 +2,7 @@ package fr.nivcoo.utilsz.config;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 
@@ -142,7 +143,9 @@ public class Config {
         if ("".equalsIgnoreCase(path)) {
             list.addAll(fconfig.getKeys(false));
         } else {
-            list.addAll(fconfig.getConfigurationSection(path).getKeys(false));
+            ConfigurationSection cs = fconfig.getConfigurationSection(path);
+            if (cs != null)
+                list.addAll(cs.getKeys(false));
         }
         return list;
     }
