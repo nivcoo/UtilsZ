@@ -5,6 +5,7 @@ import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.inventory.ItemStack;
 
 import java.io.File;
 import java.io.IOException;
@@ -181,6 +182,9 @@ public class Config {
         return fconfig.contains(path);
     }
 
+    public ItemStack getItem(String path) {
+        return fconfig.getItemStack(path);
+    }
 
     public void reload() {
         loadConfig();
