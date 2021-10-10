@@ -50,7 +50,16 @@ public class Config {
      * @param obj  The object who you would save.
      */
     public void set(String path, Object obj) {
-        fconfig.set(path, obj);
+        if (obj instanceof Location) {
+            Location loc = (Location) obj;
+            fconfig.set(path + ".x", loc.getX());
+            fconfig.set(path + ".y", loc.getY());
+            fconfig.set(path + ".z", loc.getZ());
+            fconfig.set(path + ".yaw", loc.getYaw());
+            fconfig.set(path + ".pitch", loc.getPitch());
+            fconfig.set(path + ".world", loc.getWorld().getName());
+        } else
+            fconfig.set(path, obj);
         save();
     }
 
