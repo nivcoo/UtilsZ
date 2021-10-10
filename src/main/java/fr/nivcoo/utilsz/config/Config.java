@@ -180,4 +180,13 @@ public class Config {
     public boolean exist(String path) {
         return fconfig.contains(path);
     }
+
+
+    public void reload() {
+        loadConfig();
+    }
+
+    public File getFile() {
+        return fichierConfig;
+    }
 }
