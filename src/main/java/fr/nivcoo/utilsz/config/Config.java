@@ -20,24 +20,24 @@ public class Config {
     private File fichierConfig;
     private FileConfiguration fconfig;
 
-    public static String translate(String message) {
+    public String translateHexColorCodes(String message) {
+        Matcher matcher = Pattern.compile("&(#[A-Fa-f0-9]{6})").matcher(message);
+        StringBuffer buffer = new StringBuffer(message.length() + 4 * 8);
+        char COLOR_CHAR = ChatColor.COLOR_CHAR;
+        while (matcher.find()) {
+            String group = matcher.group(1);
+            matcher.appendReplacement(buffer, COLOR_CHAR + "x"
+                    + COLOR_CHAR + group.charAt(0) + COLOR_CHAR + group.charAt(1)
+                    + COLOR_CHAR + group.charAt(2) + COLOR_CHAR + group.charAt(3)
+                    + COLOR_CHAR + group.charAt(4) + COLOR_CHAR + group.charAt(5)
+            );
+        }
+        return matcher.appendTail(buffer).toString();
+    }
+
+    public String translate(String message) {
         if (ServerVersion.isServerVersionAtLeast(ServerVersion.V1_16)) {
-            Pattern pattern = Pattern.compile("#[a-fA-F0-9]{6}");
-            Matcher matcher = pattern.matcher(message);
-
-            while (matcher.find()) {
-                String hexCode = message.substring(matcher.start(), matcher.end());
-                String replaceSharp = hexCode.replace('#', 'x');
-
-                char[] ch = replaceSharp.toCharArray();
-                StringBuilder builder = new StringBuilder();
-                for (char c : ch) {
-                    builder.append("&").append(c);
-                }
-
-                message = message.replace(hexCode, builder.toString());
-                matcher = pattern.matcher(message);
-            }
+            message = translateHexColorCodes(message);
         }
         return ChatColor.translateAlternateColorCodes('&', message);
     }
