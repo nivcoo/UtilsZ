@@ -1,5 +1,6 @@
 package fr.nivcoo.utilsz.config;
 
+import fr.nivcoo.utilsz.version.ServerVersion;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -12,10 +13,26 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class Config {
     private File fichierConfig;
     private FileConfiguration fconfig;
+
+    public static String translate(String message) {
+        if (ServerVersion.isServerVersionAtLeast(ServerVersion.V1_16)) {
+            Pattern pattern = Pattern.compile("#[a-fA-F0-9]{6}");
+            Matcher matcher = pattern.matcher(message);
+
+            while (matcher.find()) {
+                String color = message.substring(matcher.start(), matcher.end());
+                message = message.replace(color, ChatColor.valueOf(color) + "");
+                matcher = pattern.matcher(message);
+            }
+        }
+        return ChatColor.translateAlternateColorCodes('&', message);
+    }
 
     /**
      * public Config: This method allow you to interact with an yml file.
@@ -82,7 +99,7 @@ public class Config {
             }
         }
 
-        return name == null ? null : ChatColor.translateAlternateColorCodes('&', name);
+        return name == null ? null : translate(name);
     }
 
     /**
@@ -129,7 +146,7 @@ public class Config {
     public List<String> getStringList(String path) {
         List<String> name = new ArrayList<>();
         for (String n : fconfig.getStringList(path)) {
-            name.add(ChatColor.translateAlternateColorCodes('&', n));
+            name.add(translate(n));
         }
         return name;
     }
