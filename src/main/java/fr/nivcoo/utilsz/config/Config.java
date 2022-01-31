@@ -1,5 +1,6 @@
 package fr.nivcoo.utilsz.config;
 
+import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
@@ -81,7 +82,7 @@ public class Config {
             }
         }
 
-        return name == null ? null : name.replace("&", "§");
+        return name == null ? null : ChatColor.translateAlternateColorCodes('&', name);
     }
 
     /**
@@ -127,8 +128,8 @@ public class Config {
      */
     public List<String> getStringList(String path) {
         List<String> name = new ArrayList<>();
-        for (String nom : fconfig.getStringList(path)) {
-            name.add(nom.replaceAll("&", "§"));
+        for (String n : fconfig.getStringList(path)) {
+            name.add(ChatColor.translateAlternateColorCodes('&', n));
         }
         return name;
     }
