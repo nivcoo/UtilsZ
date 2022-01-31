@@ -1,8 +1,8 @@
 package fr.nivcoo.utilsz.config;
 
 import fr.nivcoo.utilsz.version.ServerVersion;
+import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -27,7 +27,7 @@ public class Config {
 
             while (matcher.find()) {
                 String color = message.substring(matcher.start(), matcher.end());
-                message = message.replace(color, ChatColor.valueOf(color) + "");
+                message = message.replace(color, ChatColor.of(color) + "");
                 matcher = pattern.matcher(message);
             }
         }
