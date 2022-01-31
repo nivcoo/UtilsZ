@@ -22,7 +22,7 @@ public class Config {
 
     public String translateHexColorCodes(String message) {
         String msg = message;
-        Pattern pattern = Pattern.compile("#[a-fA-F0-9]{6}");
+        Pattern pattern = Pattern.compile("&#[a-fA-F0-9]{6}");
         Matcher matcher = pattern.matcher(msg);
         while (matcher.find()) {
             String color = msg.substring(matcher.start(), matcher.end());
