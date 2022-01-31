@@ -21,25 +21,24 @@ public class Config {
     private FileConfiguration fconfig;
 
     public String translateHexColorCodes(String message) {
-        Matcher matcher = Pattern.compile("&(#[A-Fa-f0-9]{6})").matcher(message);
-        StringBuffer buffer = new StringBuffer(message.length() + 4 * 8);
-        char COLOR_CHAR = ChatColor.COLOR_CHAR;
+        String msg = message;
+        Pattern pattern = Pattern.compile("#[a-fA-F0-9]{6}");
+        Matcher matcher = pattern.matcher(msg);
         while (matcher.find()) {
-            String group = matcher.group(1);
-            matcher.appendReplacement(buffer, COLOR_CHAR + "x"
-                    + COLOR_CHAR + group.charAt(0) + COLOR_CHAR + group.charAt(1)
-                    + COLOR_CHAR + group.charAt(2) + COLOR_CHAR + group.charAt(3)
-                    + COLOR_CHAR + group.charAt(4) + COLOR_CHAR + group.charAt(5)
-            );
+            String color = msg.substring(matcher.start(), matcher.end());
+            msg = msg.replace(color, ChatColor.of(color) + "");
+            matcher = pattern.matcher(msg);
+
         }
-        return matcher.appendTail(buffer).toString();
+        return msg;
     }
 
     public String translate(String message) {
+        String msg = message;
         if (ServerVersion.isServerVersionAtLeast(ServerVersion.V1_16)) {
-            message = translateHexColorCodes(message);
+            msg = translateHexColorCodes(msg);
         }
-        return ChatColor.translateAlternateColorCodes('&', message);
+        return ChatColor.translateAlternateColorCodes('&', msg);
     }
 
     /**
