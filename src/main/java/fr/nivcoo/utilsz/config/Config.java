@@ -1,8 +1,8 @@
 package fr.nivcoo.utilsz.config;
 
 import fr.nivcoo.utilsz.version.ServerVersion;
-import net.md_5.bungee.api.ChatColor;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
