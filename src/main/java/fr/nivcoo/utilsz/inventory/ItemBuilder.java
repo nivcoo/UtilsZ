@@ -3,12 +3,14 @@
  */
 package fr.nivcoo.utilsz.inventory;
 
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class ItemBuilder {
     private Material m;
@@ -56,8 +58,8 @@ public class ItemBuilder {
         ItemStack is = new ItemStack(m, count, data);
         ItemMeta im = is.hasItemMeta() ? is.getItemMeta() : Bukkit.getItemFactory().getItemMeta(m);
         if (im != null) {
-            im.setDisplayName(name);
-            im.setLore(lores);
+            im.displayName(Component.text(name));
+            im.lore(lores.stream().map(Component::text).collect(Collectors.toList()));
             is.setItemMeta(im);
         }
 
