@@ -35,7 +35,7 @@ public class InventoryManager implements Listener {
             for (Inventory inv : inventories.values()) {
                 int tick = 0;
                 Object currentTick = inv.get(Inventory.TICK);
-                if (currentTick != null && currentTick instanceof Integer)
+                if (currentTick instanceof Integer)
                     tick = Integer.parseInt(currentTick.toString());
                 inv.put(Inventory.TICK, tick + 1);
                 inv.getInventoryProvider().update(inv);
@@ -103,9 +103,9 @@ public class InventoryManager implements Listener {
     public void onPlayerInventoryClose(InventoryCloseEvent e) {
         if (!inventories.containsKey(e.getPlayer().getUniqueId()))
             return;
-        org.bukkit.inventory.Inventory invopen = e.getInventory();
+        org.bukkit.inventory.Inventory invOpen = e.getInventory();
         Inventory inv = inventories.get(e.getPlayer().getUniqueId());
-        if (!inv.getBukkitInventory().equals(invopen))
+        if (!inv.getBukkitInventory().equals(invOpen))
             return;
         inv.getInventoryProvider().onClose(e, inv);
         inventories.remove(e.getPlayer().getUniqueId());
