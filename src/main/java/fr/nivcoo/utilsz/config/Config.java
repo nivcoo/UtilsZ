@@ -28,16 +28,14 @@ public class Config {
             String color = msg.substring(matcher.start(), matcher.end());
             msg = msg.replace(color, ChatColor.of(color.replace("&", "")) + "");
             matcher = pattern.matcher(msg);
-
         }
         return msg;
     }
 
     public String translate(String message) {
         String msg = message;
-        if (ServerVersion.isServerVersionAtLeast(ServerVersion.V1_16)) {
+        if (ServerVersion.isServerVersionAtLeast(ServerVersion.V1_16))
             msg = translateHexColorCodes(msg);
-        }
         return ChatColor.translateAlternateColorCodes('&', msg);
     }
 
