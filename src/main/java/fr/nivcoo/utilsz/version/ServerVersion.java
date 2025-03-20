@@ -1,32 +1,30 @@
 package fr.nivcoo.utilsz.version;
 
-import org.apache.commons.lang.ArrayUtils;
 import org.bukkit.Bukkit;
 
 public enum ServerVersion {
 
-    UNKNOWN, V1_7, V1_8, V1_9, V1_10, V1_11, V1_12, V1_13, V1_14, V1_15, V1_16, V1_17, V1_18, V1_19, V1_20;
+    UNKNOWN, V1_7, V1_8, V1_9, V1_10, V1_11, V1_12, V1_13, V1_14, V1_15, V1_16, V1_17, V1_18, V1_19, V1_20, V1_21, V1_22, V1_23, V1_24, V1_25;
 
-    private final static String serverPackagePath = Bukkit.getServer().getClass().getPackage().getName();
-    private final static String serverPackageVersion = serverPackagePath.substring(serverPackagePath.lastIndexOf('.') + 1);
-    private final static String serverReleaseVersion = serverPackageVersion.indexOf('R') != -1 ? serverPackageVersion.substring(serverPackageVersion.indexOf('R') + 1) : "";
-    private final static ServerVersion serverVersion = getVersion();
+    private static final ServerVersion serverVersion = detectVersion();
 
-    private static ServerVersion getVersion() {
-        for (ServerVersion version : values()) {
-            if (serverPackageVersion.toUpperCase().startsWith(version.name())) {
-                return version;
-            }
+    private static ServerVersion detectVersion() {
+        String version = Bukkit.getMinecraftVersion(); // Ex: "1.21"
+        String[] parts = version.split("\\.");
+
+        if (parts.length >= 2) {
+            try {
+                int major = Integer.parseInt(parts[0]);
+                int minor = Integer.parseInt(parts[1]);
+                String versionKey = "V" + major + "_" + minor;
+                for (ServerVersion sv : values()) {
+                    if (sv.name().equals(versionKey)) {
+                        return sv;
+                    }
+                }
+            } catch (NumberFormatException ignored) {}
         }
         return UNKNOWN;
-    }
-
-    public static String getServerVersionString() {
-        return serverPackageVersion;
-    }
-
-    public static String getVersionReleaseNumber() {
-        return serverReleaseVersion;
     }
 
     public static ServerVersion getServerVersion() {
@@ -38,7 +36,12 @@ public enum ServerVersion {
     }
 
     public static boolean isServerVersion(ServerVersion... versions) {
-        return ArrayUtils.contains(versions, serverVersion);
+        for (ServerVersion version : versions) {
+            if (serverVersion == version) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static boolean isServerVersionAbove(ServerVersion version) {
@@ -57,4 +60,3 @@ public enum ServerVersion {
         return serverVersion.ordinal() < version.ordinal();
     }
 }
-

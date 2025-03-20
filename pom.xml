@@ -5,7 +5,7 @@
 
     <groupId>fr.nivcoo</groupId>
     <artifactId>UtilsZ</artifactId>
-    <version>1.1.3</version>
+    <version>1.1.4</version>
     <packaging>jar</packaging>
 
     <name>${project.artifactId}</name>
@@ -20,7 +20,7 @@
     <repositories>
         <repository>
             <id>papermc</id>
-            <url>https://papermc.io/repo/repository/maven-public/</url>
+            <url>https://repo.papermc.io/repository/maven-public/</url>
         </repository>
     </repositories>
 
