@@ -216,4 +216,8 @@ public class Config {
     public File getFile() {
         return fichierConfig;
     }
+
+    public ConfigurationSection getSection(String path) {
+        return this.fconfig.getConfigurationSection(path);
+    }
 }
