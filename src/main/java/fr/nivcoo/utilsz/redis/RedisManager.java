@@ -57,8 +57,13 @@ public class RedisManager {
                 List<RedisListener> registeredListeners = listeners.get(channel);
                 if (registeredListeners != null) {
                     JsonObject obj = JsonParser.parseString(message).getAsJsonObject();
+
                     for (RedisListener listener : registeredListeners) {
-                        Bukkit.getScheduler().runTask(plugin, () -> listener.onMessage(channel, obj));
+                        if (listener.runOnMainThread()) {
+                            Bukkit.getScheduler().runTask(plugin, () -> listener.onMessage(channel, obj));
+                        } else {
+                            listener.onMessage(channel, obj);
+                        }
                     }
                 }
                 dispatcher.dispatch(channel, message);

@@ -5,4 +5,8 @@ import com.google.gson.JsonObject;
 @FunctionalInterface
 public interface RedisListener {
     void onMessage(String channel, JsonObject message);
+
+    default boolean runOnMainThread() {
+        return false;
+    }
 }
