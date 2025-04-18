@@ -57,9 +57,11 @@ public class ItemBuilder {
     public ItemStack build() {
         ItemStack is = new ItemStack(m, count, data);
         ItemMeta im = is.hasItemMeta() ? is.getItemMeta() : Bukkit.getItemFactory().getItemMeta(m);
-        if (im != null) {
-            im.displayName(Component.text(name));
-            im.lore(lores.stream().map(Component::text).collect(Collectors.toList()));
+        if (im != null && (name != null || lores != null)) {
+            if (name != null)
+                im.displayName(Component.text(name));
+            if (lores != null)
+                im.lore(lores.stream().map(Component::text).collect(Collectors.toList()));
             is.setItemMeta(im);
         }
 

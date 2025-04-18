@@ -17,8 +17,11 @@ public class RedisDispatcher {
 
     public void dispatch(String channel, String rawMessage) {
         JsonObject json = JsonParser.parseString(rawMessage).getAsJsonObject();
-        String action = json.get("action").getAsString();
+        dispatch(channel, json);
+    }
 
+    public void dispatch(String channel, JsonObject json) {
+        String action = json.get("action").getAsString();
         RedisDeserializationEntry<?> entry = handlers.get(action);
         if (entry != null) {
             entry.handle(json);
@@ -26,8 +29,8 @@ public class RedisDispatcher {
     }
 
     private record RedisDeserializationEntry<T extends RedisSerializable>(
-    Function<JsonObject, T> deserializer,
-    RedisHandler<T> handler
+            Function<JsonObject, T> deserializer,
+            RedisHandler<T> handler
     ) {
         public void handle(JsonObject json) {
             T obj = deserializer.apply(json);
