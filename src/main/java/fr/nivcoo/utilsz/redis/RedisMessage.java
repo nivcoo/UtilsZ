@@ -33,6 +33,11 @@ public class RedisMessage {
         return this;
     }
 
+    public RedisMessage add(String key, long value) {
+        json.addProperty(key, value);
+        return this;
+    }
+
     public JsonObject toJson() {
         return json;
     }

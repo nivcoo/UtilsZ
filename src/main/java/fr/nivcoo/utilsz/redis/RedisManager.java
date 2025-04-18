@@ -15,7 +15,9 @@ public class RedisManager {
     private final JedisPool jedisPool;
     private final JavaPlugin plugin;
     private final Map<String, List<RedisListener>> listeners = new HashMap<>();
-    private final RedisDispatcher dispatcher = new RedisDispatcher();
+    private final RedisDispatcher dispatcher = new RedisDispatcher(this);
+
+    private final String instanceId = UUID.randomUUID().toString();
 
     private JedisPubSub pubSub;
     private Thread listenerThread;
@@ -40,17 +42,35 @@ public class RedisManager {
         listeners.computeIfAbsent(channel, k -> new ArrayList<>()).add(listener);
     }
 
-    public <T extends RedisSerializable> void registerAction(String action, Function<JsonObject, T> deserializer, RedisHandler<T> handler) {
-        dispatcher.register(action, deserializer, handler);
+    public <T extends RedisSerializable> void registerAction(String channel, String action, Function<JsonObject, T> deserializer, RedisHandler<T> handler) {
+        dispatcher.register(channel, action, deserializer, handler);
+    }
+
+    public <T extends RedisSerializable> void registerAction(String channel, Class<T> clazz) {
+        dispatcher.register(channel, clazz);
     }
 
     public void publish(String channel, JsonObject json) {
+        json.addProperty("__sender", instanceId);
         try (Jedis jedis = jedisPool.getResource()) {
             jedis.publish(channel, json.toString());
         }
     }
 
+    public String getInstanceId() {
+        return instanceId;
+    }
+
+    public void publish(String channel, RedisSerializable message) {
+        publish(channel, message.toJson());
+    }
+
     private void startListener() {
+
+        if (pubSub != null || listenerThread != null) {
+            close();
+        }
+
         pubSub = new JedisPubSub() {
             @Override
             public void onMessage(String channel, String message) {
@@ -104,6 +124,10 @@ public class RedisManager {
 
     public void start() {
         startListener();
+    }
+
+    public RedisChannelRegistry createRegistry(String channel) {
+        return new RedisChannelRegistry(this, channel);
     }
 
     public RedisDispatcher getDispatcher() {
