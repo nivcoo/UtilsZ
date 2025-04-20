@@ -5,25 +5,48 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 public class CommandManager implements TabExecutor {
-    JavaPlugin plugin;
-    private ArrayList<Command> commands;
-    String globalCommand;
-    String commandPermission;
-    Config messages;
 
+    private final JavaPlugin plugin;
+    private final ArrayList<Command> commands;
+    private final String globalCommand;
+    private final String commandPermission;
+    private final Config messages;
+    private final boolean sendHelp;
+    private final Consumer<CommandSender> onEmptyArgsHandler;
+
+    // Constructeur par défaut (sendHelp = true)
     public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission) {
+        this(plugin, messages, globalCommand, commandPermission, true, null);
+    }
+
+    // Constructeur avec sendHelp = false
+    public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, boolean sendHelp) {
+        this(plugin, messages, globalCommand, commandPermission, sendHelp, null);
+    }
+
+    // Nouveau constructeur avec handler personnalisé quand aucun argument n’est passé
+    public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, Consumer<CommandSender> onEmptyArgsHandler) {
+        this(plugin, messages, globalCommand, commandPermission, false, onEmptyArgsHandler);
+    }
+
+    // Constructeur complet interne
+    private CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, boolean sendHelp, Consumer<CommandSender> onEmptyArgsHandler) {
         this.plugin = plugin;
-        commands = new ArrayList<>();
+        this.commands = new ArrayList<>();
         this.messages = messages;
         this.globalCommand = globalCommand;
         this.commandPermission = commandPermission;
-        plugin.getCommand(globalCommand).setExecutor(this);
+        this.sendHelp = sendHelp;
+        this.onEmptyArgsHandler = onEmptyArgsHandler;
 
+        plugin.getCommand(globalCommand).setExecutor(this);
     }
 
     public void addCommand(Command c) {
@@ -43,10 +66,10 @@ public class CommandManager implements TabExecutor {
     }
 
     public void help(CommandSender sender) {
-
         int i = 0;
         StringBuilder helpMessage = new StringBuilder();
         List<String> helpMessages = messages.getStringList("messages.commands.help");
+
         for (String m : helpMessages) {
             int startPermissionIndex = m.indexOf("{!");
             String permission = null;
@@ -61,47 +84,57 @@ public class CommandManager implements TabExecutor {
             i++;
         }
         sender.sendMessage(helpMessage.toString());
-
     }
 
     @Override
-    public boolean onCommand(CommandSender sender, org.bukkit.command.Command cmd, String label, String[] args) {
+    public boolean onCommand(@NotNull CommandSender sender, org.bukkit.command.Command cmd, @NotNull String label, String[] args) {
         if (!cmd.getName().equalsIgnoreCase(globalCommand))
             return false;
         String noPermission = messages.getString("messages.commands.no_permission");
-        if (args.length <= 0) {
-            if (sender.hasPermission(commandPermission))
+        if (args.length == 0) {
+            if (onEmptyArgsHandler != null) {
+                onEmptyArgsHandler.accept(sender);
+                return true;
+            }
+
+            if (sendHelp && sender.hasPermission(commandPermission)) {
                 help(sender);
-            else
-                sender.sendMessage(noPermission);
+            } else if (sendHelp) {
+                if (!noPermission.isEmpty())
+                    sender.sendMessage(noPermission);
+            }
             return false;
         }
+
+
         Command command = getCommand(args[0]);
+
         if (command != null) {
             if (!(sender instanceof Player) && !command.canBeExecutedByConsole()) {
                 sender.sendMessage("§cCan be executed only by players!");
                 return false;
             }
             if (!command.getPermission().isEmpty() && !sender.hasPermission(command.getPermission())) {
-                sender.sendMessage(noPermission);
+                if (!noPermission.isEmpty())
+                    sender.sendMessage(noPermission);
                 return false;
             }
-
             if (args.length < command.getMinArgs() || args.length > command.getMaxArgs()) {
                 sender.sendMessage(messages.getString("messages.commands.incorrect_usage",
                         globalCommand + " " + command.getUsage()));
                 return false;
             }
             command.execute(plugin, sender, args);
-        } else
-            sender.sendMessage(noPermission);
+        } else {
+            if (!noPermission.isEmpty())
+                sender.sendMessage(noPermission);
+        }
 
         return false;
     }
 
     @Override
-    public List<String> onTabComplete(CommandSender sender, org.bukkit.command.Command cmd, String alias,
-                                      String[] args) {
+    public List<String> onTabComplete(@NotNull CommandSender sender, org.bukkit.command.@NotNull Command cmd, @NotNull String alias, String[] args) {
         if (args.length > 0) {
             Command command = getCommand(args[0]);
             if (command != null) {
@@ -123,7 +156,5 @@ public class CommandManager implements TabExecutor {
         }
 
         return list;
-
     }
-
 }
