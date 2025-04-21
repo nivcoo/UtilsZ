@@ -1,16 +1,14 @@
 package fr.nivcoo.utilsz.redis;
 
-import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.Function;
 
 public class RedisDispatcher {
 
-    private final Map<String, RedisDeserializationEntry<?>> handlers = new HashMap<>();
+    private final Map<String, RedisSerializationEntry<?>> handlers = new HashMap<>();
     private final RedisManager redisManager;
 
     public RedisDispatcher(RedisManager redisManager) {
@@ -21,9 +19,9 @@ public class RedisDispatcher {
         return channel + "#" + action;
     }
 
-    public <T extends RedisSerializable> void register(String channel, String action, Function<JsonObject, T> deserializer, RedisHandler<T> handler) {
+    public <T extends RedisSerializable> void register(String channel, String action, RedisTypeAdapter<T> adapter, RedisHandler<T> handler) {
         String key = getKey(channel, action);
-        handlers.put(key, new RedisDeserializationEntry<>(deserializer, handler));
+        handlers.put(key, new RedisSerializationEntry<>(adapter, handler));
     }
 
     public <T extends RedisSerializable> void register(String channel, Class<T> clazz) {
@@ -33,10 +31,13 @@ public class RedisDispatcher {
         }
 
         String action = annotation.value();
-        Function<JsonObject, T> deserializer = json -> new Gson().fromJson(json, clazz);
-        RedisHandler<T> handler = T::execute;
+        RedisTypeAdapter<T> adapter = RedisAdapterRegistry.getAdapter(clazz);
+        if (adapter == null) {
+            throw new RuntimeException("No RedisTypeAdapter registered for class " + clazz.getName());
+        }
 
-        register(channel, action, deserializer, handler);
+        RedisHandler<T> handler = T::execute;
+        register(channel, action, adapter, handler);
     }
 
     public void dispatch(String channel, String rawMessage) {
@@ -45,23 +46,30 @@ public class RedisDispatcher {
     }
 
     public void dispatch(String channel, JsonObject json) {
-        if (json.has("__sender")) {
-            String sender = json.get("__sender").getAsString();
-            if (sender.equals(redisManager.getInstanceId())) {
-                return;
-            }
-        }
-
-        if (!json.has("action"))
-           return;
-
+        if (json.has("__sender") && json.get("__sender").getAsString().equals(redisManager.getInstanceId())) return;
+        if (!json.has("action")) return;
 
         String action = json.get("action").getAsString();
         String key = getKey(channel, action);
-        RedisDeserializationEntry<?> entry = handlers.get(key);
+        RedisSerializationEntry<?> entry = handlers.get(key);
 
         if (entry != null) {
             entry.handle(json);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T extends RedisSerializable> JsonObject serialize(String channel, T object) {
+        String action = object.getAction();
+        String key = getKey(channel, action);
+        RedisSerializationEntry<T> entry = (RedisSerializationEntry<T>) handlers.get(key);
+
+        if (entry == null) {
+            throw new IllegalStateException("No handler registered for " + key);
+        }
+
+        JsonObject json = entry.serialize(object);
+        json.addProperty("action", action);
+        return json;
     }
 }
