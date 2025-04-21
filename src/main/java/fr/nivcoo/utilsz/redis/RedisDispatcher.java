@@ -2,6 +2,7 @@ package fr.nivcoo.utilsz.redis;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import fr.nivcoo.utilsz.redis.adapter.GenericReflectiveAdapter;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -23,6 +24,7 @@ public class RedisDispatcher {
         String key = getKey(channel, action);
         handlers.put(key, new RedisSerializationEntry<>(adapter, handler));
     }
+    
 
     public <T extends RedisSerializable> void register(String channel, Class<T> clazz) {
         RedisAction annotation = clazz.getAnnotation(RedisAction.class);
@@ -32,11 +34,8 @@ public class RedisDispatcher {
 
         String action = annotation.value();
         RedisTypeAdapter<T> adapter = RedisAdapterRegistry.getAdapter(clazz);
-        if (adapter == null) {
-            throw new RuntimeException("No RedisTypeAdapter registered for class " + clazz.getName());
-        }
-
         RedisHandler<T> handler = T::execute;
+
         register(channel, action, adapter, handler);
     }
 
