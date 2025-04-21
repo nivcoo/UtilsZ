@@ -10,31 +10,23 @@ public class RedisMessage {
 
     public RedisMessage(String action) {
         this.json = new JsonObject();
-        this.json.addProperty("action", action);
+        json.addProperty("action", action);
     }
 
-    public RedisMessage add(String key, String value) {
-        json.addProperty(key, value);
-        return this;
-    }
+    public RedisMessage add(String key, Object value) {
+        if (value == null) return this;
 
-    public RedisMessage add(String key, UUID value) {
-        json.addProperty(key, value.toString());
-        return this;
-    }
+        switch (value) {
+            case String s -> json.addProperty(key, s);
+            case UUID u -> json.addProperty(key, u.toString());
+            case Integer i -> json.addProperty(key, i);
+            case Boolean b -> json.addProperty(key, b);
+            case Long l -> json.addProperty(key, l);
+            case Double d -> json.addProperty(key, d);
+            case Float f -> json.addProperty(key, f);
+            default -> json.addProperty(key, value.toString());
+        }
 
-    public RedisMessage add(String key, int value) {
-        json.addProperty(key, value);
-        return this;
-    }
-
-    public RedisMessage add(String key, boolean value) {
-        json.addProperty(key, value);
-        return this;
-    }
-
-    public RedisMessage add(String key, long value) {
-        json.addProperty(key, value);
         return this;
     }
 
@@ -42,6 +34,7 @@ public class RedisMessage {
         return json;
     }
 
+    @Override
     public String toString() {
         return json.toString();
     }
