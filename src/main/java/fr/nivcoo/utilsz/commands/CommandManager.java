@@ -21,22 +21,22 @@ public class CommandManager implements TabExecutor {
     private final boolean sendHelp;
     private final Consumer<CommandSender> onEmptyArgsHandler;
 
-    // Constructeur par défaut (sendHelp = true)
+    private String noPermissionMessagePath;
+    private String incorrectUsageMessagePath;
+    private String helpMessagesPath;
+
     public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission) {
         this(plugin, messages, globalCommand, commandPermission, true, null);
     }
 
-    // Constructeur avec sendHelp = false
     public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, boolean sendHelp) {
         this(plugin, messages, globalCommand, commandPermission, sendHelp, null);
     }
 
-    // Nouveau constructeur avec handler personnalisé quand aucun argument n’est passé
     public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, Consumer<CommandSender> onEmptyArgsHandler) {
         this(plugin, messages, globalCommand, commandPermission, false, onEmptyArgsHandler);
     }
 
-    // Constructeur complet interne
     private CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, boolean sendHelp, Consumer<CommandSender> onEmptyArgsHandler) {
         this.plugin = plugin;
         this.commands = new ArrayList<>();
@@ -45,6 +45,10 @@ public class CommandManager implements TabExecutor {
         this.commandPermission = commandPermission;
         this.sendHelp = sendHelp;
         this.onEmptyArgsHandler = onEmptyArgsHandler;
+
+        this.noPermissionMessagePath = "messages.commands.no_permission";
+        this.incorrectUsageMessagePath = "messages.commands.incorrect_usage";
+        this.helpMessagesPath = "messages.commands.help";
 
         plugin.getCommand(globalCommand).setExecutor(this);
     }
@@ -59,8 +63,7 @@ public class CommandManager implements TabExecutor {
 
     public Command getCommand(String arg) {
         for (Command c : getCommands()) {
-            if (c.getAliases().contains(arg))
-                return c;
+            if (c.getAliases().contains(arg)) return c;
         }
         return null;
     }
@@ -68,7 +71,7 @@ public class CommandManager implements TabExecutor {
     public void help(CommandSender sender) {
         int i = 0;
         StringBuilder helpMessage = new StringBuilder();
-        List<String> helpMessages = messages.getStringList("messages.commands.help");
+        List<String> helpMessages = messages.getStringList(helpMessagesPath);
 
         for (String m : helpMessages) {
             int startPermissionIndex = m.indexOf("{!");
@@ -78,8 +81,7 @@ public class CommandManager implements TabExecutor {
             }
             if (permission == null || sender.hasPermission(permission)) {
                 helpMessage.append(m.replace("{!" + permission + "}", ""));
-                if (helpMessages.size() - 1 != i)
-                    helpMessage.append(" \n");
+                if (helpMessages.size() - 1 != i) helpMessage.append(" \n");
             }
             i++;
         }
@@ -88,9 +90,8 @@ public class CommandManager implements TabExecutor {
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, org.bukkit.command.Command cmd, @NotNull String label, String[] args) {
-        if (!cmd.getName().equalsIgnoreCase(globalCommand))
-            return false;
-        String noPermission = messages.getString("messages.commands.no_permission");
+        if (!cmd.getName().equalsIgnoreCase(globalCommand)) return false;
+        String noPermission = messages.getString(noPermissionMessagePath);
         if (args.length == 0) {
             if (onEmptyArgsHandler != null) {
                 onEmptyArgsHandler.accept(sender);
@@ -100,8 +101,11 @@ public class CommandManager implements TabExecutor {
             if (sendHelp && sender.hasPermission(commandPermission)) {
                 help(sender);
             } else if (sendHelp) {
-                if (!noPermission.isEmpty())
-                    sender.sendMessage(noPermission);
+                if (noPermission != null && !noPermission.isEmpty()) sender.sendMessage(noPermission);
+            } else {
+                Command command = getCommand(globalCommand);
+                command.execute(plugin, sender, args);
+
             }
             return false;
         }
@@ -115,18 +119,19 @@ public class CommandManager implements TabExecutor {
                 return false;
             }
             if (!command.getPermission().isEmpty() && !sender.hasPermission(command.getPermission())) {
-                if (!noPermission.isEmpty())
-                    sender.sendMessage(noPermission);
+                if (noPermission != null && !noPermission.isEmpty()) sender.sendMessage(noPermission);
                 return false;
             }
             if (args.length < command.getMinArgs() || args.length > command.getMaxArgs()) {
-                sender.sendMessage(messages.getString("messages.commands.incorrect_usage",
-                        globalCommand + " " + command.getUsage()));
+
+                String incorrectUsageMessage = messages.getString(incorrectUsageMessagePath, globalCommand + " " + command.getUsage());
+                if (incorrectUsageMessage != null && !incorrectUsageMessage.isEmpty())
+                    sender.sendMessage(incorrectUsageMessage);
                 return false;
             }
             command.execute(plugin, sender, args);
         } else {
-            if (!noPermission.isEmpty())
+            if (noPermission != null && !noPermission.isEmpty())
                 sender.sendMessage(noPermission);
         }
 
@@ -138,8 +143,7 @@ public class CommandManager implements TabExecutor {
         if (args.length > 0) {
             Command command = getCommand(args[0]);
             if (command != null) {
-                return command.getPermission() != null && !sender.hasPermission(command.getPermission()) ?
-                        new ArrayList<>() : command.tabComplete(plugin, sender, args);
+                return command.getPermission() != null && !sender.hasPermission(command.getPermission()) ? new ArrayList<>() : command.tabComplete(plugin, sender, args);
             }
         }
 
@@ -156,5 +160,17 @@ public class CommandManager implements TabExecutor {
         }
 
         return list;
+    }
+
+    public void setNoPermissionMessagePath(String noPermissionMessagePath) {
+        this.noPermissionMessagePath = noPermissionMessagePath;
+    }
+
+    public void setIncorrectUsageMessagePath(String incorrectUsageMessagePath) {
+        this.incorrectUsageMessagePath = incorrectUsageMessagePath;
+    }
+
+    public void setHelpMessagesPath(String helpMessagesPath) {
+        this.helpMessagesPath = helpMessagesPath;
     }
 }

@@ -3,9 +3,7 @@ package fr.nivcoo.utilsz.redis;
 import fr.nivcoo.utilsz.redis.adapter.*;
 import fr.nivcoo.utilsz.redis.adapter.primitive.*;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 public class RedisAdapterRegistry {
     private static final Map<Class<?>, RedisTypeAdapter<?>> adapters = new HashMap<>();
@@ -16,13 +14,28 @@ public class RedisAdapterRegistry {
         adapters.put(clazz, adapter);
     }
 
+
     @SuppressWarnings("unchecked")
     public static <T> RedisTypeAdapter<T> getAdapter(Class<?> clazz) {
-        if (!initialized) {
-            registerBuiltins();
-        }
+        if (!initialized) registerBuiltins();
 
         RedisTypeAdapter<?> adapter = adapters.get(clazz);
+
+
+        if (adapter == null) {
+            for (Class<?> iface : clazz.getInterfaces()) {
+                adapter = adapters.get(iface);
+                if (adapter != null) break;
+            }
+        }
+
+        if (adapter == null) {
+            Class<?> superClass = clazz.getSuperclass();
+            while (superClass != null && adapter == null) {
+                adapter = adapters.get(superClass);
+                superClass = superClass.getSuperclass();
+            }
+        }
 
         if (adapter == null && RedisSerializable.class.isAssignableFrom(clazz)) {
             if (clazz.isAnnotationPresent(RedisAction.class)) {
@@ -35,6 +48,7 @@ public class RedisAdapterRegistry {
     }
 
 
+
     public static void registerBuiltins() {
         if (initialized) return;
         initialized = true;
@@ -44,6 +58,10 @@ public class RedisAdapterRegistry {
         register(org.bukkit.Location.class, new LocationAdapter());
 
         register(UUID.class, new UUIDAdapter());
+
+        register(List.class,  new ListAdapter());
+
+        register(Map.class, new MapAdapter());
     }
 
     public static void registerPrimitives() {
@@ -80,6 +98,8 @@ public class RedisAdapterRegistry {
         RedisTypeAdapter<Character> charAdapter = new CharAdapter();
         register(Character.class, charAdapter);
         register(char.class, charAdapter);
+
+        register(Object.class, new ObjectAdapter());
 
     }
 
