@@ -3,13 +3,17 @@
  */
 package fr.nivcoo.utilsz.inventory;
 
+import com.destroystokyo.paper.profile.PlayerProfile;
+import com.destroystokyo.paper.profile.ProfileProperty;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.SkullMeta;
 
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class ItemBuilder {
@@ -55,16 +59,51 @@ public class ItemBuilder {
     }
 
     public ItemStack build() {
-        ItemStack is = new ItemStack(m, count, data);
-        ItemMeta im = is.hasItemMeta() ? is.getItemMeta() : Bukkit.getItemFactory().getItemMeta(m);
-        if (im != null && (name != null || lores != null)) {
-            if (name != null)
-                im.displayName(Component.text(name));
-            if (lores != null)
-                im.lore(lores.stream().map(Component::text).collect(Collectors.toList()));
-            is.setItemMeta(im);
+        ItemStack is;
+
+        if (texture != null && m == Material.PLAYER_HEAD) {
+            is = createSkullFromBase64(texture);
+            is.setAmount(count);
+
+            ItemMeta im = is.getItemMeta();
+            if (im instanceof SkullMeta meta) {
+                if (name != null)
+                    meta.displayName(Component.text(name));
+                if (lores != null)
+                    meta.lore(lores.stream().map(Component::text).collect(Collectors.toList()));
+                is.setItemMeta(meta);
+            }
+        } else {
+            is = new ItemStack(m, count, data);
+            ItemMeta im = is.hasItemMeta() ? is.getItemMeta() : Bukkit.getItemFactory().getItemMeta(m);
+            if (im != null && (name != null || lores != null)) {
+                if (name != null)
+                    im.displayName(Component.text(name));
+                if (lores != null)
+                    im.lore(lores.stream().map(Component::text).collect(Collectors.toList()));
+                is.setItemMeta(im);
+            }
         }
 
         return is;
     }
+
+    public static ItemStack createSkullFromBase64(String base64) {
+        if (base64 == null || base64.isEmpty()) {
+            return new ItemStack(Material.PLAYER_HEAD);
+        }
+
+        ItemStack skull = new ItemStack(Material.PLAYER_HEAD);
+        SkullMeta meta = (SkullMeta) skull.getItemMeta();
+
+        UUID id = UUID.nameUUIDFromBytes(base64.getBytes());
+        PlayerProfile profile = Bukkit.createProfile(id, null);
+
+        profile.setProperty(new ProfileProperty("textures", base64));
+
+        meta.setPlayerProfile(profile);
+        skull.setItemMeta(meta);
+        return skull;
+    }
+
 }
