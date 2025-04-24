@@ -99,8 +99,6 @@ public class RedisAdapterRegistry {
         register(Character.class, charAdapter);
         register(char.class, charAdapter);
 
-        register(Object.class, new ObjectAdapter());
-
     }
 
 }
