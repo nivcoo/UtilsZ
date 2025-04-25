@@ -12,7 +12,6 @@ public record ColumnDefinition(String name, String type, String constraints) {
         this.constraints = constraints;
     }
 
-
     @Override
     public String toString() {
         return name + " " + type + (constraints != null ? " " + constraints : "");

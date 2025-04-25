@@ -7,8 +7,11 @@ public class DatabaseManager {
 
     private final DatabaseProvider provider;
 
+    private final DatabaseType type;
+
     public DatabaseManager(DatabaseType type, String host, int port, String database,
                            String username, String password, String sqlitePath) {
+        this.type = type;
         this.provider = DatabaseType.getProvider(type, host, port, database, username, password, sqlitePath);
         try {
             this.provider.connect();
@@ -23,6 +26,10 @@ public class DatabaseManager {
 
     public void closeConnection() {
         provider.close();
+    }
+
+    public DatabaseType getType() {
+        return type;
     }
 
     public boolean isConnected() {
@@ -45,7 +52,7 @@ public class DatabaseManager {
         return provider.prepareStatement(query);
     }
 
-    public void createTable(String tableName, List<ColumnDefinition> columns) throws SQLException {
+    public void createTable(String tableName, List<Object> columns) throws SQLException {
         provider.createTable(tableName, columns);
     }
 }

@@ -26,15 +26,10 @@ public enum DatabaseType {
      */
     public static DatabaseProvider getProvider(DatabaseType type, String host, int port, String database,
                                                String username, String password, String sqlitePath) {
-        switch (type) {
-            case MYSQL:
-                return new MySQLProvider(host, port, database, username, password);
-            case MARIADB:
-                return new MariaDBProvider(host, port, database, username, password);
-            case SQLITE:
-                return new SQLiteProvider(sqlitePath);
-            default:
-                throw new IllegalArgumentException("Unsupported database type: " + type);
-        }
+        return switch (type) {
+            case MYSQL -> new MySQLProvider(host, port, database, username, password);
+            case MARIADB -> new MariaDBProvider(host, port, database, username, password);
+            case SQLITE -> new SQLiteProvider(sqlitePath);
+        };
     }
 }

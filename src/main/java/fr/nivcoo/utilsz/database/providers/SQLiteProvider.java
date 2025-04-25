@@ -2,6 +2,7 @@ package fr.nivcoo.utilsz.database.providers;
 
 import fr.nivcoo.utilsz.database.ColumnDefinition;
 import fr.nivcoo.utilsz.database.DatabaseProvider;
+import fr.nivcoo.utilsz.database.TableConstraintDefinition;
 
 import java.sql.*;
 import java.util.List;
@@ -49,9 +50,9 @@ public class SQLiteProvider implements DatabaseProvider {
     }
 
     @Override
-    public boolean executeUpdate(String query) throws SQLException {
+    public void executeUpdate(String query) throws SQLException {
         try (Statement statement = connection.createStatement()) {
-            return statement.executeUpdate(query) > 0;
+            statement.executeUpdate(query);
         }
     }
 
@@ -77,22 +78,26 @@ public class SQLiteProvider implements DatabaseProvider {
     }
 
     @Override
-    public void createTable(String tableName, List<ColumnDefinition> columns) throws SQLException {
+    public void createTable(String tableName, List<Object> elements) throws SQLException {
         StringBuilder query = new StringBuilder("CREATE TABLE IF NOT EXISTS `" + tableName + "` (");
-        for (int i = 0; i < columns.size(); i++) {
-            ColumnDefinition col = columns.get(i);
 
-            if (col.name().toUpperCase().startsWith("PRIMARY KEY")) {
-                query.append(col.name());
-            } else {
+        for (int i = 0; i < elements.size(); i++) {
+            Object element = elements.get(i);
+
+            if (element instanceof ColumnDefinition col) {
                 query.append("`").append(col.name()).append("` ").append(col.type());
                 if (col.constraints() != null && !col.constraints().isEmpty()) {
                     query.append(" ").append(col.constraints());
                 }
+            } else if (element instanceof TableConstraintDefinition constraint) {
+                query.append(constraint.getConstraint());
+            } else {
+                throw new IllegalArgumentException("Unknown table element: " + element.getClass());
             }
 
-            if (i < columns.size() - 1) query.append(", ");
+            if (i < elements.size() - 1) query.append(", ");
         }
+
         query.append(");");
         executeUpdate(query.toString());
     }
