@@ -13,14 +13,15 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.UUID;
 import java.util.function.Consumer;
 
 public class InventoryManager implements Listener {
 
-    private JavaPlugin javaPlugin;
-    private HashMap<UUID, Inventory> inventories;
+    private final JavaPlugin javaPlugin;
+    private final HashMap<UUID, Inventory> inventories;
 
     public InventoryManager(JavaPlugin javaPlugin) {
         this.inventories = new HashMap<>();
@@ -30,7 +31,7 @@ public class InventoryManager implements Listener {
     public void init() {
         Bukkit.getPluginManager().registerEvents(this, javaPlugin);
         Bukkit.getScheduler().scheduleSyncRepeatingTask(javaPlugin, () -> {
-            if (inventories.size() == 0)
+            if (inventories.isEmpty())
                 return;
             for (Inventory inv : inventories.values()) {
                 int tick = 0;
@@ -57,6 +58,14 @@ public class InventoryManager implements Listener {
 
     public Inventory getInventory(Player p) {
         return inventories.get(p.getUniqueId());
+    }
+
+    public Inventory getInventory(UUID uuid) {
+        return inventories.get(uuid);
+    }
+
+    public Collection<Inventory> getInventories() {
+        return inventories.values();
     }
 
     public boolean hasInventoryOpened(Player p) {
@@ -101,13 +110,17 @@ public class InventoryManager implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerInventoryClose(InventoryCloseEvent e) {
-        if (!inventories.containsKey(e.getPlayer().getUniqueId()))
+        UUID uuid = e.getPlayer().getUniqueId();
+
+        Inventory inv = inventories.get(uuid);
+        if (inv == null)
             return;
-        org.bukkit.inventory.Inventory invOpen = e.getInventory();
-        Inventory inv = inventories.get(e.getPlayer().getUniqueId());
-        if (!inv.getBukkitInventory().equals(invOpen))
+
+        if (!inv.getBukkitInventory().equals(e.getInventory()))
             return;
+
+        inventories.remove(uuid);
+
         inv.getInventoryProvider().onClose(e, inv);
-        inventories.remove(e.getPlayer().getUniqueId());
     }
 }
