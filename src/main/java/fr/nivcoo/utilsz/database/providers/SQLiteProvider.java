@@ -81,12 +81,22 @@ public class SQLiteProvider implements DatabaseProvider {
         StringBuilder query = new StringBuilder("CREATE TABLE IF NOT EXISTS `" + tableName + "` (");
         for (int i = 0; i < columns.size(); i++) {
             ColumnDefinition col = columns.get(i);
-            query.append("`").append(col.name()).append("` ").append(col.type());
+
+            if (col.name().toUpperCase().startsWith("PRIMARY KEY")) {
+                query.append(col.name());
+            } else {
+                query.append("`").append(col.name()).append("` ").append(col.type());
+                if (col.constraints() != null && !col.constraints().isEmpty()) {
+                    query.append(" ").append(col.constraints());
+                }
+            }
+
             if (i < columns.size() - 1) query.append(", ");
         }
         query.append(");");
         executeUpdate(query.toString());
     }
+
 
 
 }
