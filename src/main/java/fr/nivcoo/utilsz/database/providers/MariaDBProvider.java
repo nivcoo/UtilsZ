@@ -37,8 +37,8 @@ public class MariaDBProvider implements DatabaseProvider {
         config.setPassword(password);
 
         config.setMaximumPoolSize(10);
-        config.setMinimumIdle(5);
-        config.setIdleTimeout(600000);
+        config.setMinimumIdle(2);
+        config.setIdleTimeout(30000);
         config.setMaxLifetime(1800000);
         config.setConnectionTimeout(10000);
 
