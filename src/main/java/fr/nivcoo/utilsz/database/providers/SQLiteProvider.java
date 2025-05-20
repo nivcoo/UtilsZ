@@ -7,10 +7,8 @@ import fr.nivcoo.utilsz.database.TableConstraintDefinition;
 import java.sql.*;
 import java.util.List;
 
-/**
- * SQLite provider for managing SQLite database connections and operations.
- */
 public class SQLiteProvider implements DatabaseProvider {
+
     private final String sqlitePath;
     private Connection connection;
 
@@ -26,7 +24,10 @@ public class SQLiteProvider implements DatabaseProvider {
     }
 
     @Override
-    public Connection getConnection() {
+    public Connection getConnection() throws SQLException {
+        if (connection == null || connection.isClosed()) {
+            connect();
+        }
         return connection;
     }
 
@@ -51,30 +52,30 @@ public class SQLiteProvider implements DatabaseProvider {
 
     @Override
     public void executeUpdate(String query) throws SQLException {
-        try (Statement statement = connection.createStatement()) {
-            statement.executeUpdate(query);
+        try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate(query);
         }
     }
 
     @Override
     public ResultSet executeQuery(String query) throws SQLException {
-        Statement statement = connection.createStatement();
-        return statement.executeQuery(query);
+        Statement stmt = getConnection().createStatement();
+        return stmt.executeQuery(query);
     }
 
     @Override
     public void executeBatch(List<String> queries) throws SQLException {
-        try (Statement statement = connection.createStatement()) {
+        try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
             for (String query : queries) {
-                statement.addBatch(query);
+                stmt.addBatch(query);
             }
-            statement.executeBatch();
+            stmt.executeBatch();
         }
     }
 
     @Override
     public PreparedStatement prepareStatement(String query) throws SQLException {
-        return connection.prepareStatement(query);
+        return getConnection().prepareStatement(query);
     }
 
     @Override
@@ -85,12 +86,12 @@ public class SQLiteProvider implements DatabaseProvider {
             Object element = elements.get(i);
 
             if (element instanceof ColumnDefinition col) {
-                query.append("`").append(col.name()).append("` ").append(col.type());
+                query.append("`").append(col.name()).append("` ").append(mapType(col.type()));
                 if (col.constraints() != null && !col.constraints().isEmpty()) {
                     query.append(" ").append(col.constraints());
                 }
             } else if (element instanceof TableConstraintDefinition constraint) {
-                query.append(constraint.getConstraint());
+                query.append(constraint.constraint());
             } else {
                 throw new IllegalArgumentException("Unknown table element: " + element.getClass());
             }
@@ -102,6 +103,13 @@ public class SQLiteProvider implements DatabaseProvider {
         executeUpdate(query.toString());
     }
 
-
-
+    private String mapType(String type) {
+        return switch (type.toUpperCase()) {
+            case "TEXT" -> "TEXT";
+            case "INTEGER" -> "INTEGER";
+            case "REAL" -> "REAL";
+            case "BLOB" -> "BLOB";
+            default -> type;
+        };
+    }
 }

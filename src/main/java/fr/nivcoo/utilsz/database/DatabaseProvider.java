@@ -11,14 +11,19 @@ import java.util.List;
  */
 public interface DatabaseProvider {
     void connect() throws SQLException;
-    Connection getConnection();
+
+    Connection getConnection() throws SQLException;
+
     void close();
+
     boolean isConnected();
 
-    // SQL Operations
     void executeUpdate(String query) throws SQLException;
+
     ResultSet executeQuery(String query) throws SQLException;
+
     void executeBatch(List<String> queries) throws SQLException;
+
     PreparedStatement prepareStatement(String query) throws SQLException;
 
     void createTable(String tableName, List<Object> elements) throws SQLException;

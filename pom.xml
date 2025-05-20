@@ -5,7 +5,7 @@
 
     <groupId>fr.nivcoo</groupId>
     <artifactId>UtilsZ</artifactId>
-    <version>1.1.15</version>
+    <version>1.1.16</version>
     <packaging>jar</packaging>
 
     <name>${project.artifactId}</name>
@@ -63,6 +63,12 @@
             <artifactId>authlib</artifactId>
             <version>6.0.58</version>
             <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>6.3.0</version>
         </dependency>
 
     </dependencies>

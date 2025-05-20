@@ -1,12 +1,14 @@
 package fr.nivcoo.utilsz.database;
 
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.List;
 
 public class DatabaseManager {
 
     private final DatabaseProvider provider;
-
     private final DatabaseType type;
 
     public DatabaseManager(DatabaseType type, String host, int port, String database,
@@ -20,7 +22,7 @@ public class DatabaseManager {
         }
     }
 
-    public Connection getConnection() {
+    public Connection getConnection() throws SQLException {
         return provider.getConnection();
     }
 
