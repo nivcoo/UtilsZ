@@ -42,16 +42,8 @@ public class DatabaseManager {
         provider.executeUpdate(query);
     }
 
-    public ResultSet executeQuery(String query) throws SQLException {
-        return provider.executeQuery(query);
-    }
-
     public void executeBatch(List<String> queries) throws SQLException {
         provider.executeBatch(queries);
-    }
-
-    public PreparedStatement prepareStatement(String query) throws SQLException {
-        return provider.prepareStatement(query);
     }
 
     public void createTable(String tableName, List<Object> columns) throws SQLException {

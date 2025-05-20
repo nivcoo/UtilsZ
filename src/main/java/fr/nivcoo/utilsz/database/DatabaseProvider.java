@@ -20,11 +20,7 @@ public interface DatabaseProvider {
 
     void executeUpdate(String query) throws SQLException;
 
-    ResultSet executeQuery(String query) throws SQLException;
-
     void executeBatch(List<String> queries) throws SQLException;
-
-    PreparedStatement prepareStatement(String query) throws SQLException;
 
     void createTable(String tableName, List<Object> elements) throws SQLException;
 }

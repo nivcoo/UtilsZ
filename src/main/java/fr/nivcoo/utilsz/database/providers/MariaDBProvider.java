@@ -73,23 +73,11 @@ public class MariaDBProvider implements DatabaseProvider {
     }
 
     @Override
-    public ResultSet executeQuery(String query) throws SQLException {
-        Connection conn = getConnection();
-        Statement stmt = conn.createStatement();
-        return stmt.executeQuery(query);
-    }
-
-    @Override
     public void executeBatch(List<String> queries) throws SQLException {
         try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
             for (String q : queries) stmt.addBatch(q);
             stmt.executeBatch();
         }
-    }
-
-    @Override
-    public PreparedStatement prepareStatement(String query) throws SQLException {
-        return getConnection().prepareStatement(query);
     }
 
     @Override

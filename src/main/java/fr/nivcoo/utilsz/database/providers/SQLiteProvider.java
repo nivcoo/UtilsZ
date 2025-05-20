@@ -58,12 +58,6 @@ public class SQLiteProvider implements DatabaseProvider {
     }
 
     @Override
-    public ResultSet executeQuery(String query) throws SQLException {
-        Statement stmt = getConnection().createStatement();
-        return stmt.executeQuery(query);
-    }
-
-    @Override
     public void executeBatch(List<String> queries) throws SQLException {
         try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
             for (String query : queries) {
@@ -71,11 +65,6 @@ public class SQLiteProvider implements DatabaseProvider {
             }
             stmt.executeBatch();
         }
-    }
-
-    @Override
-    public PreparedStatement prepareStatement(String query) throws SQLException {
-        return getConnection().prepareStatement(query);
     }
 
     @Override
