@@ -7,6 +7,7 @@ import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.inventory.InventoryView;
 
 import java.util.HashMap;
 import java.util.List;
@@ -34,6 +35,19 @@ public class Inventory {
         this.items = new ClickableItem[9 * size];
         this.bukkitInventory = Bukkit.createInventory(player, size * 9, Component.text(inventoryProvider.title(this)));
         put(TICK, 0);
+    }
+
+    public void updateTitle() {
+        String base = inventoryProvider.title(this);
+        updateTitle(base != null ? base : "");
+    }
+
+    public void updateTitle(String title) {
+        Player p = getPlayer();
+        InventoryView view = p.getOpenInventory();
+        if (view.getTopInventory().equals(bukkitInventory)) {
+            view.setTitle(title);
+        }
     }
 
     public Player getPlayer() {
@@ -155,6 +169,10 @@ public class Inventory {
 
     public Object get(String key) {
         return values.get(key);
+    }
+
+    public boolean has(String key) {
+        return values.containsKey(key);
     }
 
     public int[] posToLoc(int pos) {
