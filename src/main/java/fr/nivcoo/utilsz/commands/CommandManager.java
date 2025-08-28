@@ -143,9 +143,7 @@ public class CommandManager implements TabExecutor {
                 return false;
             }
             command.execute(plugin, sender, args);
-        }
-
-        if (defaultCommand != null) {
+        } else if (defaultCommand != null) {
             if (!(sender instanceof Player) && !defaultCommand.canBeExecutedByConsole()) {
                 sender.sendMessage("§cCan be executed only by players!");
                 return true;
@@ -162,9 +160,7 @@ public class CommandManager implements TabExecutor {
             }
             defaultCommand.execute(plugin, sender, args);
             return true;
-        }
-
-        if (noPermission != null && !noPermission.isEmpty())
+        } else if (noPermission != null && !noPermission.isEmpty())
             sender.sendMessage(noPermission);
 
         return false;
