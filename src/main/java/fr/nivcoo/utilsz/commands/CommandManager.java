@@ -106,7 +106,7 @@ public class CommandManager implements TabExecutor {
                 return true;
             }
 
-            if (defaultCommand != null) {
+            if (defaultCommand != null && sender.hasPermission(commandPermission)) {
                 defaultCommand.execute(plugin, sender, args);
                 return true;
             }
