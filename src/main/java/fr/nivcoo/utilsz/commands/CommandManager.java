@@ -15,6 +15,7 @@ public class CommandManager implements TabExecutor {
 
     private final JavaPlugin plugin;
     private final ArrayList<Command> commands;
+    private Command defaultCommand;
     private final String globalCommand;
     private final String commandPermission;
     private final Config messages;
@@ -27,6 +28,11 @@ public class CommandManager implements TabExecutor {
 
     public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission) {
         this(plugin, messages, globalCommand, commandPermission, true, null);
+    }
+
+    public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, Command defaultCommand) {
+        this(plugin, messages, globalCommand, commandPermission, false, null);
+        this.defaultCommand = defaultCommand;
     }
 
     public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, boolean sendHelp) {
@@ -49,6 +55,8 @@ public class CommandManager implements TabExecutor {
         this.noPermissionMessagePath = "messages.commands.no_permission";
         this.incorrectUsageMessagePath = "messages.commands.incorrect_usage";
         this.helpMessagesPath = "messages.commands.help";
+
+        this.defaultCommand = null;
 
         plugin.getCommand(globalCommand).setExecutor(this);
     }
@@ -98,6 +106,11 @@ public class CommandManager implements TabExecutor {
                 return true;
             }
 
+            if (defaultCommand != null) {
+                defaultCommand.execute(plugin, sender, args);
+                return true;
+            }
+
             if (sendHelp && sender.hasPermission(commandPermission)) {
                 help(sender);
             } else if (sendHelp) {
@@ -130,10 +143,29 @@ public class CommandManager implements TabExecutor {
                 return false;
             }
             command.execute(plugin, sender, args);
-        } else {
-            if (noPermission != null && !noPermission.isEmpty())
-                sender.sendMessage(noPermission);
         }
+
+        if (defaultCommand != null) {
+            if (!(sender instanceof Player) && !defaultCommand.canBeExecutedByConsole()) {
+                sender.sendMessage("§cCan be executed only by players!");
+                return true;
+            }
+            if (defaultCommand.getPermission() != null && !defaultCommand.getPermission().isEmpty()
+                    && !sender.hasPermission(defaultCommand.getPermission())) {
+                if (noPermission != null && !noPermission.isEmpty()) sender.sendMessage(noPermission);
+                return true;
+            }
+            if (args.length < defaultCommand.getMinArgs() || args.length > defaultCommand.getMaxArgs()) {
+                String incorrectUsageMessage = messages.getString(incorrectUsageMessagePath, globalCommand + " " + defaultCommand.getUsage());
+                if (incorrectUsageMessage != null && !incorrectUsageMessage.isEmpty()) sender.sendMessage(incorrectUsageMessage);
+                return true;
+            }
+            defaultCommand.execute(plugin, sender, args);
+            return true;
+        }
+
+        if (noPermission != null && !noPermission.isEmpty())
+            sender.sendMessage(noPermission);
 
         return false;
     }
