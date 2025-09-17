@@ -2,33 +2,26 @@ package fr.nivcoo.utilsz.redis;
 
 import fr.nivcoo.utilsz.redis.adapter.*;
 import fr.nivcoo.utilsz.redis.adapter.primitive.*;
-
 import java.util.*;
 
 public class RedisAdapterRegistry {
     private static final Map<Class<?>, RedisTypeAdapter<?>> adapters = new HashMap<>();
     private static boolean initialized = false;
 
-
     public static <T> void register(Class<T> clazz, RedisTypeAdapter<T> adapter) {
         adapters.put(clazz, adapter);
     }
 
-
     @SuppressWarnings("unchecked")
     public static <T> RedisTypeAdapter<T> getAdapter(Class<?> clazz) {
         if (!initialized) registerBuiltins();
-
         RedisTypeAdapter<?> adapter = adapters.get(clazz);
-
-
         if (adapter == null) {
             for (Class<?> iface : clazz.getInterfaces()) {
                 adapter = adapters.get(iface);
                 if (adapter != null) break;
             }
         }
-
         if (adapter == null) {
             Class<?> superClass = clazz.getSuperclass();
             while (superClass != null && adapter == null) {
@@ -36,70 +29,54 @@ public class RedisAdapterRegistry {
                 superClass = superClass.getSuperclass();
             }
         }
-
-        if (adapter == null && RedisSerializable.class.isAssignableFrom(clazz)) {
-            if (clazz.isAnnotationPresent(RedisAction.class)) {
-                adapter = new GenericReflectiveAdapter<>((Class<T>) clazz);
-                adapters.put(clazz, adapter);
-            }
-        }
-
         return (RedisTypeAdapter<T>) adapter;
     }
-
-
 
     public static void registerBuiltins() {
         if (initialized) return;
         initialized = true;
-
         registerPrimitives();
-
         register(org.bukkit.Location.class, new LocationAdapter());
-
-        register(UUID.class, new UUIDAdapter());
-
-        register(List.class,  new ListAdapter());
-
-        register(Map.class, new MapAdapter());
+        register(java.util.UUID.class, new UUIDAdapter());
+        register(java.util.List.class,  new ListAdapter());
+        register(java.util.Map.class, new MapAdapter());
     }
 
     public static void registerPrimitives() {
-        register(String.class, new StringAdapter());
+        RedisTypeAdapter<String> s = new StringAdapter();
+        register(String.class, s);
 
-        RedisTypeAdapter<Integer> intAdapter = new IntegerAdapter();
-        register(Integer.class, intAdapter);
-        register(int.class, intAdapter);
+        RedisTypeAdapter<Integer> i = new IntegerAdapter();
+        register(Integer.class, i); register(int.class, i);
 
-        RedisTypeAdapter<Double> doubleAdapter = new DoubleAdapter();
-        register(Double.class, doubleAdapter);
-        register(double.class, doubleAdapter);
+        RedisTypeAdapter<Double> d = new DoubleAdapter();
+        register(Double.class, d); register(double.class, d);
 
-        RedisTypeAdapter<Float> floatAdapter = new FloatAdapter();
-        register(Float.class, floatAdapter);
-        register(float.class, floatAdapter);
+        RedisTypeAdapter<Float> f = new FloatAdapter();
+        register(Float.class, f); register(float.class, f);
 
-        RedisTypeAdapter<Boolean> boolAdapter = new BooleanAdapter();
-        register(Boolean.class, boolAdapter);
-        register(boolean.class, boolAdapter);
+        RedisTypeAdapter<Boolean> b = new BooleanAdapter();
+        register(Boolean.class, b); register(boolean.class, b);
 
-        RedisTypeAdapter<Long> longAdapter = new LongAdapter();
-        register(Long.class, longAdapter);
-        register(long.class, longAdapter);
+        RedisTypeAdapter<Long> l = new LongAdapter();
+        register(Long.class, l); register(long.class, l);
 
-        RedisTypeAdapter<Short> shortAdapter = new ShortAdapter();
-        register(Short.class, shortAdapter);
-        register(short.class, shortAdapter);
+        RedisTypeAdapter<Short> sh = new ShortAdapter();
+        register(Short.class, sh); register(short.class, sh);
 
-        RedisTypeAdapter<Byte> byteAdapter = new ByteAdapter();
-        register(Byte.class, byteAdapter);
-        register(byte.class, byteAdapter);
+        RedisTypeAdapter<Byte> by = new ByteAdapter();
+        register(Byte.class, by); register(byte.class, by);
 
-        RedisTypeAdapter<Character> charAdapter = new CharAdapter();
-        register(Character.class, charAdapter);
-        register(char.class, charAdapter);
-
+        RedisTypeAdapter<Character> ch = new CharAdapter();
+        register(Character.class, ch); register(char.class, ch);
     }
 
+    @SuppressWarnings("unchecked")
+    public static <T> RedisTypeAdapter<T> ensureAdapter(Class<T> clazz) {
+        RedisTypeAdapter<T> a = (RedisTypeAdapter<T>) adapters.get(clazz);
+        if (a != null) return a;
+        a = new fr.nivcoo.utilsz.redis.adapter.GenericReflectiveAdapter<>(clazz);
+        register(clazz, a);
+        return a;
+    }
 }
-
