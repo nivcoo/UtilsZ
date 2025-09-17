@@ -1,4 +1,3 @@
-// fr/nivcoo/utilsz/redis/rpc/RedisRpcBus.java
 package fr.nivcoo.utilsz.redis.rpc;
 
 import com.google.gson.JsonObject;
@@ -139,18 +138,12 @@ public class RedisRpcBus {
                 if (!(req instanceof RpcAnnotated ra))
                     throw new IllegalStateException("Endpoint must implement RpcAnnotated");
 
-                Object result;
-                try {
-                    result = ra.handle();
-                } catch (RpcIgnoreException ignore) {
-                    return;
-                }
-
+                Object result = ra.handle();
                 if (result == null) {
                     return;
                 }
 
-                @SuppressWarnings({"rawtypes", "unchecked"})
+                @SuppressWarnings({"rawtypes","unchecked"})
                 RedisTypeAdapter<Object> resA =
                         (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) result.getClass());
 
