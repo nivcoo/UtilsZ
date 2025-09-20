@@ -16,6 +16,14 @@ public class RedisAdapterRegistry {
     public static <T> RedisTypeAdapter<T> getAdapter(Class<?> clazz) {
         if (!initialized) registerBuiltins();
         RedisTypeAdapter<?> adapter = adapters.get(clazz);
+
+        if (adapter == null && clazz.isEnum()) {
+            @SuppressWarnings("unchecked")
+            Class<? extends Enum<?>> enumClass = (Class<? extends Enum<?>>) clazz;
+            adapter = new EnumAnyAdapter(enumClass);
+            adapters.put(clazz, adapter);
+        }
+
         if (adapter == null) {
             for (Class<?> iface : clazz.getInterfaces()) {
                 adapter = adapters.get(iface);
