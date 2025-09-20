@@ -33,7 +33,7 @@ public class RedisDispatcher {
         }
 
         String action = annotation.value();
-        RedisTypeAdapter<T> adapter = RedisAdapterRegistry.getAdapter(clazz);
+        RedisTypeAdapter<T> adapter = RedisAdapterRegistry.ensureAdapter(clazz);
         RedisHandler<T> handler = T::execute;
 
         register(channel, action, adapter, handler);
