@@ -1,5 +1,7 @@
 package fr.nivcoo.utilsz.redis.adapter;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import fr.nivcoo.utilsz.redis.RedisAdapterRegistry;
 import fr.nivcoo.utilsz.redis.RedisTypeAdapter;
@@ -32,29 +34,42 @@ public class GenericReflectiveAdapter<T> implements RedisTypeAdapter<T> {
             for (Field field : fields) {
                 field.setAccessible(true);
                 Object fieldValue = field.get(value);
+                if (fieldValue == null) {
+                    json.add(field.getName(), JsonNull.INSTANCE);
+                    continue;
+                }
                 RedisTypeAdapter<Object> adapter = getAdapter(field.getType());
-                if (adapter == null) throw new RuntimeException("No adapter for field " + field.getName() + " in " + type.getSimpleName() + " of type " + field.getType().getSimpleName());
+                if (adapter == null)
+                    throw new RuntimeException("No adapter for field " + field.getName() + " in " + type.getSimpleName()
+                            + " of type " + field.getType().getSimpleName());
                 json.add(field.getName(), adapter.serialize(fieldValue));
             }
         } catch (Exception e) {
             throw new RuntimeException("Error serializing " + type.getName(), e);
         }
-
         return json;
     }
 
     @Override
     public T deserialize(JsonObject json) {
         Object[] args = new Object[fields.length];
-
         try {
             for (int i = 0; i < fields.length; i++) {
                 Field field = fields[i];
-                RedisTypeAdapter<Object> adapter = getAdapter(field.getType());
-                if (adapter == null) throw new RuntimeException("No adapter for field " + field.getName() + " in " + type.getSimpleName());
-                args[i] = adapter.deserialize(json.getAsJsonObject(field.getName()));
-            }
+                String name = field.getName();
+                JsonElement el = json.has(name) ? json.get(name) : JsonNull.INSTANCE;
 
+                if (el == null || el.isJsonNull()) {
+                    args[i] = null;
+                    continue;
+                }
+
+                RedisTypeAdapter<Object> adapter = getAdapter(field.getType());
+                if (adapter == null)
+                    throw new RuntimeException("No adapter for field " + name + " in " + type.getSimpleName());
+
+                args[i] = adapter.deserialize(el.getAsJsonObject());
+            }
             return constructor.newInstance(args);
         } catch (Exception e) {
             throw new RuntimeException("Error deserializing " + type.getName(), e);
