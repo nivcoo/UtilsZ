@@ -2,6 +2,7 @@ package fr.nivcoo.utilsz.redis;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import fr.nivcoo.utilsz.redis.rpc.RedisRpcBus;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import redis.clients.jedis.*;
@@ -19,59 +20,63 @@ public class RedisManager {
 
     private JedisPubSub pubSub;
     private Thread listenerThread;
-    private volatile boolean running = true;
+
+    private volatile boolean running = false;
 
     public RedisManager(JavaPlugin plugin, String host, int port, String username, String password) {
         this.plugin = plugin;
 
-        JedisClientConfig config;
-        if ((password != null && !password.isEmpty()) || (username != null && !username.isEmpty())) {
-            config = DefaultJedisClientConfig.builder()
-                    .user((username == null || username.isEmpty()) ? null : username)
-                    .password((password == null || password.isEmpty()) ? null : password)
-                    .build();
-        } else {
-            config = DefaultJedisClientConfig.builder().build();
-        }
+        DefaultJedisClientConfig.Builder builder = DefaultJedisClientConfig.builder();
+        if (username != null && !username.isEmpty()) builder.user(username);
+        if (password != null && !password.isEmpty()) builder.password(password);
+        JedisClientConfig config = builder.build();
 
         this.jedisPool = new JedisPool(new HostAndPort(host, port), config);
 
         RedisAdapterRegistry.registerBuiltins();
-
         this.dispatcher = new RedisDispatcher(this);
     }
 
-    public void start() {
-        startListener();
+    public synchronized void start() {
+        if (listenerThread != null && listenerThread.isAlive()) return; // déjà lancé
+        String[] channels = listeners.keySet().toArray(new String[0]);
+        if (channels.length == 0) {
+            return;
+        }
+        running = true;
+        startListenerInternal(channels);
     }
 
-    public void close() {
+    public synchronized void close() {
         running = false;
         try {
-            if (pubSub != null) pubSub.unsubscribe();
+            if (pubSub != null) {
+                try { pubSub.unsubscribe(); } catch (redis.clients.jedis.exceptions.JedisException ignored) {}
+            }
             if (listenerThread != null && listenerThread.isAlive()) {
-                listenerThread.join(50);
+                listenerThread.join(200);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        } finally {
+            pubSub = null;
+            listenerThread = null;
+            try { jedisPool.close(); } catch (Exception ignored) {}
         }
-        jedisPool.close();
     }
 
-    public String getInstanceId() {
-        return instanceId;
-    }
+    public String getInstanceId() { return instanceId; }
+    public RedisDispatcher getDispatcher() { return dispatcher; }
+    public RedisChannelRegistry createRegistry(String channel) { return new RedisChannelRegistry(this, channel); }
 
-    public RedisDispatcher getDispatcher() {
-        return dispatcher;
-    }
-
-    public RedisChannelRegistry createRegistry(String channel) {
-        return new RedisChannelRegistry(this, channel);
-    }
-
-    public void subscribe(String channel, RedisListener listener) {
+    public synchronized void subscribe(String channel, RedisListener listener) {
         listeners.computeIfAbsent(channel, k -> new ArrayList<>()).add(listener);
+
+        if (listenerThread != null && listenerThread.isAlive()) {
+            restartListener();
+        } else {
+            start();
+        }
     }
 
     public void publish(String channel, RedisSerializable message) {
@@ -86,27 +91,43 @@ public class RedisManager {
         }
     }
 
-    private void startListener() {
-        if (pubSub != null || listenerThread != null) {
-            close();
+    private void restartListener() {
+        running = false;
+        try {
+            if (pubSub != null) {
+                try { pubSub.unsubscribe(); } catch (redis.clients.jedis.exceptions.JedisException ignored) {}
+            }
+            if (listenerThread != null && listenerThread.isAlive()) {
+                listenerThread.join(200);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            pubSub = null;
+            listenerThread = null;
         }
+        String[] channels = listeners.keySet().toArray(new String[0]);
+        if (channels.length == 0) return;
+        running = true;
+        startListenerInternal(channels);
+    }
 
+    private void startListenerInternal(String[] channels) {
         pubSub = new JedisPubSub() {
             @Override
             public void onMessage(String channel, String message) {
                 JsonObject obj = JsonParser.parseString(message).getAsJsonObject();
 
-                List<RedisListener> registeredListeners = listeners.get(channel);
-                if (registeredListeners != null) {
-                    for (RedisListener listener : registeredListeners) {
-                        if (listener.runOnMainThread()) {
-                            Bukkit.getScheduler().runTask(plugin, () -> listener.onMessage(channel, obj));
+                List<RedisListener> registered = listeners.get(channel);
+                if (registered != null) {
+                    for (RedisListener l : registered) {
+                        if (l.runOnMainThread()) {
+                            Bukkit.getScheduler().runTask(plugin, () -> l.onMessage(channel, obj));
                         } else {
-                            listener.onMessage(channel, obj);
+                            l.onMessage(channel, obj);
                         }
                     }
                 }
-
                 dispatcher.dispatch(channel, obj);
             }
         };
@@ -114,19 +135,19 @@ public class RedisManager {
         listenerThread = new Thread(() -> {
             while (running) {
                 try (Jedis jedis = jedisPool.getResource()) {
-                    jedis.subscribe(pubSub, listeners.keySet().toArray(new String[0]));
+                    jedis.subscribe(pubSub, channels);
                 } catch (Exception e) {
-                    plugin.getLogger().warning("[Redis] Listener crashed: " + e.getMessage());
                     if (!running) break;
-                    try {
-                        TimeUnit.SECONDS.sleep(5);
-                    } catch (InterruptedException ignored) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
+                    plugin.getLogger().warning("[Redis] Listener crashed: " + e.getMessage());
+                    try { TimeUnit.SECONDS.sleep(3); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
                 }
             }
         }, "RedisListenerThread");
+        listenerThread.setDaemon(true);
         listenerThread.start();
+    }
+
+    public RedisRpcBus createRpcBus(String channel) {
+        return new RedisRpcBus(this.plugin, this, channel);
     }
 }

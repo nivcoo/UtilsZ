@@ -21,7 +21,6 @@ public class RedisRpcBus {
     private static final class RpcEntry {
         final String action;
         final RedisTypeAdapter<Object> reqAdapter;
-
         RpcEntry(String action, RedisTypeAdapter<Object> ra) {
             this.action = action;
             this.reqAdapter = ra;
@@ -40,7 +39,9 @@ public class RedisRpcBus {
         this.plugin = plugin;
         this.redis = redis;
         this.channel = channel;
+        // 1) on s'abonne au canal
         redis.subscribe(channel, (ch, msg) -> onIncoming(msg));
+        // 2) on lance l'écoute (idempotent, et relance si déjà lancé)
         redis.start();
     }
 
@@ -51,6 +52,7 @@ public class RedisRpcBus {
         env.kind = "req";
         env.cid = cid;
         env.payload = jsonReq;
+
         CompletableFuture<JsonObject> fut = new CompletableFuture<>();
         pending.put(cid, fut);
         redis.publish(channel, toWire(env));
@@ -75,13 +77,9 @@ public class RedisRpcBus {
         if (r == null)
             throw new IllegalArgumentException("Missing @RpcResponse on " + endpointClass.getName());
 
-        @SuppressWarnings("unchecked")
-        Class<R> resType = (Class<R>) r.value();
-
-        @SuppressWarnings({"rawtypes", "unchecked"})
-        RedisTypeAdapter<Object> reqA = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) endpointClass);
-        @SuppressWarnings({"rawtypes", "unchecked"})
-        RedisTypeAdapter<Object> resA = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) resType);
+        @SuppressWarnings("unchecked") Class<R> resType = (Class<R>) r.value();
+        @SuppressWarnings({"rawtypes", "unchecked"}) RedisTypeAdapter<Object> reqA = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) endpointClass);
+        @SuppressWarnings({"rawtypes", "unchecked"}) RedisTypeAdapter<Object> resA = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) resType);
 
         JsonObject payload = reqA.serialize(request);
         return callRaw(a.value(), payload).thenApply(json -> resType.cast(resA.deserialize(json)));
@@ -93,10 +91,8 @@ public class RedisRpcBus {
         if (a == null || a.value().isEmpty())
             throw new IllegalArgumentException("Missing @RedisAction on " + endpointClass.getName());
 
-        @SuppressWarnings({"rawtypes", "unchecked"})
-        RedisTypeAdapter<Object> reqA = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) endpointClass);
-        @SuppressWarnings({"rawtypes", "unchecked"})
-        RedisTypeAdapter<Object> resA = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) resType);
+        @SuppressWarnings({"rawtypes", "unchecked"}) RedisTypeAdapter<Object> reqA = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) endpointClass);
+        @SuppressWarnings({"rawtypes", "unchecked"}) RedisTypeAdapter<Object> resA = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) resType);
 
         JsonObject payload = reqA.serialize(request);
         return callRaw(a.value(), payload).thenApply(json -> resType.cast(resA.deserialize(json)));
@@ -135,17 +131,13 @@ public class RedisRpcBus {
 
         Runnable run = () -> {
             try {
-                if (!(req instanceof RpcAnnotated ra))
-                    throw new IllegalStateException("Endpoint must implement RpcAnnotated");
+                if (!(req instanceof RpcAnnotated ra)) throw new IllegalStateException("Endpoint must implement RpcAnnotated");
 
                 Object result = ra.handle();
-                if (result == null) {
-                    return;
-                }
+                if (result == null) return;
 
                 @SuppressWarnings({"rawtypes","unchecked"})
-                RedisTypeAdapter<Object> resA =
-                        (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) result.getClass());
+                RedisTypeAdapter<Object> resA = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) result.getClass());
 
                 RpcEnvelope out = new RpcEnvelope();
                 out.action = entry.action;
@@ -168,7 +160,6 @@ public class RedisRpcBus {
         if (mainThread) org.bukkit.Bukkit.getScheduler().runTask(plugin, run);
         else run.run();
     }
-
 
     private static JsonObject toWire(RpcEnvelope env) {
         JsonObject o = new JsonObject();
