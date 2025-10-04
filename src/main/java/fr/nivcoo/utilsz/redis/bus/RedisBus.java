@@ -187,10 +187,7 @@ public final class RedisBus {
 
         boolean isSelf = env.sender != null && env.sender.equals(redis.getInstanceId());
 
-        if ("req".equals(env.kind)) {
-            boolean allowSelf = selfReceive.getOrDefault(env.action, true);
-            if (isSelf && !allowSelf) return;
-        } else if ("evt".equals(env.kind)) {
+        if ("req".equals(env.kind) || "evt".equals(env.kind)) {
             boolean allowSelf = selfReceive.getOrDefault(env.action, false);
             if (isSelf && !allowSelf) return;
         }
@@ -207,6 +204,7 @@ public final class RedisBus {
             case "evt" -> handleEvent(env);
         }
     }
+
 
     private void handleResponse(Envelope env) {
         if (env.cid == null) return;
