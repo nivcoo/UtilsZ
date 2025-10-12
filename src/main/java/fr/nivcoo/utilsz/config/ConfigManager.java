@@ -4,6 +4,7 @@ import fr.nivcoo.utilsz.config.annotations.*;
 import fr.nivcoo.utilsz.config.text.TextMode;
 import fr.nivcoo.utilsz.config.validation.Validatable;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TextReplacementConfig;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
@@ -233,7 +234,6 @@ public final class ConfigManager {
     }
 
 
-
     private String formatScalar(Object v){
         if (v == null) return "null";
         if (v instanceof String s){
@@ -242,6 +242,21 @@ public final class ConfigManager {
             return needsQuotes ? "\""+out+"\"" : out;
         }
         return String.valueOf(v);
+    }
+
+
+    public static Component fmt(Component template, Map<String, ?> vars) {
+        if (template == null || vars == null || vars.isEmpty()) return template;
+        Component out = template;
+        for (var e : vars.entrySet()) {
+            String k = String.valueOf(e.getKey());
+            String v = String.valueOf(e.getValue());
+            out = out.replaceText(TextReplacementConfig.builder()
+                    .matchLiteral("{"+k+"}")
+                    .replacement(Component.text(v))
+                    .build());
+        }
+        return out;
     }
 
     private static boolean isStatic(Field f){ return (f.getModifiers() & java.lang.reflect.Modifier.STATIC) != 0; }

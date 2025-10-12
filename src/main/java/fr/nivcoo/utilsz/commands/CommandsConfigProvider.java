@@ -1,9 +1,11 @@
 package fr.nivcoo.utilsz.commands;
 
+import net.kyori.adventure.text.Component;
+
 import java.util.List;
 
 public interface CommandsConfigProvider {
-    String noPermission();
-    String incorrectUsage();
-    List<String> help();
+    Component noPermission();
+    Component incorrectUsage();
+    List<Component> help();
 }

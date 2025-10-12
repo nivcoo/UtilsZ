@@ -1,6 +1,10 @@
+// CommandManager.java
 package fr.nivcoo.utilsz.commands;
 
 import fr.nivcoo.utilsz.config.Config;
+import fr.nivcoo.utilsz.config.ConfigManager;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
 import org.bukkit.entity.Player;
@@ -71,6 +75,7 @@ public class CommandManager implements TabExecutor {
         plugin.getCommand(globalCommand).setExecutor(this);
     }
 
+    // Back-compat constructors (String-based Config). Deprecated.
     @Deprecated
     public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission) {
         this(plugin,
@@ -80,7 +85,6 @@ public class CommandManager implements TabExecutor {
                         "messages.commands.help"),
                 globalCommand, commandPermission, true, null);
     }
-
     @Deprecated
     public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, Command defaultCommand) {
         this(plugin,
@@ -91,7 +95,6 @@ public class CommandManager implements TabExecutor {
                 globalCommand, commandPermission, false, null);
         this.defaultCommand = defaultCommand;
     }
-
     @Deprecated
     public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, boolean sendHelp) {
         this(plugin,
@@ -101,7 +104,6 @@ public class CommandManager implements TabExecutor {
                         "messages.commands.help"),
                 globalCommand, commandPermission, sendHelp, null);
     }
-
     @Deprecated
     public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, Consumer<CommandSender> onEmptyArgsHandler) {
         this(plugin,
@@ -120,41 +122,48 @@ public class CommandManager implements TabExecutor {
         return null;
     }
 
-    private static String fmt(String template, String... args) {
-        if (template == null) return null;
-        String out = template;
-        for (int i = 0; i < args.length; i++) out = out.replace("{"+i+"}", args[i] == null ? "" : args[i]);
-        return out;
+    private static final PlainTextComponentSerializer PLAIN = PlainTextComponentSerializer.plainText();
+
+    private static Component fmtComp(Component template, String... args) {
+        if (template == null) return Component.empty();
+        String plain = PLAIN.serialize(template);
+        for (int i = 0; i < args.length; i++) {
+            plain = plain.replace("{"+i+"}", args[i] == null ? "" : args[i]);
+        }
+        return ConfigManager.parseDynamic(plain);
     }
 
     public void help(CommandSender sender) {
-        List<String> lines = provider.help();
+        List<Component> lines = provider.help();
         if (lines == null || lines.isEmpty()) return;
 
-        StringBuilder sb = new StringBuilder();
-        int i = 0;
-        for (String m : lines) {
-            if (m == null) { i++; continue; }
-            int idx = m.indexOf("{!");
+        List<Component> toSend = new ArrayList<>(lines.size());
+        for (Component c : lines) {
+            if (c == null) continue;
+            String plain = PLAIN.serialize(c);
+            int idx = plain.indexOf("{!");
             String perm = null;
             if (idx >= 0) {
-                int end = m.indexOf("}", idx + 2);
-                if (end > idx) perm = m.substring(idx + 2, end);
+                int end = plain.indexOf("}", idx + 2);
+                if (end > idx) perm = plain.substring(idx + 2, end);
             }
             if (perm == null || sender.hasPermission(perm)) {
-                sb.append(perm == null ? m : m.replace("{!" + perm + "}", ""));
-                if (i < lines.size() - 1) sb.append("\n");
+                String shown = (perm == null) ? plain : plain.replace("{!" + perm + "}", "");
+                toSend.add(ConfigManager.parseDynamic(shown));
             }
-            i++;
         }
-        sender.sendMessage(sb.toString());
+
+        if (!toSend.isEmpty()) {
+            // Envoie chaque ligne séparément pour préserver formats et sauts
+            for (Component line : toSend) sender.sendMessage(line);
+        }
     }
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, org.bukkit.command.Command cmd, @NotNull String label, String[] args) {
         if (!cmd.getName().equalsIgnoreCase(globalCommand)) return false;
 
-        String noPermission = provider.noPermission();
+        Component noPermission = provider.noPermission();
 
         if (args.length == 0) {
             if (onEmptyArgsHandler != null) { onEmptyArgsHandler.accept(sender); return true; }
@@ -167,7 +176,7 @@ public class CommandManager implements TabExecutor {
             if (sendHelp && sender.hasPermission(commandPermission)) {
                 help(sender);
             } else if (sendHelp) {
-                if (noPermission != null && !noPermission.isEmpty()) sender.sendMessage(noPermission);
+                if (!isEmpty(noPermission)) sender.sendMessage(noPermission);
             } else {
                 Command c = getCommand(globalCommand);
                 if (c != null) c.execute(plugin, sender, args);
@@ -178,17 +187,17 @@ public class CommandManager implements TabExecutor {
         Command sub = getCommand(args[0]);
         if (sub != null) {
             if (!(sender instanceof Player) && !sub.canBeExecutedByConsole()) {
-                sender.sendMessage("§cCan be executed only by players!");
+                sender.sendMessage(ConfigManager.parseDynamic("§cCan be executed only by players!"));
                 return false;
             }
             if (!sub.getPermission().isEmpty() && !sender.hasPermission(sub.getPermission())) {
-                if (noPermission != null && !noPermission.isEmpty()) sender.sendMessage(noPermission);
+                if (!isEmpty(noPermission)) sender.sendMessage(noPermission);
                 return false;
             }
             if (args.length < sub.getMinArgs() || args.length > sub.getMaxArgs()) {
-                String msg = provider.incorrectUsage();
-                msg = fmt(msg, globalCommand + " " + sub.getUsage());
-                if (msg != null && !msg.isEmpty()) sender.sendMessage(msg);
+                Component msgTpl = provider.incorrectUsage();
+                Component msg = fmtComp(msgTpl, globalCommand + " " + sub.getUsage());
+                if (!isEmpty(msg)) sender.sendMessage(msg);
                 return false;
             }
             sub.execute(plugin, sender, args);
@@ -197,26 +206,32 @@ public class CommandManager implements TabExecutor {
 
         if (defaultCommand != null) {
             if (!(sender instanceof Player) && !defaultCommand.canBeExecutedByConsole()) {
-                sender.sendMessage("§cCan be executed only by players!");
+                sender.sendMessage(ConfigManager.parseDynamic("§cCan be executed only by players!"));
                 return true;
             }
             if (defaultCommand.getPermission() != null && !defaultCommand.getPermission().isEmpty()
                     && !sender.hasPermission(defaultCommand.getPermission())) {
-                if (noPermission != null && !noPermission.isEmpty()) sender.sendMessage(noPermission);
+                if (!isEmpty(noPermission)) sender.sendMessage(noPermission);
                 return true;
             }
             if (args.length < defaultCommand.getMinArgs() || args.length > defaultCommand.getMaxArgs()) {
-                String msg = provider.incorrectUsage();
-                msg = fmt(msg, globalCommand + " " + defaultCommand.getUsage());
-                if (msg != null && !msg.isEmpty()) sender.sendMessage(msg);
+                Component msgTpl = provider.incorrectUsage();
+                Component msg = fmtComp(msgTpl, globalCommand + " " + defaultCommand.getUsage());
+                if (!isEmpty(msg)) sender.sendMessage(msg);
                 return true;
             }
             defaultCommand.execute(plugin, sender, args);
             return true;
         }
 
-        if (noPermission != null && !noPermission.isEmpty()) sender.sendMessage(noPermission);
+        if (!isEmpty(noPermission)) sender.sendMessage(noPermission);
         return false;
+    }
+
+    private static boolean isEmpty(Component c) {
+        if (c == null) return true;
+        String plain = PLAIN.serialize(c);
+        return plain == null || plain.isEmpty();
     }
 
     @Override
@@ -233,5 +248,15 @@ public class CommandManager implements TabExecutor {
             }
         }
         return list;
+    }
+
+    public void setNoPermissionMessagePath(String path) {
+        if (provider instanceof PathCommandsConfigProvider p) p.setNoPermissionPath(path);
+    }
+    public void setIncorrectUsageMessagePath(String path) {
+        if (provider instanceof PathCommandsConfigProvider p) p.setIncorrectUsagePath(path);
+    }
+    public void setHelpMessagesPath(String path) {
+        if (provider instanceof PathCommandsConfigProvider p) p.setHelpPath(path);
     }
 }
