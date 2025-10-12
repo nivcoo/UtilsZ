@@ -176,7 +176,7 @@ public class CommandManager implements TabExecutor {
             if (sendHelp && sender.hasPermission(commandPermission)) {
                 help(sender);
             } else if (sendHelp) {
-                if (!isEmpty(noPermission)) sender.sendMessage(noPermission);
+                if (isNotEmpty(noPermission)) sender.sendMessage(noPermission);
             } else {
                 Command c = getCommand(globalCommand);
                 if (c != null) c.execute(plugin, sender, args);
@@ -191,13 +191,13 @@ public class CommandManager implements TabExecutor {
                 return false;
             }
             if (!sub.getPermission().isEmpty() && !sender.hasPermission(sub.getPermission())) {
-                if (!isEmpty(noPermission)) sender.sendMessage(noPermission);
+                if (isNotEmpty(noPermission)) sender.sendMessage(noPermission);
                 return false;
             }
             if (args.length < sub.getMinArgs() || args.length > sub.getMaxArgs()) {
                 Component msgTpl = provider.incorrectUsage();
                 Component msg = fmtComp(msgTpl, globalCommand + " " + sub.getUsage());
-                if (!isEmpty(msg)) sender.sendMessage(msg);
+                if (isNotEmpty(msg)) sender.sendMessage(msg);
                 return false;
             }
             sub.execute(plugin, sender, args);
@@ -211,27 +211,27 @@ public class CommandManager implements TabExecutor {
             }
             if (defaultCommand.getPermission() != null && !defaultCommand.getPermission().isEmpty()
                     && !sender.hasPermission(defaultCommand.getPermission())) {
-                if (!isEmpty(noPermission)) sender.sendMessage(noPermission);
+                if (isNotEmpty(noPermission)) sender.sendMessage(noPermission);
                 return true;
             }
             if (args.length < defaultCommand.getMinArgs() || args.length > defaultCommand.getMaxArgs()) {
                 Component msgTpl = provider.incorrectUsage();
                 Component msg = fmtComp(msgTpl, globalCommand + " " + defaultCommand.getUsage());
-                if (!isEmpty(msg)) sender.sendMessage(msg);
+                if (isNotEmpty(msg)) sender.sendMessage(msg);
                 return true;
             }
             defaultCommand.execute(plugin, sender, args);
             return true;
         }
 
-        if (!isEmpty(noPermission)) sender.sendMessage(noPermission);
+        if (isNotEmpty(noPermission)) sender.sendMessage(noPermission);
         return false;
     }
 
-    private static boolean isEmpty(Component c) {
-        if (c == null) return true;
+    private static boolean isNotEmpty(Component c) {
+        if (c == null) return false;
         String plain = PLAIN.serialize(c);
-        return plain == null || plain.isEmpty();
+        return !plain.isEmpty();
     }
 
     @Override
