@@ -43,7 +43,9 @@ public final class ConfigManager {
         export(instance, rootName(cfgClass), out, comments);
 
         if (shouldSaveOnLoad(cfgClass)) {
-            saveText(file, writeYamlWithComments(out, comments, null));
+            Comment rootC = cfgClass.getAnnotation(Comment.class);
+            String header = (rootC != null) ? String.join("\n", rootC.value()) : null;
+            saveText(file, writeYamlWithComments(out, comments, header));
         }
         return instance;
     }
@@ -97,8 +99,9 @@ public final class ConfigManager {
     }
 
     private void inject(Map<String,Object> src, Object bean, String prefix){
-        for (Field f : bean.getClass().getFields()){
+        for (Field f : bean.getClass().getDeclaredFields()){
             if (isStatic(f)) continue;
+            f.setAccessible(true);
             String path = keyPath(f, prefix);
             try{
                 if (isSectionField(f)){
@@ -124,6 +127,11 @@ public final class ConfigManager {
                 if (isSectionField(f)){
                     Object sec = f.get(bean);
                     if (sec != null) {
+                        Comment fc = f.getAnnotation(Comment.class);
+                        if (fc != null) comments.put(path, List.of(fc.value()));
+
+                        Comment sc = sec.getClass().getAnnotation(Comment.class);
+                        if (sc != null) comments.put(path, List.of(sc.value()));
                         export(sec, path, out, comments);
                     }
                 } else {
@@ -193,10 +201,9 @@ public final class ConfigManager {
 
     @SuppressWarnings("unchecked")
     private void writeSection(StringBuilder sb, Map<String,Object> map, Map<String,List<String>> comments, String base, int indent){
-        List<String> keys = new ArrayList<>(map.keySet());
-        Collections.sort(keys);
-        for (String k : keys){
-            Object v = map.get(k);
+        for (Map.Entry<String,Object> e : map.entrySet()) {
+            String k = e.getKey();
+            Object v = e.getValue();
             String full = base.isEmpty() ? k : base + "." + k;
 
             List<String> c = comments.get(full);
