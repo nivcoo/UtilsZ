@@ -6,10 +6,12 @@ import fr.nivcoo.utilsz.config.validation.Validatable;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
 import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.function.Predicate;
@@ -34,14 +36,21 @@ public final class ConfigManager {
 
         T instance = newInstance(cfgClass);
         inject(existing, instance, rootName(cfgClass));
-        validate(instance);
+        validate(instance, rootName(cfgClass));
 
         Map<String,Object> out = new LinkedHashMap<>();
         Map<String,List<String>> comments = new LinkedHashMap<>();
         export(instance, rootName(cfgClass), out, comments);
 
-        saveText(file, writeYamlWithComments(out, comments, null));
+        if (shouldSaveOnLoad(cfgClass)) {
+            saveText(file, writeYamlWithComments(out, comments, null));
+        }
         return instance;
+    }
+
+    private static boolean shouldSaveOnLoad(Class<?> cfgClass) {
+        SaveOnLoad an = cfgClass.getAnnotation(SaveOnLoad.class);
+        return an == null || an.value();
     }
 
     public <T> List<T> loadAll(String relativeDir, Class<T> cfgClass) {
@@ -95,7 +104,7 @@ public final class ConfigManager {
                 if (isSectionField(f)){
                     Object sec = f.get(bean);
                     if (sec == null) { sec = newInstance(f.getType()); f.set(bean, sec); }
-                    inject(src, sec, sectionPrefix(f.getType(), path));
+                    inject(src, sec, path);
                 } else {
                     Object raw = getByPath(src, path);
                     Object val = convertFromYaml(f, raw, f.get(bean));
@@ -114,7 +123,9 @@ public final class ConfigManager {
             try{
                 if (isSectionField(f)){
                     Object sec = f.get(bean);
-                    if (sec != null) export(sec, sectionPrefix(f.getType(), path), out, comments);
+                    if (sec != null) {
+                        export(sec, path, out, comments);
+                    }
                 } else {
                     Object v = f.get(bean);
                     Object yamlVal = convertToYaml(f, v);
@@ -128,36 +139,45 @@ public final class ConfigManager {
         }
     }
 
-    private void validate(Object bean){
+    private void validate(Object bean, String prefix){
         for (Field f : bean.getClass().getFields()){
             if (isStatic(f)) continue;
+            String path = keyPath(f, prefix);
             try{
                 Object v = f.get(bean);
-                if (isSectionField(f) && v != null){ validate(v); continue; }
+
+                if (isSectionField(f) && v != null){
+                    validate(v, path);
+                    continue;
+                }
 
                 if (f.isAnnotationPresent(NotNull.class) && v == null)
-                    throw new IllegalArgumentException("Field "+f.getName()+" is @NotNull but null");
+                    throw new IllegalArgumentException("Field "+path+" is @NotNull but null");
 
                 Required req = f.getAnnotation(Required.class);
                 if (req != null) {
-                    if (v == null) throw new IllegalArgumentException("Field "+f.getName()+" is @Required but null");
-                    if (v instanceof CharSequence cs && cs.isEmpty())
-                        throw new IllegalArgumentException("Field "+f.getName()+" is @Required but empty");
-                    if (v instanceof Collection<?> col && col.isEmpty())
-                        throw new IllegalArgumentException("Field "+f.getName()+" is @Required but empty");
+                    switch (v) {
+                        case null -> throw new IllegalArgumentException("Field " + path + " is @Required but null");
+                        case CharSequence cs when cs.isEmpty() ->
+                                throw new IllegalArgumentException("Field " + path + " is @Required but empty");
+                        case Collection<?> col when col.isEmpty() ->
+                                throw new IllegalArgumentException("Field " + path + " is @Required but empty");
+                        default -> {
+                        }
+                    }
                 }
 
                 Range r = f.getAnnotation(Range.class);
                 if (r != null && v instanceof Number n){
                     double d = n.doubleValue();
                     if (d < r.min() || d > r.max())
-                        throw new IllegalArgumentException("Field "+f.getName()+" out of range ["+r.min()+","+r.max()+"]: "+d);
+                        throw new IllegalArgumentException("Field "+path+" out of range ["+r.min()+","+r.max()+"]: "+d);
                 }
 
                 if (v instanceof Validatable vd) vd.validate();
 
             } catch (RuntimeException re){ throw re; }
-            catch (Exception e){ throw new RuntimeException(e); }
+            catch (Exception e){ throw new RuntimeException("Validate failed for "+path+": "+e.getMessage(), e); }
         }
     }
 
@@ -199,7 +219,7 @@ public final class ConfigManager {
     private String formatScalar(Object v){
         if (v == null) return "null";
         if (v instanceof String s){
-            boolean needsQuotes = s.isEmpty() || s.matches(".*[:#\\-\\{\\}\\[\\],&*?]|^\\s|\\s$|^\\d+$|^(true|false|null)$");
+            boolean needsQuotes = s.isEmpty() || s.matches(".*[:#\\-{}\\[\\],&*?]|^\\s|\\s$|^\\d+$|^(true|false|null)$");
             String out = s.replace("\"","\\\"");
             return needsQuotes ? "\""+out+"\"" : out;
         }
@@ -242,11 +262,24 @@ public final class ConfigManager {
         return node.startsWith(prefix + ".") ? node : prefix + "." + node;
     }
     private static boolean hasPublicFields(Class<?> t){
+        if (t.isEnum()) return false;
         for (Field f : t.getFields()) if (!isStatic(f)) return true;
         return false;
     }
     private static boolean isSectionField(Field f){
-        return f.getType().isAnnotationPresent(Section.class) || hasPublicFields(f.getType());
+        Class<?> t = f.getType();
+        if (t.isEnum()
+                || t.isPrimitive()
+                || t == String.class
+                || Number.class.isAssignableFrom(t)
+                || t == Boolean.class
+                || t == Character.class
+                || t == Component.class
+                || java.util.Collection.class.isAssignableFrom(t)
+                || java.util.Map.class.isAssignableFrom(t)) {
+            return false;
+        }
+        return t.isAnnotationPresent(Section.class) || hasPublicFields(t);
     }
 
     @SuppressWarnings("unchecked")
@@ -271,9 +304,18 @@ public final class ConfigManager {
         cur.put(parts[parts.length-1], value);
     }
 
-    @SuppressWarnings({"unchecked","rawtypes"})
+    @SuppressWarnings({"unchecked"})
     private Object convertFromYaml(Field f, Object raw, Object fallback){
         if (raw == null) return fallback;
+
+        var ann = f.getAnnotation(WithConverter.class);
+        if (ann == null) ann = f.getType().getAnnotation(WithConverter.class);
+        if (ann != null) {
+            try {
+                var conv = ann.value().getDeclaredConstructor().newInstance();
+                return ((Converter<Object>) conv).read(raw, fallback, f);
+            } catch (Exception e){ throw new RuntimeException(e); }
+        }
 
         Class<?> t = f.getType();
 
@@ -297,13 +339,61 @@ public final class ConfigManager {
 
         if (List.class.isAssignableFrom(t)) {
             Elements el = f.getAnnotation(Elements.class);
-            if (el != null && raw instanceof List<?> in) {
-                List<Object> out = new ArrayList<>(in.size());
-                for (Object elem : in) {
-                    if (elem instanceof Map<?,?> m) {
+
+            boolean isListOfComponent = false;
+            var gt = f.getGenericType();
+            if (gt instanceof ParameterizedType p) {
+                var args = p.getActualTypeArguments();
+                isListOfComponent = args.length == 1 && args[0].getTypeName().equals(Component.class.getName());
+            }
+            if (isListOfComponent) {
+                TextMode mode = f.isAnnotationPresent(TextFormat.class)
+                        ? f.getAnnotation(TextFormat.class).value()
+                        : TextMode.AUTO;
+
+                if (raw instanceof List<?> in) {
+                    List<Component> out = new ArrayList<>(in.size());
+                    for (Object elem : in) out.add(parseComponent(String.valueOf(elem), mode));
+                    return out;
+                }
+                return List.of(parseComponent(String.valueOf(raw), mode));
+            }
+
+            if (raw instanceof List<?> in) {
+                if (el != null) {
+                    List<Object> out = new ArrayList<>(in.size());
+                    for (Object elem : in) {
+                        if (elem instanceof Map<?,?> m) {
+                            Object inst = newInstance(el.value());
+                            inject(new LinkedHashMap<>((Map<String,Object>) m), inst, "");
+                            out.add(inst);
+                        } else {
+                            out.add(elem);
+                        }
+                    }
+                    return out;
+                }
+                return new ArrayList<>(in);
+            }
+
+            if (raw instanceof Map<?,?> in) {
+                List<Map.Entry<?,?>> entries = new ArrayList<>(in.entrySet());
+                entries.sort((a,b) -> {
+                    try {
+                        int ia = Integer.parseInt(String.valueOf(a.getKey()));
+                        int ib = Integer.parseInt(String.valueOf(b.getKey()));
+                        return Integer.compare(ia, ib);
+                    } catch (NumberFormatException e) {
+                        return String.valueOf(a.getKey()).compareTo(String.valueOf(b.getKey()));
+                    }
+                });
+
+                List<Object> out = new ArrayList<>(entries.size());
+                for (Map.Entry<?,?> e : entries) {
+                    Object elem = e.getValue();
+                    if (el != null && elem instanceof Map<?,?> m) {
                         Object inst = newInstance(el.value());
-                        Map<String,Object> mm = new LinkedHashMap<>((Map<String,Object>) m);
-                        inject(mm, inst, "");
+                        inject(new LinkedHashMap<>((Map<String,Object>) m), inst, "");
                         out.add(inst);
                     } else {
                         out.add(elem);
@@ -311,7 +401,8 @@ public final class ConfigManager {
                 }
                 return out;
             }
-            return (raw instanceof List<?> l) ? new ArrayList<>(l) : List.of(String.valueOf(raw));
+
+            return List.of(String.valueOf(raw));
         }
 
         if (Map.class.isAssignableFrom(t)) {
@@ -322,8 +413,7 @@ public final class ConfigManager {
                     Object v = e.getValue();
                     if (v instanceof Map<?,?> m) {
                         Object inst = newInstance(el.value());
-                        Map<String,Object> mm = new LinkedHashMap<>((Map<String,Object>) m);
-                        inject(mm, inst, "");
+                        inject(new LinkedHashMap<>((Map<String,Object>) m), inst, "");
                         out.put(String.valueOf(e.getKey()), inst);
                     } else {
                         out.put(String.valueOf(e.getKey()), v);
@@ -343,8 +433,19 @@ public final class ConfigManager {
         return fallback;
     }
 
+
+    @SuppressWarnings("unchecked")
     private Object convertToYaml(Field f, Object v){
         if (v == null) return null;
+
+        var ann = f.getAnnotation(WithConverter.class);
+        if (ann == null) ann = f.getType().getAnnotation(WithConverter.class);
+        if (ann != null){
+            try {
+                var conv = ann.value().getDeclaredConstructor().newInstance();
+                return ((Converter<Object>) conv).write(v, f);
+            } catch (Exception e){ throw new RuntimeException(e); }
+        }
 
         if (f.getType() == Component.class) {
             TextMode mode = f.isAnnotationPresent(TextFormat.class)
@@ -355,14 +456,37 @@ public final class ConfigManager {
         if (v.getClass().isEnum()) return ((Enum<?>) v).name();
 
         if (v instanceof List<?> list) {
-            List<Object> out = new ArrayList<>(list.size());
-            for (Object e : list) {
-                if (e == null) { out.add(null); continue; }
-                Map<String,Object> m = new LinkedHashMap<>();
-                export(e, "", m, new LinkedHashMap<>());
-                out.add(m);
+            // support List<Component>
+            boolean isListOfComponent = false;
+            var gt = f.getGenericType();
+            if (gt instanceof java.lang.reflect.ParameterizedType p) {
+                var args = p.getActualTypeArguments();
+                isListOfComponent = args.length == 1 && args[0].getTypeName().equals(Component.class.getName());
             }
-            return out;
+            if (isListOfComponent) {
+                TextMode mode = f.isAnnotationPresent(TextFormat.class)
+                        ? f.getAnnotation(TextFormat.class).value()
+                        : TextMode.AUTO;
+                List<Object> out = new ArrayList<>(list.size());
+                for (Object e : list) {
+                    if (e == null) { out.add(null); continue; }
+                    out.add(serializeComponent((Component) e, mode));
+                }
+                return out;
+            }
+
+            Elements el = f.getAnnotation(Elements.class);
+            if (el != null) {
+                List<Object> out = new ArrayList<>(list.size());
+                for (Object e : list) {
+                    if (e == null) { out.add(null); continue; }
+                    Map<String,Object> m = new LinkedHashMap<>();
+                    export(e, "", m, new LinkedHashMap<>());
+                    out.add(m);
+                }
+                return out;
+            }
+            return new ArrayList<>(list);
         }
         return v;
     }
@@ -372,7 +496,7 @@ public final class ConfigManager {
         return switch (mode) {
             case MINIMESSAGE -> MM.deserialize(rewriteHexAmpToMini(s));
             case LEGACY_AMP -> LEGACY_SEC.deserialize(toSectionWithHex(s));
-            case PLAIN      -> net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().deserialize(s);
+            case PLAIN      -> PlainTextComponentSerializer.plainText().deserialize(s);
             case AUTO       -> {
                 String mmCand = rewriteHexAmpToMini(s);
                 boolean looksMini = looksLikeMini(mmCand);
@@ -394,7 +518,7 @@ public final class ConfigManager {
 
     private static String rewriteHexAmpToMini(String s){
         Matcher m = HEX_AMP.matcher(s);
-        StringBuffer sb = new StringBuffer();
+        StringBuilder sb = new StringBuilder();
         while (m.find()){
             String hex = m.group(1);
             m.appendReplacement(sb, "<#" + hex + ">");
@@ -406,7 +530,7 @@ public final class ConfigManager {
     private static String toSectionWithHex(String s){
         String r = s.replace('&','§');
         Matcher m = HEX_AMP.matcher(r);
-        StringBuffer sb = new StringBuffer();
+        StringBuilder sb = new StringBuilder();
         while (m.find()){
             String hex = m.group(1);
             StringBuilder seq = new StringBuilder("§x");
