@@ -23,7 +23,16 @@ public final class ConfigManager {
     private static final MiniMessage MM = MiniMessage.miniMessage();
     private static final LegacyComponentSerializer LEGACY_AMP = LegacyComponentSerializer.legacyAmpersand();
     private static final LegacyComponentSerializer LEGACY_SEC = LegacyComponentSerializer.legacySection();
-    private static final Pattern HEX_AMP = Pattern.compile("&#([A-Fa-f0-9]{6})");
+    private static final Pattern HEX_AMP = Pattern.compile("&#([A-Fa-f0-9]{6,8})");
+    private static final Pattern MINI_HEX = Pattern.compile("<#[0-9a-fA-F]{6,8}>");
+    private static final Pattern MINI_TAG = Pattern.compile(
+            "</?(?i:(b|i|u|st|obf|r|" +
+                    "bold|italic|underlined|strikethrough|obfuscated|reset|" +
+                    "color|gradient|rainbow|click|hover|insertion|keybind|font|url|newline|" +
+                    "black|dark_blue|dark_green|dark_aqua|dark_red|dark_purple|gold|gray|grey|" +
+                    "dark_gray|dark_grey|blue|green|aqua|red|light_purple|yellow|white))" +
+                    "(?:[:\\s>]|$)"
+    );
 
     private final File dataFolder;
 
@@ -576,15 +585,39 @@ public final class ConfigManager {
             case LEGACY_AMP -> LEGACY_SEC.deserialize(toSectionWithHex(s));
             case PLAIN -> PlainTextComponentSerializer.plainText().deserialize(s);
             case AUTO -> {
-                String mmCand = rewriteHexAmpToMini(s);
-                boolean looksMini = looksLikeMini(mmCand);
-                boolean looksLegacy = s.indexOf('&') >= 0 || s.indexOf('§') >= 0 || s.contains("&#");
-                if (looksMini) yield MM.deserialize(mmCand);
-                if (looksLegacy) yield LEGACY_SEC.deserialize(toSectionWithHex(s));
+                boolean hasMini = looksLikeMini(s);
+                boolean hasLegacy = looksLikeLegacy(s);
+
+                if (hasMini && !hasLegacy) yield MM.deserialize(rewriteHexAmpToMini(s));
+                if (hasLegacy && !hasMini) yield LEGACY_SEC.deserialize(toSectionWithHex(s));
+
+                if (hasMini) {
+                    if (looksLikeMiniStrong(s)) yield MM.deserialize(rewriteHexAmpToMini(s));
+                    yield LEGACY_SEC.deserialize(toSectionWithHex(s));
+                }
                 yield Component.text(s);
             }
         };
     }
+
+    private static boolean looksLikeLegacy(String s) {
+        if (s.indexOf('&') >= 0 || s.indexOf('§') >= 0) return true;
+        if (HEX_AMP.matcher(s).find()) return true;
+        return s.contains("&x&");
+    }
+
+    private static boolean looksLikeMini(String s) {
+        if (s == null) return false;
+        int lt = s.indexOf('<'); if (lt < 0) return false;
+        int gt = s.indexOf('>', lt); if (gt < 0) return false;
+        return MINI_HEX.matcher(s).find() || MINI_TAG.matcher(s).find();
+    }
+
+    private static boolean looksLikeMiniStrong(String s) {
+        return s.contains("</")
+                || s.matches(".*<(?i:click|hover|url|insertion|keybind|font|gradient|rainbow)(:|\\s|>).*");
+    }
+
 
     private static String serializeComponent(Component c, TextMode mode) {
         return switch (mode) {
@@ -663,10 +696,6 @@ public final class ConfigManager {
         }
         m.appendTail(sb);
         return sb.toString();
-    }
-
-    private static boolean looksLikeMini(String s) {
-        return s.contains("<#") || s.contains("</") || s.contains("<bold>") || s.contains("<gradient");
     }
 
     @SuppressWarnings("unchecked")
