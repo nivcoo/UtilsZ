@@ -1,11 +1,24 @@
 package fr.nivcoo.utilsz.commands;
 
+import net.kyori.adventure.text.Component;
+
 import java.util.List;
 
-public record SimpleCommandsConfig(String noPermission, String incorrectUsage, List<String> help)
+public record SimpleCommandsConfig(Component noPermission, Component incorrectUsage, List<Component> help)
         implements CommandsConfigProvider {
 
-    @Override public String noPermission()   { return noPermission; }
-    @Override public String incorrectUsage() { return incorrectUsage; }
-    @Override public List<String> help()     { return help; }
+    @Override
+    public Component noPermission() {
+        return noPermission;
+    }
+
+    @Override
+    public Component incorrectUsage() {
+        return incorrectUsage;
+    }
+
+    @Override
+    public List<Component> help() {
+        return help;
+    }
 }
