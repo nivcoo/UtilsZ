@@ -277,7 +277,6 @@ public final class ConfigManager {
 
         Class<?> t = f.getType();
 
-        // Component
         if (t == Component.class) {
             TextMode mode = f.isAnnotationPresent(TextFormat.class)
                     ? f.getAnnotation(TextFormat.class).value()
@@ -285,12 +284,10 @@ public final class ConfigManager {
             return parseComponent(String.valueOf(raw), mode);
         }
 
-        // Enum type-safe
         if (t.isEnum()) {
             return parseEnum(t, String.valueOf(raw));
         }
 
-        // Scalars
         if (t == String.class) return String.valueOf(raw);
         if (t == int.class || t == Integer.class) return asNumber(raw).intValue();
         if (t == long.class || t == Long.class) return asNumber(raw).longValue();
@@ -298,9 +295,7 @@ public final class ConfigManager {
         if (t == boolean.class || t == Boolean.class)
             return (raw instanceof Boolean b) ? b : Boolean.parseBoolean(String.valueOf(raw));
 
-        // Collections
         if (List.class.isAssignableFrom(t)) {
-            // Si on a une liste d'objets POJO, préciser la classe avec @Elements(...)
             Elements el = f.getAnnotation(Elements.class);
             if (el != null && raw instanceof List<?> in) {
                 List<Object> out = new ArrayList<>(in.size());
@@ -308,21 +303,37 @@ public final class ConfigManager {
                     if (elem instanceof Map<?,?> m) {
                         Object inst = newInstance(el.value());
                         Map<String,Object> mm = new LinkedHashMap<>((Map<String,Object>) m);
-                        inject(mm, inst, ""); // hydrate l'élément
+                        inject(mm, inst, "");
                         out.add(inst);
                     } else {
-                        out.add(elem); // scalaire ou autre
+                        out.add(elem);
                     }
                 }
                 return out;
             }
-            // sinon liste brute
             return (raw instanceof List<?> l) ? new ArrayList<>(l) : List.of(String.valueOf(raw));
         }
-        if (Map.class.isAssignableFrom(t))
-            return (raw instanceof Map<?,?> m) ? new LinkedHashMap<>(m) : Map.of();
 
-        // Objet simple (POJO non-list) quand YAML fournit un mapping
+        if (Map.class.isAssignableFrom(t)) {
+            Elements el = f.getAnnotation(Elements.class);
+            if (el != null && raw instanceof Map<?,?> in) {
+                Map<String,Object> out = new LinkedHashMap<>();
+                for (Map.Entry<?,?> e : in.entrySet()) {
+                    Object v = e.getValue();
+                    if (v instanceof Map<?,?> m) {
+                        Object inst = newInstance(el.value());
+                        Map<String,Object> mm = new LinkedHashMap<>((Map<String,Object>) m);
+                        inject(mm, inst, "");
+                        out.put(String.valueOf(e.getKey()), inst);
+                    } else {
+                        out.put(String.valueOf(e.getKey()), v);
+                    }
+                }
+                return out;
+            }
+            return (raw instanceof Map<?,?> m) ? new LinkedHashMap<>(m) : Map.of();
+        }
+
         if (raw instanceof Map<?,?> m && hasPublicFields(t)) {
             Object inst = newInstance(t);
             inject(new LinkedHashMap<>((Map<String,Object>) m), inst, "");
