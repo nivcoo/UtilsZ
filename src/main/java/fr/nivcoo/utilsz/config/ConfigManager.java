@@ -200,32 +200,38 @@ public final class ConfigManager {
     }
 
     @SuppressWarnings("unchecked")
-    private void writeSection(StringBuilder sb, Map<String,Object> map,
-                              Map<String,List<String>> comments, String base, int indent){
+    private void writeSection(StringBuilder sb, Map<String, Object> map,
+                              Map<String, List<String>> comments, String base, int indent) {
         int i = 0;
-        for (Map.Entry<String,Object> e : map.entrySet()){
+        for (Map.Entry<String, Object> e : map.entrySet()) {
             String k = e.getKey();
             Object v = e.getValue();
             String full = base.isEmpty() ? k : base + "." + k;
 
-            if (indent == 0 && i++ > 0) sb.append("\n");
+            if (i > 0 && v instanceof Map) sb.append("\n");
+            i++;
 
             List<String> c = comments.get(full);
-            if (c != null) for (String line : c) sb.append("  ".repeat(indent)).append("# ").append(line).append("\n");
+            if (c != null) {
+                for (String line : c) {
+                    sb.append("  ".repeat(indent)).append("# ").append(line).append("\n");
+                }
+            }
 
-            if (v instanceof Map<?,?> m){
+            if (v instanceof Map<?, ?> m) {
                 sb.append("  ".repeat(indent)).append(k).append(":\n");
-                writeSection(sb, (Map<String,Object>) m, comments, full, indent+1);
-            } else if (v instanceof List<?> list){
+                writeSection(sb, (Map<String, Object>) m, comments, full, indent + 1);
+            } else if (v instanceof List<?> list) {
                 sb.append("  ".repeat(indent)).append(k).append(":\n");
-                for (Object it : list){
-                    sb.append("  ".repeat(indent+1)).append("- ").append(formatScalar(it)).append("\n");
+                for (Object it : list) {
+                    sb.append("  ".repeat(indent + 1)).append("- ").append(formatScalar(it)).append("\n");
                 }
             } else {
                 sb.append("  ".repeat(indent)).append(k).append(": ").append(formatScalar(v)).append("\n");
             }
         }
     }
+
 
 
     private String formatScalar(Object v){
