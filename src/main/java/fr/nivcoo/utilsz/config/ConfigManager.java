@@ -565,4 +565,8 @@ public final class ConfigManager {
         try { return type.getDeclaredConstructor().newInstance(); }
         catch (Exception e){ throw new RuntimeException("Config class must have a no-args constructor: " + type.getName(), e); }
     }
+
+    public static Component parseDynamic(String s){
+        return parseComponent(s, TextMode.AUTO);
+    }
 }
