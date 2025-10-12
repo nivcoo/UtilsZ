@@ -275,15 +275,33 @@ public final class ConfigManager {
     }
 
     public static Component fmt(Component template, Map<String, ?> vars) {
+        return fmt(template, vars, true);
+    }
+
+    public static Component fmt(Component template, Map<String, ?> vars, boolean keepColors) {
         if (template == null || vars == null || vars.isEmpty()) return template;
         Component out = template;
         for (var e : vars.entrySet()) {
             String k = e.getKey();
             Object v = e.getValue();
 
-            Component repl = (v instanceof Component c)
-                    ? c
-                    : Component.text(v == null ? "" : String.valueOf(v));
+            Component repl;
+            if (keepColors) {
+                if (v instanceof Component c) repl = c;
+                else if (v instanceof CharSequence cs) repl = parseComponent(cs.toString(), TextMode.AUTO);
+                else repl = Component.text(v == null ? "" : String.valueOf(v));
+            } else {
+                String plain;
+                if (v instanceof Component c) {
+                    plain = PlainTextComponentSerializer.plainText().serialize(c);
+                } else if (v instanceof CharSequence cs) {
+                    Component parsed = parseComponent(cs.toString(), TextMode.AUTO);
+                    plain = PlainTextComponentSerializer.plainText().serialize(parsed);
+                } else {
+                    plain = v == null ? "" : String.valueOf(v);
+                }
+                repl = Component.text(plain);
+            }
 
             out = out.replaceText(TextReplacementConfig.builder()
                     .matchLiteral("{"+k+"}")
