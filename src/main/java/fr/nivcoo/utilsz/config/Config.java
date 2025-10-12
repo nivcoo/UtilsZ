@@ -220,4 +220,8 @@ public class Config {
     public ConfigurationSection getSection(String path) {
         return this.fconfig.getConfigurationSection(path);
     }
+
+    public Object getRaw(String path) {
+        return this.fconfig.get(path);
+    }
 }
