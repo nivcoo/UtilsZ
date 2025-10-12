@@ -200,11 +200,15 @@ public final class ConfigManager {
     }
 
     @SuppressWarnings("unchecked")
-    private void writeSection(StringBuilder sb, Map<String,Object> map, Map<String,List<String>> comments, String base, int indent){
-        for (Map.Entry<String,Object> e : map.entrySet()) {
+    private void writeSection(StringBuilder sb, Map<String,Object> map,
+                              Map<String,List<String>> comments, String base, int indent){
+        int i = 0;
+        for (Map.Entry<String,Object> e : map.entrySet()){
             String k = e.getKey();
             Object v = e.getValue();
             String full = base.isEmpty() ? k : base + "." + k;
+
+            if (indent == 0 && i++ > 0) sb.append("\n");
 
             List<String> c = comments.get(full);
             if (c != null) for (String line : c) sb.append("  ".repeat(indent)).append("# ").append(line).append("\n");
@@ -222,6 +226,7 @@ public final class ConfigManager {
             }
         }
     }
+
 
     private String formatScalar(Object v){
         if (v == null) return "null";
