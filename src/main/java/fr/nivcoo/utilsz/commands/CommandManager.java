@@ -14,97 +14,150 @@ import java.util.function.Consumer;
 public class CommandManager implements TabExecutor {
 
     private final JavaPlugin plugin;
-    private final ArrayList<Command> commands;
+    private final ArrayList<Command> commands = new ArrayList<>();
     private Command defaultCommand;
     private final String globalCommand;
     private final String commandPermission;
-    private final Config messages;
+
+    private final CommandsConfigProvider provider;
     private final boolean sendHelp;
     private final Consumer<CommandSender> onEmptyArgsHandler;
 
-    private String noPermissionMessagePath;
-    private String incorrectUsageMessagePath;
-    private String helpMessagesPath;
-
-    public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission) {
-        this(plugin, messages, globalCommand, commandPermission, true, null);
+    public CommandManager(JavaPlugin plugin,
+                          CommandsConfigProvider provider,
+                          String globalCommand,
+                          String commandPermission) {
+        this(plugin, provider, globalCommand, commandPermission, true, null);
     }
 
-    public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, Command defaultCommand) {
-        this(plugin, messages, globalCommand, commandPermission, false, null);
+    public CommandManager(JavaPlugin plugin,
+                          CommandsConfigProvider provider,
+                          String globalCommand,
+                          String commandPermission,
+                          Command defaultCommand) {
+        this(plugin, provider, globalCommand, commandPermission, false, null);
         this.defaultCommand = defaultCommand;
     }
 
-    public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, boolean sendHelp) {
-        this(plugin, messages, globalCommand, commandPermission, sendHelp, null);
+    public CommandManager(JavaPlugin plugin,
+                          CommandsConfigProvider provider,
+                          String globalCommand,
+                          String commandPermission,
+                          boolean sendHelp) {
+        this(plugin, provider, globalCommand, commandPermission, sendHelp, null);
     }
 
-    public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, Consumer<CommandSender> onEmptyArgsHandler) {
-        this(plugin, messages, globalCommand, commandPermission, false, onEmptyArgsHandler);
+    public CommandManager(JavaPlugin plugin,
+                          CommandsConfigProvider provider,
+                          String globalCommand,
+                          String commandPermission,
+                          Consumer<CommandSender> onEmptyArgsHandler) {
+        this(plugin, provider, globalCommand, commandPermission, false, onEmptyArgsHandler);
     }
 
-    private CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, boolean sendHelp, Consumer<CommandSender> onEmptyArgsHandler) {
+    private CommandManager(JavaPlugin plugin,
+                           CommandsConfigProvider provider,
+                           String globalCommand,
+                           String commandPermission,
+                           boolean sendHelp,
+                           Consumer<CommandSender> onEmptyArgsHandler) {
         this.plugin = plugin;
-        this.commands = new ArrayList<>();
-        this.messages = messages;
+        this.provider = provider;
         this.globalCommand = globalCommand;
         this.commandPermission = commandPermission;
         this.sendHelp = sendHelp;
         this.onEmptyArgsHandler = onEmptyArgsHandler;
-
-        this.noPermissionMessagePath = "messages.commands.no_permission";
-        this.incorrectUsageMessagePath = "messages.commands.incorrect_usage";
-        this.helpMessagesPath = "messages.commands.help";
-
         this.defaultCommand = null;
-
         plugin.getCommand(globalCommand).setExecutor(this);
     }
 
-    public void addCommand(Command c) {
-        commands.add(c);
+    @Deprecated
+    public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission) {
+        this(plugin,
+                new PathCommandsConfigProvider(messages,
+                        "messages.commands.no_permission",
+                        "messages.commands.incorrect_usage",
+                        "messages.commands.help"),
+                globalCommand, commandPermission, true, null);
     }
 
-    public ArrayList<Command> getCommands() {
-        return commands;
+    @Deprecated
+    public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, Command defaultCommand) {
+        this(plugin,
+                new PathCommandsConfigProvider(messages,
+                        "messages.commands.no_permission",
+                        "messages.commands.incorrect_usage",
+                        "messages.commands.help"),
+                globalCommand, commandPermission, false, null);
+        this.defaultCommand = defaultCommand;
     }
+
+    @Deprecated
+    public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, boolean sendHelp) {
+        this(plugin,
+                new PathCommandsConfigProvider(messages,
+                        "messages.commands.no_permission",
+                        "messages.commands.incorrect_usage",
+                        "messages.commands.help"),
+                globalCommand, commandPermission, sendHelp, null);
+    }
+
+    @Deprecated
+    public CommandManager(JavaPlugin plugin, Config messages, String globalCommand, String commandPermission, Consumer<CommandSender> onEmptyArgsHandler) {
+        this(plugin,
+                new PathCommandsConfigProvider(messages,
+                        "messages.commands.no_permission",
+                        "messages.commands.incorrect_usage",
+                        "messages.commands.help"),
+                globalCommand, commandPermission, false, onEmptyArgsHandler);
+    }
+
+    public void addCommand(Command c) { commands.add(c); }
+    public ArrayList<Command> getCommands() { return commands; }
 
     public Command getCommand(String arg) {
-        for (Command c : getCommands()) {
-            if (c.getAliases().contains(arg)) return c;
-        }
+        for (Command c : commands) if (c.getAliases().contains(arg)) return c;
         return null;
     }
 
-    public void help(CommandSender sender) {
-        int i = 0;
-        StringBuilder helpMessage = new StringBuilder();
-        List<String> helpMessages = messages.getStringList(helpMessagesPath);
+    private static String fmt(String template, String... args) {
+        if (template == null) return null;
+        String out = template;
+        for (int i = 0; i < args.length; i++) out = out.replace("{"+i+"}", args[i] == null ? "" : args[i]);
+        return out;
+    }
 
-        for (String m : helpMessages) {
-            int startPermissionIndex = m.indexOf("{!");
-            String permission = null;
-            if (startPermissionIndex >= 0) {
-                permission = m.substring(startPermissionIndex + 2, m.indexOf("}"));
+    public void help(CommandSender sender) {
+        List<String> lines = provider.help();
+        if (lines == null || lines.isEmpty()) return;
+
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        for (String m : lines) {
+            if (m == null) { i++; continue; }
+            int idx = m.indexOf("{!");
+            String perm = null;
+            if (idx >= 0) {
+                int end = m.indexOf("}", idx + 2);
+                if (end > idx) perm = m.substring(idx + 2, end);
             }
-            if (permission == null || sender.hasPermission(permission)) {
-                helpMessage.append(m.replace("{!" + permission + "}", ""));
-                if (helpMessages.size() - 1 != i) helpMessage.append(" \n");
+            if (perm == null || sender.hasPermission(perm)) {
+                sb.append(perm == null ? m : m.replace("{!" + perm + "}", ""));
+                if (i < lines.size() - 1) sb.append("\n");
             }
             i++;
         }
-        sender.sendMessage(helpMessage.toString());
+        sender.sendMessage(sb.toString());
     }
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, org.bukkit.command.Command cmd, @NotNull String label, String[] args) {
         if (!cmd.getName().equalsIgnoreCase(globalCommand)) return false;
-        String noPermission = messages.getString(noPermissionMessagePath);
+
+        String noPermission = provider.noPermission();
+
         if (args.length == 0) {
-            if (onEmptyArgsHandler != null) {
-                onEmptyArgsHandler.accept(sender);
-                return true;
-            }
+            if (onEmptyArgsHandler != null) { onEmptyArgsHandler.accept(sender); return true; }
 
             if (defaultCommand != null && sender.hasPermission(commandPermission)) {
                 defaultCommand.execute(plugin, sender, args);
@@ -116,34 +169,33 @@ public class CommandManager implements TabExecutor {
             } else if (sendHelp) {
                 if (noPermission != null && !noPermission.isEmpty()) sender.sendMessage(noPermission);
             } else {
-                Command command = getCommand(globalCommand);
-                command.execute(plugin, sender, args);
-
+                Command c = getCommand(globalCommand);
+                if (c != null) c.execute(plugin, sender, args);
             }
             return false;
         }
 
-
-        Command command = getCommand(args[0]);
-
-        if (command != null) {
-            if (!(sender instanceof Player) && !command.canBeExecutedByConsole()) {
+        Command sub = getCommand(args[0]);
+        if (sub != null) {
+            if (!(sender instanceof Player) && !sub.canBeExecutedByConsole()) {
                 sender.sendMessage("§cCan be executed only by players!");
                 return false;
             }
-            if (!command.getPermission().isEmpty() && !sender.hasPermission(command.getPermission())) {
+            if (!sub.getPermission().isEmpty() && !sender.hasPermission(sub.getPermission())) {
                 if (noPermission != null && !noPermission.isEmpty()) sender.sendMessage(noPermission);
                 return false;
             }
-            if (args.length < command.getMinArgs() || args.length > command.getMaxArgs()) {
-
-                String incorrectUsageMessage = messages.getString(incorrectUsageMessagePath, globalCommand + " " + command.getUsage());
-                if (incorrectUsageMessage != null && !incorrectUsageMessage.isEmpty())
-                    sender.sendMessage(incorrectUsageMessage);
+            if (args.length < sub.getMinArgs() || args.length > sub.getMaxArgs()) {
+                String msg = provider.incorrectUsage();
+                msg = fmt(msg, globalCommand + " " + sub.getUsage());
+                if (msg != null && !msg.isEmpty()) sender.sendMessage(msg);
                 return false;
             }
-            command.execute(plugin, sender, args);
-        } else if (defaultCommand != null) {
+            sub.execute(plugin, sender, args);
+            return true;
+        }
+
+        if (defaultCommand != null) {
             if (!(sender instanceof Player) && !defaultCommand.canBeExecutedByConsole()) {
                 sender.sendMessage("§cCan be executed only by players!");
                 return true;
@@ -154,51 +206,32 @@ public class CommandManager implements TabExecutor {
                 return true;
             }
             if (args.length < defaultCommand.getMinArgs() || args.length > defaultCommand.getMaxArgs()) {
-                String incorrectUsageMessage = messages.getString(incorrectUsageMessagePath, globalCommand + " " + defaultCommand.getUsage());
-                if (incorrectUsageMessage != null && !incorrectUsageMessage.isEmpty()) sender.sendMessage(incorrectUsageMessage);
+                String msg = provider.incorrectUsage();
+                msg = fmt(msg, globalCommand + " " + defaultCommand.getUsage());
+                if (msg != null && !msg.isEmpty()) sender.sendMessage(msg);
                 return true;
             }
             defaultCommand.execute(plugin, sender, args);
             return true;
-        } else if (noPermission != null && !noPermission.isEmpty())
-            sender.sendMessage(noPermission);
+        }
 
+        if (noPermission != null && !noPermission.isEmpty()) sender.sendMessage(noPermission);
         return false;
     }
 
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, org.bukkit.command.@NotNull Command cmd, @NotNull String alias, String[] args) {
         if (args.length > 0) {
-            Command command = getCommand(args[0]);
-            if (command != null) {
-                return command.getPermission() != null && !sender.hasPermission(command.getPermission()) ? new ArrayList<>() : command.tabComplete(plugin, sender, args);
-            }
+            Command c = getCommand(args[0]);
+            if (c != null) return (c.getPermission() != null && !sender.hasPermission(c.getPermission())) ? List.of() : c.tabComplete(plugin, sender, args);
         }
-
         List<String> list = new ArrayList<>();
-
-        for (Command subCommand : getCommands()) {
-            if (subCommand.getPermission() == null || sender.hasPermission(subCommand.getPermission())) {
-                for (String aliases : subCommand.getAliases()) {
-                    if (aliases.contains(args[0].toLowerCase())) {
-                        list.add(aliases);
-                    }
-                }
+        String prefix = args.length > 0 ? args[0].toLowerCase() : "";
+        for (Command sc : commands) {
+            if (sc.getPermission() == null || sender.hasPermission(sc.getPermission())) {
+                for (String al : sc.getAliases()) if (al.toLowerCase().contains(prefix)) list.add(al);
             }
         }
-
         return list;
-    }
-
-    public void setNoPermissionMessagePath(String noPermissionMessagePath) {
-        this.noPermissionMessagePath = noPermissionMessagePath;
-    }
-
-    public void setIncorrectUsageMessagePath(String incorrectUsageMessagePath) {
-        this.incorrectUsageMessagePath = incorrectUsageMessagePath;
-    }
-
-    public void setHelpMessagesPath(String helpMessagesPath) {
-        this.helpMessagesPath = helpMessagesPath;
     }
 }
