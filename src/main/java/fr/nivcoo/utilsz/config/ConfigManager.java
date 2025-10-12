@@ -1,7 +1,6 @@
 package fr.nivcoo.utilsz.config;
 
 import fr.nivcoo.utilsz.config.annotations.*;
-import fr.nivcoo.utilsz.config.poly.PolymorphicRegistry;
 import fr.nivcoo.utilsz.config.text.TextMode;
 import fr.nivcoo.utilsz.config.validation.Validatable;
 import net.kyori.adventure.text.Component;
@@ -272,11 +271,13 @@ public final class ConfigManager {
         cur.put(parts[parts.length-1], value);
     }
 
+    @SuppressWarnings({"unchecked","rawtypes"})
     private Object convertFromYaml(Field f, Object raw, Object fallback){
         if (raw == null) return fallback;
 
         Class<?> t = f.getType();
 
+        // Component
         if (t == Component.class) {
             TextMode mode = f.isAnnotationPresent(TextFormat.class)
                     ? f.getAnnotation(TextFormat.class).value()
@@ -284,10 +285,12 @@ public final class ConfigManager {
             return parseComponent(String.valueOf(raw), mode);
         }
 
+        // Enum type-safe
         if (t.isEnum()) {
             return parseEnum(t, String.valueOf(raw));
         }
 
+        // Scalars
         if (t == String.class) return String.valueOf(raw);
         if (t == int.class || t == Integer.class) return asNumber(raw).intValue();
         if (t == long.class || t == Long.class) return asNumber(raw).longValue();
@@ -295,13 +298,36 @@ public final class ConfigManager {
         if (t == boolean.class || t == Boolean.class)
             return (raw instanceof Boolean b) ? b : Boolean.parseBoolean(String.valueOf(raw));
 
+        // Collections
         if (List.class.isAssignableFrom(t)) {
-            Polymorphic poly = f.getAnnotation(Polymorphic.class);
-            if (poly != null) return mapPolymorphicList(raw, poly);
+            // Si on a une liste d'objets POJO, préciser la classe avec @Elements(...)
+            Elements el = f.getAnnotation(Elements.class);
+            if (el != null && raw instanceof List<?> in) {
+                List<Object> out = new ArrayList<>(in.size());
+                for (Object elem : in) {
+                    if (elem instanceof Map<?,?> m) {
+                        Object inst = newInstance(el.value());
+                        Map<String,Object> mm = new LinkedHashMap<>((Map<String,Object>) m);
+                        inject(mm, inst, ""); // hydrate l'élément
+                        out.add(inst);
+                    } else {
+                        out.add(elem); // scalaire ou autre
+                    }
+                }
+                return out;
+            }
+            // sinon liste brute
             return (raw instanceof List<?> l) ? new ArrayList<>(l) : List.of(String.valueOf(raw));
         }
         if (Map.class.isAssignableFrom(t))
             return (raw instanceof Map<?,?> m) ? new LinkedHashMap<>(m) : Map.of();
+
+        // Objet simple (POJO non-list) quand YAML fournit un mapping
+        if (raw instanceof Map<?,?> m && hasPublicFields(t)) {
+            Object inst = newInstance(t);
+            inject(new LinkedHashMap<>((Map<String,Object>) m), inst, "");
+            return inst;
+        }
 
         return fallback;
     }
@@ -328,25 +354,6 @@ public final class ConfigManager {
             return out;
         }
         return v;
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<Object> mapPolymorphicList(Object raw, Polymorphic poly) {
-        if (!(raw instanceof List<?> in)) return List.of();
-        List<Object> out = new ArrayList<>(in.size());
-        for (Object elem : in) {
-            if (!(elem instanceof Map<?,?> m)) continue;
-            Object typeVal = m.getOrDefault(poly.typeKey(), null);
-            if (typeVal == null)
-                throw new IllegalArgumentException("Missing '"+poly.typeKey()+"' in polymorphic element");
-            Class<?> impl = PolymorphicRegistry
-                    .resolve((Class<Object>) poly.element(), String.valueOf(typeVal));
-            Object inst = newInstance(impl);
-            Map<String,Object> mm = new LinkedHashMap<>((Map<String,Object>) m);
-            inject(mm, inst, "");
-            out.add(inst);
-        }
-        return out;
     }
 
     private static Component parseComponent(String s, TextMode mode){
