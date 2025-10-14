@@ -2,19 +2,32 @@ package fr.nivcoo.utilsz.config.conv;
 
 import fr.nivcoo.utilsz.config.annotations.Converter;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 
 import java.lang.reflect.Field;
 
 public final class MaterialConv implements Converter<Material> {
+
     @Override
-    public Material read(Object raw, Material fb, Field f) {
-        if (raw == null) return fb;
-        Material m = Material.matchMaterial(String.valueOf(raw));
-        return m != null ? m : fb;
+    public Material read(Object raw, Material fallback, Field f) {
+        if (raw == null) return fallback;
+        String name = String.valueOf(raw).trim().toLowerCase();
+
+        NamespacedKey key = name.contains(":")
+                ? NamespacedKey.fromString(name)
+                : NamespacedKey.minecraft(name);
+
+        if (key == null) return fallback;
+
+        Material mat = Registry.MATERIAL.get(key);
+        return mat != null ? mat : fallback;
     }
 
     @Override
-    public Object write(Material v, Field f) {
-        return v == null ? null : v.name();
+    public Object write(Material value, Field f) {
+        if (value == null) return null;
+        NamespacedKey key = Registry.MATERIAL.getKey(value);
+        return key != null ? key.asString() : null;
     }
 }

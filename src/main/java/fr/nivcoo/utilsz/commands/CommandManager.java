@@ -1,4 +1,3 @@
-// CommandManager.java
 package fr.nivcoo.utilsz.commands;
 
 import fr.nivcoo.utilsz.config.Config;
@@ -154,7 +153,6 @@ public class CommandManager implements TabExecutor {
         }
 
         if (!toSend.isEmpty()) {
-            // Envoie chaque ligne séparément pour préserver formats et sauts
             for (Component line : toSend) sender.sendMessage(line);
         }
     }

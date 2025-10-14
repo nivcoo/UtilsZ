@@ -5,7 +5,7 @@
 
     <groupId>fr.nivcoo</groupId>
     <artifactId>UtilsZ</artifactId>
-    <version>1.1.35</version>
+    <version>1.1.36</version>
     <packaging>jar</packaging>
 
     <name>${project.artifactId}</name>
@@ -38,11 +38,11 @@
     </build>
 
     <dependencies>
-        <!-- PaperMC API 1.20.6 -->
+        <!-- PaperMC API 1.21.8 -->
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
-            <version>1.20.6-R0.1-SNAPSHOT</version>
+            <version>1.21.8-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
 
@@ -56,13 +56,6 @@
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
             <version>2.12.1</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.mojang</groupId>
-            <artifactId>authlib</artifactId>
-            <version>6.0.58</version>
-            <scope>provided</scope>
         </dependency>
 
         <dependency>

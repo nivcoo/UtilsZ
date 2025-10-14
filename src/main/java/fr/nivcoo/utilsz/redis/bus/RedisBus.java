@@ -107,6 +107,7 @@ public final class RedisBus {
         return callRaw(action, payload).thenApply(json -> resType.cast(resA.deserialize(json)));
     }
 
+    @SuppressWarnings("unchecked")
     public <R> CompletableFuture<R> call(RpcAnnotated request) {
         Class<?> c = request.getClass();
         RedisAction a = c.getAnnotation(RedisAction.class);

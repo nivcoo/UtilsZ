@@ -1,9 +1,7 @@
-/**
- *
- */
 package fr.nivcoo.utilsz.inventory;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -15,39 +13,58 @@ import java.util.function.Consumer;
 
 public class Inventory {
     public static final String TICK = "tick";
-    private HashMap<String, Object> values;
-    private Player player;
-    private InventoryProvider inventoryProvider;
-    private int size;
 
-    private List<Integer> excludeCases;
-    private ClickableItem[] items;
+    private final HashMap<String, Object> values;
+    private final Player player;
+    private final InventoryProvider inventoryProvider;
+    private final int size;
+
+    private final List<Integer> excludeCases;
+    private final ClickableItem[] items;
     private org.bukkit.inventory.Inventory bukkitInventory;
 
     public Inventory(Player player, InventoryProvider inventoryProvider, Consumer<Inventory> params) {
         this.values = new HashMap<>();
         this.player = player;
         this.inventoryProvider = inventoryProvider;
-        if (params != null)
-            params.accept(this);
+        if (params != null) params.accept(this);
         this.excludeCases = inventoryProvider.excludeCases(this);
         this.size = inventoryProvider.rows(this);
         this.items = new ClickableItem[9 * size];
-        this.bukkitInventory = Bukkit.createInventory(player, size * 9, Component.text(inventoryProvider.title(this)));
+
+        Component initialTitle = inventoryProvider.title(this);
+        this.bukkitInventory = Bukkit.createInventory(
+                player, size * 9, initialTitle == null ? Component.empty() : initialTitle
+        );
+
         put(TICK, 0);
     }
 
     public void updateTitle() {
-        String base = inventoryProvider.title(this);
-        updateTitle(base != null ? base : "");
+        Component base = inventoryProvider.title(this);
+        updateTitle(base == null ? Component.empty() : base);
     }
 
     public void updateTitle(String title) {
+        updateTitle(Component.text(title == null ? "" : title));
+    }
+
+    public void updateTitle(Component newTitle) {
         Player p = getPlayer();
         InventoryView view = p.getOpenInventory();
-        if (view.getTopInventory().equals(bukkitInventory)) {
-            view.setTitle(title);
-        }
+        if (!view.getTopInventory().equals(bukkitInventory)) return;
+
+        Component current = view.title();
+        String curPlain = PlainTextComponentSerializer.plainText().serialize(current);
+        String newPlain = PlainTextComponentSerializer.plainText().serialize(newTitle);
+        if (curPlain.equals(newPlain)) return;
+
+        org.bukkit.inventory.Inventory newInv =
+                Bukkit.createInventory(p, bukkitInventory.getSize(), newTitle);
+        newInv.setContents(bukkitInventory.getContents());
+
+        this.bukkitInventory = newInv;
+        p.openInventory(newInv);
     }
 
     public Player getPlayer() {
@@ -94,13 +111,12 @@ public class Inventory {
     public void rectangle(int col, int row, int width, int height, ClickableItem item) {
         if (col < 1 || col > 9)
             throw new IllegalArgumentException("col must be between 1 and 9");
-        if (row < 1 || row > 6)
+        if (row < 1 || row > size)
             throw new IllegalArgumentException("row must be between 1 and the maximum number of rows");
-        // 10 - col because width starts with 1 and not 0
         if (width < 1 || width > 10 - col)
             throw new IllegalArgumentException("The width must be between 1 and " + (10 - col));
-        if (height < 1 || height > getRows() + 1 - col)
-            throw new IllegalArgumentException("The height must be between 1 and " + (getRows() + 1 - col));
+        if (height < 1 || height > getRows() + 1 - row)
+            throw new IllegalArgumentException("The height must be between 1 and " + (getRows() + 1 - row));
         rectangle(locToPos(col, row), width, height, item);
     }
 
@@ -111,21 +127,19 @@ public class Inventory {
         checkInventoryData(pos, col, row, width, height);
         for (int i = col; i < col + width; i++)
             for (int j = row; j < row + height; j++)
-                // Around
                 if (i == col || i == col + width - 1 || j == row || j == row + height - 1)
                     set(i, j, item);
     }
 
     public void fillRectangle(int col, int row, int width, int height, ClickableItem item) {
         checkInventoryData(null, col, row, width, height);
-
         fillRectangle(locToPos(col, row), width, height, item);
     }
 
     public void fillRectangle(int pos, int width, int height, ClickableItem item) {
         int[] colRow = posToLoc(pos);
-        int row = colRow[0];
-        int col = colRow[1];
+        int col = colRow[0];
+        int row = colRow[1];
         checkInventoryData(pos, col, row, width, height);
         for (int i = col; i < col + width; i++)
             for (int j = row; j < row + height; j++)
@@ -133,19 +147,18 @@ public class Inventory {
     }
 
     public void checkInventoryData(Integer pos, Integer col, Integer row, Integer width, Integer height) {
-        if (pos != null && (pos < 0 || pos > size * 9))
-            throw new IllegalArgumentException("pos must be between 0 and " + (size * 9) + ", but is " + pos);
+        if (pos != null && (pos < 0 || pos >= size * 9))
+            throw new IllegalArgumentException("pos must be between 0 and " + (size * 9 - 1) + ", but is " + pos);
 
         if (col != null && (col < 1 || col > 9))
             throw new IllegalArgumentException("col must be between 1 and 9, but is " + col);
-        if (row != null && (row < 1 || row > 6))
+        if (row != null && (row < 1 || row > size))
             throw new IllegalArgumentException("row must be between 1 and the maximum number of rows, but is " + row);
-        // 10 - col because width starts with 1 and not 0
+
         if (width != null && col != null && (width < 1 || width > 10 - col))
             throw new IllegalArgumentException("The width must be between 1 and " + (10 - col) + ", but is " + width);
         if (height != null && row != null && (height < 1 || height > size + 1 - row))
-            throw new IllegalArgumentException(
-                    "The height must be between 1 and " + (size + 1 - row) + ", but is " + height);
+            throw new IllegalArgumentException("The height must be between 1 and " + (size + 1 - row) + ", but is " + height);
     }
 
     public void open() {
@@ -154,12 +167,9 @@ public class Inventory {
 
     public void handler(InventoryClickEvent e) {
         int pos = e.getSlot();
-        if (pos < 0 || pos > items.length)
-            return;
+        if (pos < 0 || pos >= items.length) return;
         ClickableItem item = items[pos];
-        // Nothing to do
-        if (item == null)
-            return;
+        if (item == null) return;
         item.run(e);
     }
 
@@ -175,8 +185,9 @@ public class Inventory {
         return values.containsKey(key);
     }
 
+
     public int[] posToLoc(int pos) {
-        return new int[]{(pos / 9) + 1, (pos % 9) + 1};
+        return new int[]{ (pos % 9) + 1, (pos / 9) + 1 };
     }
 
     public int locToPos(int col, int row) {

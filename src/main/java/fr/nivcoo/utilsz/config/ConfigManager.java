@@ -286,10 +286,11 @@ public final class ConfigManager {
             Object v = e.getValue();
 
             Component repl;
+            String content = v == null ? "" : String.valueOf(v);
             if (keepColors) {
                 if (v instanceof Component c) repl = c;
                 else if (v instanceof CharSequence cs) repl = parseComponent(cs.toString(), TextMode.AUTO);
-                else repl = Component.text(v == null ? "" : String.valueOf(v));
+                else repl = Component.text(content);
             } else {
                 String plain;
                 if (v instanceof Component c) {
@@ -298,7 +299,7 @@ public final class ConfigManager {
                     Component parsed = parseComponent(cs.toString(), TextMode.AUTO);
                     plain = PlainTextComponentSerializer.plainText().serialize(parsed);
                 } else {
-                    plain = v == null ? "" : String.valueOf(v);
+                    plain = content;
                 }
                 repl = Component.text(plain);
             }
