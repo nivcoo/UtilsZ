@@ -8,14 +8,24 @@ import net.kyori.adventure.text.TextReplacementConfig;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
+import org.bukkit.inventory.ItemStack;
 import org.yaml.snakeyaml.Yaml;
+import fr.nivcoo.utilsz.config.conv.*;
 
 import java.io.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.*;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -33,6 +43,15 @@ public final class ConfigManager {
                     "dark_gray|dark_grey|blue|green|aqua|red|light_purple|yellow|white))" +
                     "(?:[:\\s>]|$)"
     );
+
+    private static final Map<Class<?>, Supplier<Converter<?>>> DEFAULT_CONVERTERS =
+            Map.of(
+                    Material.class, MaterialConv::new,
+                    Sound.class, SoundConv::new,
+                    Particle.class, ParticleConv::new,
+                    Location.class, LocationConv::new,
+                    ItemStack.class, ItemStackConv::new
+            );
 
     private final File dataFolder;
 
@@ -145,10 +164,10 @@ public final class ConfigManager {
                     Object sec = f.get(bean);
                     if (sec != null) {
                         Comment fc = f.getAnnotation(Comment.class);
-                        if (fc != null) comments.put(path, List.of(fc.value()));
+                        if (fc != null) comments.put(path, Arrays.asList(fc.value()));
 
                         Comment sc = sec.getClass().getAnnotation(Comment.class);
-                        if (sc != null) comments.put(path, List.of(sc.value()));
+                        if (sc != null) comments.put(path, Arrays.asList(sc.value()));
                         export(sec, path, out, comments);
                     }
                 } else {
@@ -156,7 +175,7 @@ public final class ConfigManager {
                     Object yamlVal = convertToYaml(f, v);
                     putByPath(out, path, yamlVal);
                     Comment c = f.getAnnotation(Comment.class);
-                    if (c != null) comments.put(path, List.of(c.value()));
+                    if (c != null) comments.put(path, Arrays.asList(c.value()));
                 }
             } catch (Exception e) {
                 throw new RuntimeException("Export failed for " + path + ": " + e.getMessage(), e);
@@ -220,10 +239,10 @@ public final class ConfigManager {
     }
 
     @SuppressWarnings("unchecked")
-    private void writeSection(StringBuilder sb, Map<String,Object> map,
-                              Map<String,List<String>> comments, String base, int indent) {
+    private void writeSection(StringBuilder sb, Map<String, Object> map,
+                              Map<String, List<String>> comments, String base, int indent) {
         int i = 0;
-        for (Map.Entry<String,Object> e : map.entrySet()) {
+        for (Map.Entry<String, Object> e : map.entrySet()) {
             String k = e.getKey();
             Object v = e.getValue();
             String full = base.isEmpty() ? k : base + "." + k;
@@ -235,9 +254,9 @@ public final class ConfigManager {
             if (c != null) for (String line : c)
                 sb.append("  ".repeat(indent)).append("# ").append(line).append("\n");
 
-            if (v instanceof Map<?,?> m) {
+            if (v instanceof Map<?, ?> m) {
                 sb.append("  ".repeat(indent)).append(k).append(":\n");
-                writeSection(sb, (Map<String,Object>) m, comments, full, indent + 1);
+                writeSection(sb, (Map<String, Object>) m, comments, full, indent + 1);
                 continue;
             }
 
@@ -265,10 +284,10 @@ public final class ConfigManager {
         }
     }
 
-    private String formatScalar(Object v){
+    private String formatScalar(Object v) {
         if (v == null) return "null";
-        if (v instanceof String s){
-            String out = s.replace("\"","\\\"");
+        if (v instanceof String s) {
+            String out = s.replace("\"", "\\\"");
             return "\"" + out + "\"";
         }
         return String.valueOf(v);
@@ -305,7 +324,7 @@ public final class ConfigManager {
             }
 
             out = out.replaceText(TextReplacementConfig.builder()
-                    .matchLiteral("{"+k+"}")
+                    .matchLiteral("{" + k + "}")
                     .replacement(repl)
                     .build());
         }
@@ -400,152 +419,91 @@ public final class ConfigManager {
         cur.put(parts[parts.length - 1], value);
     }
 
-    @SuppressWarnings({"unchecked"})
-    private Object convertFromYaml(Field f, Object raw, Object fallback) {
-        if (raw == null) return fallback;
-
-        var ann = f.getAnnotation(WithConverter.class);
+    @SuppressWarnings("unchecked")
+    private static Converter<Object> findConverter(Field f) {
+        WithConverter ann = f.getAnnotation(WithConverter.class);
         if (ann == null) ann = f.getType().getAnnotation(WithConverter.class);
         if (ann != null) {
             try {
-                var conv = ann.value().getDeclaredConstructor().newInstance();
-                return ((Converter<Object>) conv).read(raw, fallback, f);
+                return (Converter<Object>) ann.value().getDeclaredConstructor().newInstance();
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         }
+        Supplier<Converter<?>> sup = DEFAULT_CONVERTERS.get(f.getType());
+        return sup != null ? (Converter<Object>) sup.get() : null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Converter<Object> findConverterForClass(Class<?> cls) {
+        if (cls == null) return null;
+        try {
+            WithConverter ann = cls.getAnnotation(WithConverter.class);
+            if (ann != null) {
+                return (Converter<Object>) ann.value().getDeclaredConstructor().newInstance();
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        var sup = DEFAULT_CONVERTERS.get(cls);
+        return sup != null ? (Converter<Object>) sup.get() : null;
+    }
+
+    private Object convertFromYaml(Field f, Object raw, Object fallback) {
+        if (raw == null) return fallback;
+
+        Converter<Object> conv = findConverter(f);
+        if (conv != null) return conv.read(raw, fallback, f);
 
         Class<?> t = f.getType();
 
-        if (t == Component.class) {
-            TextMode mode = f.isAnnotationPresent(TextFormat.class)
-                    ? f.getAnnotation(TextFormat.class).value()
-                    : TextMode.AUTO;
-            return parseComponent(String.valueOf(raw), mode);
-        }
-
-        if (t.isEnum()) {
-            return parseEnum(t, String.valueOf(raw));
-        }
-
-        if (t == String.class) return String.valueOf(raw);
-        if (t == int.class || t == Integer.class) return asNumber(raw).intValue();
-        if (t == long.class || t == Long.class) return asNumber(raw).longValue();
-        if (t == double.class || t == Double.class) return asNumber(raw).doubleValue();
-        if (t == boolean.class || t == Boolean.class)
-            return (raw instanceof Boolean b) ? b : Boolean.parseBoolean(String.valueOf(raw));
+        if (!List.class.isAssignableFrom(t) && !Map.class.isAssignableFrom(t) && !isSectionField(f))
+            return convertSimple(t, raw, f);
 
         if (List.class.isAssignableFrom(t)) {
             Elements el = f.getAnnotation(Elements.class);
+            Class<?> elemCls = listElementClass(f);
+            Converter<Object> elemConv = findConverterForClass(elemCls);
 
-            boolean isListOfComponent = false;
-            var gt = f.getGenericType();
-            if (gt instanceof ParameterizedType p) {
-                var args = p.getActualTypeArguments();
-                isListOfComponent = args.length == 1 && args[0].getTypeName().equals(Component.class.getName());
-            }
-            if (isListOfComponent) {
-                TextMode mode = f.isAnnotationPresent(TextFormat.class)
-                        ? f.getAnnotation(TextFormat.class).value()
-                        : TextMode.AUTO;
+            List<?> input = normalizeToList(raw);
 
-                if (raw instanceof List<?> in) {
-                    List<Component> out = new ArrayList<>(in.size());
-                    for (Object elem : in) out.add(parseComponent(String.valueOf(elem), mode));
-                    return out;
+            List<Object> out = new ArrayList<>(input.size());
+            for (Object elemRaw : input) {
+                if (el != null && el.value() != Object.class && elemRaw instanceof Map<?, ?> map) {
+                    out.add(fromMapToPojo(el.value(), map));
+                } else if (elemConv != null) {
+                    out.add(elemConv.read(elemRaw, null, f));
+                } else {
+                    out.add(convertSimple(elemCls != null ? elemCls : Object.class, elemRaw, f));
                 }
-                return List.of(parseComponent(String.valueOf(raw), mode));
             }
-
-            if (raw instanceof List<?> in) {
-                if (el != null) {
-                    List<Object> out = new ArrayList<>(in.size());
-                    for (Object elem : in) {
-                        if (elem instanceof Map<?, ?> m) {
-                            Object inst = newInstance(el.value());
-                            inject(new LinkedHashMap<>((Map<String, Object>) m), inst, "");
-                            out.add(inst);
-                        } else {
-                            out.add(elem);
-                        }
-                    }
-                    return out;
-                }
-                return new ArrayList<>(in);
-            }
-
-            if (raw instanceof Map<?, ?> in) {
-                List<Map.Entry<?, ?>> entries = new ArrayList<>(in.entrySet());
-                entries.sort((a, b) -> {
-                    try {
-                        int ia = Integer.parseInt(String.valueOf(a.getKey()));
-                        int ib = Integer.parseInt(String.valueOf(b.getKey()));
-                        return Integer.compare(ia, ib);
-                    } catch (NumberFormatException e) {
-                        return String.valueOf(a.getKey()).compareTo(String.valueOf(b.getKey()));
-                    }
-                });
-
-                List<Object> out = new ArrayList<>(entries.size());
-                for (Map.Entry<?, ?> e : entries) {
-                    Object elem = e.getValue();
-                    if (el != null && elem instanceof Map<?, ?> m) {
-                        Object inst = newInstance(el.value());
-                        inject(new LinkedHashMap<>((Map<String, Object>) m), inst, "");
-                        out.add(inst);
-                    } else {
-                        out.add(elem);
-                    }
-                }
-                return out;
-            }
-
-            return List.of(String.valueOf(raw));
+            return out;
         }
 
         if (Map.class.isAssignableFrom(t)) {
             Elements el = f.getAnnotation(Elements.class);
             if (el != null && raw instanceof Map<?, ?> in) {
                 Map<String, Object> out = new LinkedHashMap<>();
-                for (Map.Entry<?, ?> e : in.entrySet()) {
+                for (var e : in.entrySet()) {
                     Object v = e.getValue();
-                    if (v instanceof Map<?, ?> m) {
-                        Object inst = newInstance(el.value());
-                        inject(new LinkedHashMap<>((Map<String, Object>) m), inst, "");
-                        out.put(String.valueOf(e.getKey()), inst);
-                    } else {
-                        out.put(String.valueOf(e.getKey()), v);
-                    }
+                    if (v instanceof Map<?, ?> m) out.put(String.valueOf(e.getKey()), fromMapToPojo(el.value(), m));
+                    else out.put(String.valueOf(e.getKey()), v);
                 }
                 return out;
             }
             return (raw instanceof Map<?, ?> m) ? new LinkedHashMap<>(m) : Map.of();
         }
 
-        if (raw instanceof Map<?, ?> m && hasPublicFields(t)) {
-            Object inst = newInstance(t);
-            inject(new LinkedHashMap<>((Map<String, Object>) m), inst, "");
-            return inst;
-        }
+        if (raw instanceof Map<?, ?> m) return fromMapToPojo(t, m);
 
         return fallback;
     }
 
-
-    @SuppressWarnings("unchecked")
     private Object convertToYaml(Field f, Object v) {
         if (v == null) return null;
 
-        var ann = f.getAnnotation(WithConverter.class);
-        if (ann == null) ann = f.getType().getAnnotation(WithConverter.class);
-        if (ann != null) {
-            try {
-                var conv = ann.value().getDeclaredConstructor().newInstance();
-                return ((Converter<Object>) conv).write(v, f);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        }
+        Converter<Object> conv = findConverter(f);
+        if (conv != null) return conv.write(v, f);
 
         if (f.getType() == Component.class) {
             TextMode mode = f.isAnnotationPresent(TextFormat.class)
@@ -553,33 +511,20 @@ public final class ConfigManager {
                     : TextMode.AUTO;
             return serializeComponent((Component) v, mode);
         }
+
         if (v.getClass().isEnum()) return ((Enum<?>) v).name();
 
         if (v instanceof List<?> list) {
-            // support List<Component>
-            boolean isListOfComponent = false;
-            var gt = f.getGenericType();
-            if (gt instanceof java.lang.reflect.ParameterizedType p) {
-                var args = p.getActualTypeArguments();
-                isListOfComponent = args.length == 1 && args[0].getTypeName().equals(Component.class.getName());
-            }
-            if (isListOfComponent) {
-                TextMode mode = f.isAnnotationPresent(TextFormat.class)
-                        ? f.getAnnotation(TextFormat.class).value()
-                        : TextMode.AUTO;
-                List<Object> out = new ArrayList<>(list.size());
-                for (Object e : list) {
-                    if (e == null) {
-                        out.add(null);
-                        continue;
-                    }
-                    out.add(serializeComponent((Component) e, mode));
-                }
-                return out;
-            }
+            Class<?> elemCls = listElementClass(f);
+            boolean listOfComponent = (elemCls == Component.class);
+            Converter<Object> elemConv = findConverterForClass(elemCls);
+
+            TextMode mode = f.isAnnotationPresent(TextFormat.class)
+                    ? f.getAnnotation(TextFormat.class).value()
+                    : TextMode.AUTO;
 
             Elements el = f.getAnnotation(Elements.class);
-            if (el != null) {
+            if (el != null && el.value() != Object.class) {
                 List<Object> out = new ArrayList<>(list.size());
                 for (Object e : list) {
                     if (e == null) {
@@ -592,9 +537,97 @@ public final class ConfigManager {
                 }
                 return out;
             }
-            return new ArrayList<>(list);
+
+            List<Object> out = new ArrayList<>(list.size());
+            for (Object e : list) {
+                if (e == null) {
+                    out.add(null);
+                    continue;
+                }
+                if (listOfComponent && e instanceof Component c) {
+                    out.add(serializeComponent(c, mode));
+                } else if (e instanceof Enum<?> en) {
+                    out.add(en.name());
+                } else if (elemConv != null) {
+                    out.add(elemConv.write(e, f));
+                } else {
+                    out.add(e);
+                }
+            }
+            return out;
         }
+
         return v;
+    }
+
+    private static Class<?> listElementClass(Field f) {
+        var gt = f.getGenericType();
+        if (gt instanceof ParameterizedType p) {
+            var args = p.getActualTypeArguments();
+            if (args.length == 1 && args[0] instanceof Class<?> c) return c;
+        }
+        return null;
+    }
+
+    private static List<?> normalizeToList(Object raw) {
+        if (raw instanceof List<?> l) return l;
+        if (raw instanceof Map<?, ?> inMap) {
+            List<Map.Entry<?, ?>> entries = new ArrayList<>(inMap.entrySet());
+            entries.sort((a, b) -> {
+                try {
+                    int ia = Integer.parseInt(String.valueOf(a.getKey()));
+                    int ib = Integer.parseInt(String.valueOf(b.getKey()));
+                    return Integer.compare(ia, ib);
+                } catch (NumberFormatException e) {
+                    return String.valueOf(a.getKey()).compareTo(String.valueOf(b.getKey()));
+                }
+            });
+            List<Object> tmp = new ArrayList<>(entries.size());
+            for (var e : entries) tmp.add(e.getValue());
+            return tmp;
+        }
+        return List.of(raw);
+    }
+
+    private Object convertSimple(Class<?> t, Object raw, Field contextField) {
+        if (raw == null) return null;
+
+        if (t == Component.class) {
+            TextMode mode = contextField.isAnnotationPresent(TextFormat.class)
+                    ? contextField.getAnnotation(TextFormat.class).value()
+                    : TextMode.AUTO;
+            return parseComponent(String.valueOf(raw), mode);
+        }
+        if (t.isEnum()) return parseEnum(t, String.valueOf(raw));
+        if (t == String.class) return String.valueOf(raw);
+        if (t == int.class || t == Integer.class) return asNumber(raw).intValue();
+        if (t == long.class || t == Long.class) return asNumber(raw).longValue();
+        if (t == double.class || t == Double.class) return asNumber(raw).doubleValue();
+        if (t == float.class || t == Float.class) return asNumber(raw).floatValue();
+        if (t == short.class || t == Short.class) return asNumber(raw).shortValue();
+        if (t == byte.class || t == Byte.class) return asNumber(raw).byteValue();
+        if (t == char.class || t == Character.class) {
+            String s = String.valueOf(raw);
+            return s.isEmpty() ? '\0' : s.charAt(0);
+        }
+        if (t == boolean.class || t == Boolean.class)
+            return (raw instanceof Boolean b) ? b : Boolean.parseBoolean(String.valueOf(raw));
+        if (t == BigDecimal.class) return new BigDecimal(String.valueOf(raw));
+        if (t == BigInteger.class) return new BigInteger(String.valueOf(raw));
+        if (t == UUID.class) return UUID.fromString(String.valueOf(raw));
+        if (t == Duration.class) return Duration.parse(String.valueOf(raw));
+        if (t == Locale.class) return Locale.forLanguageTag(String.valueOf(raw));
+
+        if (raw instanceof Map<?, ?> m && hasPublicFields(t)) return fromMapToPojo(t, m);
+
+        return raw;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object fromMapToPojo(Class<?> t, Map<?, ?> m) {
+        Object inst = newInstance(t);
+        inject(new LinkedHashMap<>((Map<String, Object>) m), inst, "");
+        return inst;
     }
 
     private static Component parseComponent(String s, TextMode mode) {
@@ -627,8 +660,10 @@ public final class ConfigManager {
 
     private static boolean looksLikeMini(String s) {
         if (s == null) return false;
-        int lt = s.indexOf('<'); if (lt < 0) return false;
-        int gt = s.indexOf('>', lt); if (gt < 0) return false;
+        int lt = s.indexOf('<');
+        if (lt < 0) return false;
+        int gt = s.indexOf('>', lt);
+        if (gt < 0) return false;
         return MINI_HEX.matcher(s).find() || MINI_TAG.matcher(s).find();
     }
 
@@ -636,7 +671,6 @@ public final class ConfigManager {
         return s.contains("</")
                 || s.matches(".*<(?i:click|hover|url|insertion|keybind|font|gradient|rainbow)(:|\\s|>).*");
     }
-
 
     private static String serializeComponent(Component c, TextMode mode) {
         return switch (mode) {
@@ -688,7 +722,6 @@ public final class ConfigManager {
         }
         return out.toString();
     }
-
 
     private static String rewriteHexAmpToMini(String s) {
         Matcher m = HEX_AMP.matcher(s);
