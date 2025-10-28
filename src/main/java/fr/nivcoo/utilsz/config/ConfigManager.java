@@ -255,20 +255,36 @@ public final class ConfigManager {
                 sb.append("  ".repeat(indent)).append("# ").append(line).append("\n");
 
             if (v instanceof Map<?, ?> m) {
-                sb.append("  ".repeat(indent)).append(k).append(":\n");
-                writeSection(sb, (Map<String, Object>) m, comments, full, indent + 1);
-                continue;
+                sb.append("  ".repeat(indent)).append(k).append(":");
+                if (m.isEmpty()) {
+                    sb.append(" {}\n");
+                    continue;
+                } else {
+                    sb.append("\n");
+                    writeSection(sb, (Map<String, Object>) m, comments, full, indent + 1);
+                    continue;
+                }
             }
 
             if (v instanceof List<?> list) {
-                sb.append("  ".repeat(indent)).append(k).append(":\n");
+                sb.append("  ".repeat(indent)).append(k).append(":");
+                if (list.isEmpty()) {
+                    sb.append(" []\n");
+                    continue;
+                }
+
+                sb.append("\n");
                 for (Object it : list) {
                     if (it instanceof String s && s.contains("\n")) {
                         sb.append("  ".repeat(indent + 1)).append("- |\n");
-                        for (String line : s.split("\n", -1))
+                        for (String line : s.split("\n", -1)) {
                             sb.append("  ".repeat(indent + 2)).append(line).append("\n");
+                        }
                     } else {
-                        sb.append("  ".repeat(indent + 1)).append("- ").append(formatScalar(it)).append("\n");
+                        sb.append("  ".repeat(indent + 1))
+                                .append("- ")
+                                .append(formatScalar(it))
+                                .append("\n");
                     }
                 }
                 continue;
