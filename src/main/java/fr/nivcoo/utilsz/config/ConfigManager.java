@@ -258,12 +258,11 @@ public final class ConfigManager {
                 sb.append("  ".repeat(indent)).append(k).append(":");
                 if (m.isEmpty()) {
                     sb.append(" {}\n");
-                    continue;
                 } else {
                     sb.append("\n");
                     writeSection(sb, (Map<String, Object>) m, comments, full, indent + 1);
-                    continue;
                 }
+                continue;
             }
 
             if (v instanceof List<?> list) {
@@ -272,20 +271,47 @@ public final class ConfigManager {
                     sb.append(" []\n");
                     continue;
                 }
-
                 sb.append("\n");
                 for (Object it : list) {
+                    if (it instanceof Map<?, ?> mmRaw) {
+                        Map<String, Object> mm = (Map<String, Object>) mmRaw;
+                        if (mm.isEmpty()) {
+                            sb.append("  ".repeat(indent + 1)).append("- {}\n");
+                        } else {
+                            Iterator<Map.Entry<String, Object>> itr = mm.entrySet().iterator();
+                            Map.Entry<String, Object> first = itr.next();
+
+                            sb.append("  ".repeat(indent + 1))
+                                    .append("- ")
+                                    .append(first.getKey())
+                                    .append(": ")
+                                    .append(formatScalar(first.getValue()))
+                                    .append("\n");
+
+                            while (itr.hasNext()) {
+                                var e2 = itr.next();
+                                sb.append("  ".repeat(indent + 2))
+                                        .append(e2.getKey())
+                                        .append(": ")
+                                        .append(formatScalar(e2.getValue()))
+                                        .append("\n");
+                            }
+                        }
+                        continue;
+                    }
+
                     if (it instanceof String s && s.contains("\n")) {
                         sb.append("  ".repeat(indent + 1)).append("- |\n");
                         for (String line : s.split("\n", -1)) {
                             sb.append("  ".repeat(indent + 2)).append(line).append("\n");
                         }
-                    } else {
-                        sb.append("  ".repeat(indent + 1))
-                                .append("- ")
-                                .append(formatScalar(it))
-                                .append("\n");
+                        continue;
                     }
+
+                    sb.append("  ".repeat(indent + 1))
+                            .append("- ")
+                            .append(formatScalar(it))
+                            .append("\n");
                 }
                 continue;
             }
