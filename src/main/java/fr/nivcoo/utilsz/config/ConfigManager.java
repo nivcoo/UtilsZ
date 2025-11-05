@@ -273,45 +273,31 @@ public final class ConfigManager {
                 }
                 sb.append("\n");
                 for (Object it : list) {
-                    if (it instanceof Map<?, ?> mmRaw) {
-                        Map<String, Object> mm = (Map<String, Object>) mmRaw;
-                        if (mm.isEmpty()) {
+                    if (it instanceof Map<?, ?> mm) {
+                        Map<String, Object> m = (Map<String, Object>) mm;
+                        if (m.isEmpty()) {
                             sb.append("  ".repeat(indent + 1)).append("- {}\n");
                         } else {
-                            Iterator<Map.Entry<String, Object>> itr = mm.entrySet().iterator();
+                            Iterator<Map.Entry<String, Object>> itr = m.entrySet().iterator();
                             Map.Entry<String, Object> first = itr.next();
 
                             sb.append("  ".repeat(indent + 1))
                                     .append("- ")
-                                    .append(first.getKey())
-                                    .append(": ")
-                                    .append(formatScalar(first.getValue()))
-                                    .append("\n");
+                                    .append(first.getKey()).append(": ");
+                            writeValue(sb, first.getValue(), comments, "", indent + 1);
 
                             while (itr.hasNext()) {
-                                var e2 = itr.next();
+                                Map.Entry<String, Object> me = itr.next();
                                 sb.append("  ".repeat(indent + 2))
-                                        .append(e2.getKey())
-                                        .append(": ")
-                                        .append(formatScalar(e2.getValue()))
-                                        .append("\n");
+                                        .append(me.getKey()).append(": ");
+                                writeValue(sb, me.getValue(), comments, "", indent + 2);
                             }
                         }
                         continue;
                     }
 
-                    if (it instanceof String s && s.contains("\n")) {
-                        sb.append("  ".repeat(indent + 1)).append("- |\n");
-                        for (String line : s.split("\n", -1)) {
-                            sb.append("  ".repeat(indent + 2)).append(line).append("\n");
-                        }
-                        continue;
-                    }
-
-                    sb.append("  ".repeat(indent + 1))
-                            .append("- ")
-                            .append(formatScalar(it))
-                            .append("\n");
+                    sb.append("  ".repeat(indent + 1)).append("- ");
+                    writeValue(sb, it, comments, "", indent + 1);
                 }
                 continue;
             }
@@ -324,6 +310,73 @@ public final class ConfigManager {
                 sb.append("  ".repeat(indent)).append(k).append(": ").append(formatScalar(v)).append("\n");
             }
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void writeValue(StringBuilder sb, Object v,
+                            Map<String, List<String>> comments, String base, int indent) {
+        switch (v) {
+            case null -> {
+                sb.append("null").append("\n");
+                return;
+            }
+            case String s -> {
+                if (s.contains("\n")) {
+                    sb.append("|\n");
+                    for (String line : s.split("\n", -1))
+                        sb.append("  ".repeat(indent + 1)).append(line).append("\n");
+                } else {
+                    sb.append(formatScalar(s)).append("\n");
+                }
+                return;
+            }
+            case Map<?, ?> m -> {
+                if (m.isEmpty()) {
+                    sb.append("{}").append("\n");
+                    return;
+                }
+                sb.append("\n");
+                writeSection(sb, (Map<String, Object>) m, comments, base, indent + 1);
+                return;
+            }
+            case List<?> list -> {
+                if (list.isEmpty()) {
+                    sb.append("[]").append("\n");
+                    return;
+                }
+                sb.append("\n");
+                for (Object it : list) {
+                    if (it instanceof Map<?, ?> mm) {
+                        Map<String, Object> sub = (Map<String, Object>) mm;
+                        if (sub.isEmpty()) {
+                            sb.append("  ".repeat(indent + 1)).append("- {}\n");
+                        } else {
+                            Iterator<Map.Entry<String, Object>> itr = sub.entrySet().iterator();
+                            Map.Entry<String, Object> first = itr.next();
+
+                            sb.append("  ".repeat(indent + 1))
+                                    .append("- ")
+                                    .append(first.getKey()).append(": ");
+                            writeValue(sb, first.getValue(), comments, base, indent + 1);
+
+                            while (itr.hasNext()) {
+                                Map.Entry<String, Object> me = itr.next();
+                                sb.append("  ".repeat(indent + 2))
+                                        .append(me.getKey()).append(": ");
+                                writeValue(sb, me.getValue(), comments, base, indent + 2);
+                            }
+                        }
+                    } else {
+                        sb.append("  ".repeat(indent + 1)).append("- ");
+                        writeValue(sb, it, comments, base, indent + 1);
+                    }
+                }
+                return;
+            }
+            default -> {
+            }
+        }
+        sb.append(formatScalar(v)).append("\n");
     }
 
     private String formatScalar(Object v) {
