@@ -138,17 +138,20 @@ public final class ConfigManager {
             String path = keyPath(f, prefix);
             try {
                 if (isSectionField(f)) {
-                    Object sec = f.get(bean);
-                    if (sec == null) {
-                        sec = newInstance(f.getType());
+                    Object node = getByPath(src, path);
+                    if (node instanceof Map<?, ?> m && !m.isEmpty()) {
+                        Object sec = f.get(bean);
+                        if (sec == null) sec = newInstance(f.getType());
                         f.set(bean, sec);
+                        inject(src, sec, path);
                     }
-                    inject(src, sec, path);
-                } else {
-                    Object raw = getByPath(src, path);
-                    Object val = convertFromYaml(f, raw, f.get(bean));
-                    if (val != null) f.set(bean, val);
+                    continue;
                 }
+
+                Object raw = getByPath(src, path);
+                Object val = convertFromYaml(f, raw, f.get(bean));
+                if (val != null) f.set(bean, val);
+
             } catch (Exception e) {
                 throw new RuntimeException("Inject failed for " + path + ": " + e.getMessage(), e);
             }
