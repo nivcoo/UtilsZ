@@ -4,14 +4,13 @@ import com.google.gson.JsonObject;
 import fr.nivcoo.utilsz.redis.*;
 import fr.nivcoo.utilsz.redis.rpc.RpcAnnotated;
 import org.bukkit.Bukkit;
-import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public final class RedisBus implements Bus {
+public final class RedisChannelBusImpl implements RedisChannelBus {
 
     private static final class Envelope {
         String kind;
@@ -51,7 +50,7 @@ public final class RedisBus implements Bus {
     });
     private final AtomicBoolean started = new AtomicBoolean(false);
 
-    public RedisBus(RedisManager redis, String channel) {
+    public RedisChannelBusImpl(RedisManager redis, String channel) {
         this.redis = redis;
         this.channel = channel;
 

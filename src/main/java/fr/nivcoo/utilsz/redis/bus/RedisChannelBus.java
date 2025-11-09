@@ -5,7 +5,7 @@ import fr.nivcoo.utilsz.redis.RedisSerializable;
 
 import java.util.concurrent.CompletableFuture;
 
-public interface Bus {
+public interface RedisChannelBus {
     void start();
     void close();
     void publish(RedisSerializable evt);

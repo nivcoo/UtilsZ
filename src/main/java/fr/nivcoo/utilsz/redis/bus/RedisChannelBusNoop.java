@@ -5,7 +5,7 @@ import fr.nivcoo.utilsz.redis.RedisSerializable;
 
 import java.util.concurrent.CompletableFuture;
 
-public final class NoopBus implements Bus {
+public final class RedisChannelBusNoop implements RedisChannelBus {
     @Override public void start() {}
     @Override public void close() {}
     @Override public void publish(RedisSerializable evt) {}
