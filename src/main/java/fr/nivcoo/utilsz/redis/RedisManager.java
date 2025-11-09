@@ -136,4 +136,6 @@ public final class RedisManager {
         listenerThread.setDaemon(true);
         listenerThread.start();
     }
+
+    public JavaPlugin getPlugin() { return plugin; }
 }

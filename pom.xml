@@ -5,7 +5,7 @@
 
     <groupId>fr.nivcoo</groupId>
     <artifactId>UtilsZ</artifactId>
-    <version>1.1.42</version>
+    <version>1.1.43</version>
     <packaging>jar</packaging>
 
     <name>${project.artifactId}</name>

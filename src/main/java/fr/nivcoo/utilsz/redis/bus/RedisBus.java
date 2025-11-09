@@ -11,7 +11,7 @@ import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public final class RedisBus {
+public final class RedisBus implements Bus {
 
     private static final class Envelope {
         String kind;
@@ -35,7 +35,6 @@ public final class RedisBus {
         RpcEntry(RedisTypeAdapter<Object> ra) { this.reqAdapter = ra; }
     }
 
-    private final JavaPlugin plugin;
     private final RedisManager redis;
     private final String channel;
 
@@ -52,8 +51,7 @@ public final class RedisBus {
     });
     private final AtomicBoolean started = new AtomicBoolean(false);
 
-    public RedisBus(JavaPlugin plugin, RedisManager redis, String channel) {
-        this.plugin = plugin;
+    public RedisBus(RedisManager redis, String channel) {
         this.redis = redis;
         this.channel = channel;
 
@@ -131,7 +129,7 @@ public final class RedisBus {
                 if (ex != null) out.completeExceptionally(ex);
                 else out.complete((R) a.response().cast(resA.deserialize(json)));
             };
-            if (onMain) Bukkit.getScheduler().runTask(plugin, r); else r.run();
+            if (onMain) Bukkit.getScheduler().runTask(redis.getPlugin(), r); else r.run();
         });
         return out;
     }
@@ -157,7 +155,7 @@ public final class RedisBus {
                 if (ex != null) out.completeExceptionally(ex);
                 else out.complete(responseType.cast(resA.deserialize(json)));
             };
-            if (onMain) Bukkit.getScheduler().runTask(plugin, r); else r.run();
+            if (onMain) Bukkit.getScheduler().runTask(redis.getPlugin(), r); else r.run();
         });
         return out;
     }
@@ -261,7 +259,7 @@ public final class RedisBus {
             }
         };
 
-        if (onMain) Bukkit.getScheduler().runTask(plugin, run); else run.run();
+        if (onMain) Bukkit.getScheduler().runTask(redis.getPlugin(), run); else run.run();
     }
 
     private void send(Envelope env) {
