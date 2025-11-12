@@ -258,7 +258,7 @@ public final class ConfigManager {
                 sb.append("  ".repeat(indent)).append("# ").append(line).append("\n");
 
             if (v instanceof Map<?, ?> m) {
-                sb.append("  ".repeat(indent)).append(k).append(":");
+                sb.append("  ".repeat(indent)).append(formatMapKey(k)).append(":");
                 if (m.isEmpty()) {
                     sb.append(" {}\n");
                 } else {
@@ -269,7 +269,7 @@ public final class ConfigManager {
             }
 
             if (v instanceof List<?> list) {
-                sb.append("  ".repeat(indent)).append(k).append(":");
+                sb.append("  ".repeat(indent)).append(formatMapKey(k)).append(":");
                 if (list.isEmpty()) {
                     sb.append(" []\n");
                     continue;
@@ -286,13 +286,13 @@ public final class ConfigManager {
 
                             sb.append("  ".repeat(indent + 1))
                                     .append("- ")
-                                    .append(first.getKey()).append(": ");
+                                    .append(formatMapKey(first.getKey())).append(": ");
                             writeValue(sb, first.getValue(), comments, "", indent + 1);
 
                             while (itr.hasNext()) {
                                 Map.Entry<String, Object> me = itr.next();
                                 sb.append("  ".repeat(indent + 2))
-                                        .append(me.getKey()).append(": ");
+                                        .append(formatMapKey(me.getKey())).append(": ");
                                 writeValue(sb, me.getValue(), comments, "", indent + 2);
                             }
                         }
@@ -306,11 +306,11 @@ public final class ConfigManager {
             }
 
             if (v instanceof String s && s.contains("\n")) {
-                sb.append("  ".repeat(indent)).append(k).append(": |\n");
+                sb.append("  ".repeat(indent)).append(formatMapKey(k)).append(": |\n");
                 for (String line : s.split("\n", -1))
                     sb.append("  ".repeat(indent + 1)).append(line).append("\n");
             } else {
-                sb.append("  ".repeat(indent)).append(k).append(": ").append(formatScalar(v)).append("\n");
+                sb.append("  ".repeat(indent)).append(formatMapKey(k)).append(": ").append(formatScalar(v)).append("\n");
             }
         }
     }
@@ -359,13 +359,13 @@ public final class ConfigManager {
 
                             sb.append("  ".repeat(indent + 1))
                                     .append("- ")
-                                    .append(first.getKey()).append(": ");
+                                    .append(formatMapKey(first.getKey())).append(": ");
                             writeValue(sb, first.getValue(), comments, base, indent + 1);
 
                             while (itr.hasNext()) {
                                 Map.Entry<String, Object> me = itr.next();
                                 sb.append("  ".repeat(indent + 2))
-                                        .append(me.getKey()).append(": ");
+                                        .append(formatMapKey(me.getKey())).append(": ");
                                 writeValue(sb, me.getValue(), comments, base, indent + 2);
                             }
                         }
@@ -389,6 +389,19 @@ public final class ConfigManager {
             return "\"" + out + "\"";
         }
         return String.valueOf(v);
+    }
+
+    private static String formatMapKey(String k) {
+        if (k == null) return "null";
+        boolean simple = k.matches("^[A-Za-z0-9_.-]+$")
+                && !k.startsWith("*")
+                && !k.startsWith("-")
+                && !k.startsWith("?")
+                && !k.startsWith("&")
+                && !k.startsWith("!");
+        if (simple) return k;
+        String escaped = k.replace("'", "''");
+        return "'" + escaped + "'";
     }
 
     public static Component fmt(Component template, Map<String, ?> vars) {

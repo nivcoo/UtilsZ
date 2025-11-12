@@ -26,12 +26,19 @@ public final class RedisChannelBusImpl implements RedisChannelBus {
     private static final class EventEntry<T extends RedisSerializable> {
         final RedisTypeAdapter<T> adapter;
         final RedisHandler<T> handler;
-        EventEntry(RedisTypeAdapter<T> a, RedisHandler<T> h) { adapter = a; handler = h; }
+
+        EventEntry(RedisTypeAdapter<T> a, RedisHandler<T> h) {
+            adapter = a;
+            handler = h;
+        }
     }
 
     private static final class RpcEntry {
         final RedisTypeAdapter<Object> reqAdapter;
-        RpcEntry(RedisTypeAdapter<Object> ra) { this.reqAdapter = ra; }
+
+        RpcEntry(RedisTypeAdapter<Object> ra) {
+            this.reqAdapter = ra;
+        }
     }
 
     private final RedisManager redis;
@@ -71,7 +78,7 @@ public final class RedisChannelBusImpl implements RedisChannelBus {
     }
 
     public void publish(RedisSerializable evt) {
-        @SuppressWarnings({"rawtypes","unchecked"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         RedisTypeAdapter<Object> ad = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) evt.getClass());
         Envelope env = new Envelope();
         env.kind = "evt";
@@ -96,9 +103,9 @@ public final class RedisChannelBusImpl implements RedisChannelBus {
     }
 
     public <Req, Res> CompletableFuture<Res> call(String action, Req req, Class<Req> reqType, Class<Res> resType) {
-        @SuppressWarnings({"rawtypes","unchecked"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         RedisTypeAdapter<Object> reqA = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) reqType);
-        @SuppressWarnings({"rawtypes","unchecked"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         RedisTypeAdapter<Object> resA = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) resType);
         JsonObject payload = reqA.serialize(req);
         return callRaw(action, payload).thenApply(json -> resType.cast(resA.deserialize(json)));
@@ -113,9 +120,9 @@ public final class RedisChannelBusImpl implements RedisChannelBus {
         if (a.response() == Void.class)
             throw new IllegalArgumentException("This @RedisAction is an event, not a RPC.");
 
-        @SuppressWarnings({"rawtypes","unchecked"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         RedisTypeAdapter<Object> reqA = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) c);
-        @SuppressWarnings({"rawtypes","unchecked"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         RedisTypeAdapter<Object> resA = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) a.response());
 
         JsonObject payload = reqA.serialize(request);
@@ -128,7 +135,8 @@ public final class RedisChannelBusImpl implements RedisChannelBus {
                 if (ex != null) out.completeExceptionally(ex);
                 else out.complete((R) a.response().cast(resA.deserialize(json)));
             };
-            if (onMain) Bukkit.getScheduler().runTask(redis.getPlugin(), r); else r.run();
+            if (onMain) Bukkit.getScheduler().runTask(redis.getPlugin(), r);
+            else r.run();
         });
         return out;
     }
@@ -139,9 +147,9 @@ public final class RedisChannelBusImpl implements RedisChannelBus {
         if (action == null || action.value().isEmpty())
             throw new IllegalArgumentException("Missing @RedisAction on " + reqType.getName());
 
-        @SuppressWarnings({"rawtypes","unchecked"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         RedisTypeAdapter<Object> reqA = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) reqType);
-        @SuppressWarnings({"rawtypes","unchecked"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         RedisTypeAdapter<Object> resA = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) responseType);
 
         JsonObject payload = reqA.serialize(request);
@@ -154,7 +162,8 @@ public final class RedisChannelBusImpl implements RedisChannelBus {
                 if (ex != null) out.completeExceptionally(ex);
                 else out.complete(responseType.cast(resA.deserialize(json)));
             };
-            if (onMain) Bukkit.getScheduler().runTask(redis.getPlugin(), r); else r.run();
+            if (onMain) Bukkit.getScheduler().runTask(redis.getPlugin(), r);
+            else r.run();
         });
         return out;
     }
@@ -167,11 +176,11 @@ public final class RedisChannelBusImpl implements RedisChannelBus {
         selfReceive.put(a.value(), a.receiveOwnMessages());
 
         if (RpcAnnotated.class.isAssignableFrom(clazz) && a.response() != Void.class) {
-            @SuppressWarnings({"rawtypes","unchecked"})
+            @SuppressWarnings({"rawtypes", "unchecked"})
             RedisTypeAdapter<Object> reqA = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) clazz);
             rpcHandlers.put(a.value(), new RpcEntry(reqA));
         } else if (RedisSerializable.class.isAssignableFrom(clazz)) {
-            @SuppressWarnings({"rawtypes","unchecked"})
+            @SuppressWarnings({"rawtypes", "unchecked"})
             RedisTypeAdapter<RedisSerializable> ad = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) clazz);
             eventHandlers.put(a.value(), new EventEntry<>(ad, RedisSerializable::execute));
         } else {
@@ -237,7 +246,7 @@ public final class RedisChannelBusImpl implements RedisChannelBus {
 
                 if (result == null) return;
 
-                @SuppressWarnings({"rawtypes","unchecked"})
+                @SuppressWarnings({"rawtypes", "unchecked"})
                 RedisTypeAdapter<Object> resA = (RedisTypeAdapter) RedisAdapterRegistry.ensureAdapter((Class) result.getClass());
 
                 Envelope out = new Envelope();
@@ -258,7 +267,8 @@ public final class RedisChannelBusImpl implements RedisChannelBus {
             }
         };
 
-        if (onMain) Bukkit.getScheduler().runTask(redis.getPlugin(), run); else run.run();
+        if (onMain) Bukkit.getScheduler().runTask(redis.getPlugin(), run);
+        else run.run();
     }
 
     private void send(Envelope env) {
@@ -286,7 +296,9 @@ public final class RedisChannelBusImpl implements RedisChannelBus {
             e.sender = o.has("__sender") ? o.get("__sender").getAsString() : null;
             e.ts = o.has("ts") ? o.get("ts").getAsLong() : 0L;
             return e;
-        } catch (Exception ignore) { return null; }
+        } catch (Exception ignore) {
+            return null;
+        }
     }
 
     private boolean isSeen(String id) {
