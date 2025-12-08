@@ -2,14 +2,13 @@ package fr.nivcoo.utilsz.messaging.backend;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import fr.nivcoo.utilsz.messaging.BusAdapterRegistry;
 import fr.nivcoo.utilsz.messaging.MessageBackend;
-import org.bukkit.plugin.java.JavaPlugin;
 import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.DeliverCallback;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -22,12 +21,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.logging.Logger;
 
 public final class RabbitMqMessageBackend implements MessageBackend {
 
-    private static final String EXCHANGE_NAME = "utilz.messaging";
+    private static final String CONNECTION_NAME = "MessageBusRabbitMQ";
 
-    private final JavaPlugin plugin;
+    private final Logger logger;
     private final String instanceId = UUID.randomUUID().toString();
 
     private final String host;
@@ -45,29 +45,23 @@ public final class RabbitMqMessageBackend implements MessageBackend {
     private Connection connection;
     private Channel channel;
 
-    public RabbitMqMessageBackend(JavaPlugin plugin,
+    public RabbitMqMessageBackend(Logger logger,
                                   String host,
                                   int port,
                                   String virtualHost,
                                   String username,
                                   String password) {
-        this.plugin = plugin;
+        this.logger = logger;
         this.host = host;
         this.port = port;
         this.virtualHost = virtualHost;
         this.username = username;
         this.password = password;
-        BusAdapterRegistry.registerBuiltins();
     }
 
     @Override
     public String getInstanceId() {
         return instanceId;
-    }
-
-    @Override
-    public JavaPlugin getPlugin() {
-        return plugin;
     }
 
     @Override
@@ -121,10 +115,23 @@ public final class RabbitMqMessageBackend implements MessageBackend {
         synchronized (lock) {
             if (!running.get()) return;
             ensureConnection();
+            if (channel == null) return;
             try {
-                channel.basicPublish(EXCHANGE_NAME, channelName, null, json.toString().getBytes(StandardCharsets.UTF_8));
+                channel.exchangeDeclare(channelName, BuiltinExchangeType.TOPIC, true);
+
+                String routingKey = "";
+                if (json != null && json.has("action") && json.get("action").isJsonPrimitive()) {
+                    routingKey = json.get("action").getAsString();
+                    if (routingKey == null) routingKey = "";
+                }
+
+                byte[] body = json == null
+                        ? "{}".getBytes(StandardCharsets.UTF_8)
+                        : json.toString().getBytes(StandardCharsets.UTF_8);
+
+                channel.basicPublish(channelName, routingKey, null, body);
             } catch (IOException e) {
-                plugin.getLogger().warning("[Messaging RabbitMQ] Publish failed on " + channelName + ": " + e.getMessage());
+                logger.warning("[Messaging RabbitMQ] Publish failed on " + channelName + ": " + e.getMessage());
             }
         }
     }
@@ -141,26 +148,34 @@ public final class RabbitMqMessageBackend implements MessageBackend {
         } catch (Exception ignored) {
         }
         try {
-            ConnectionFactory factory = new ConnectionFactory();
-            factory.setHost(host);
-            factory.setPort(port);
-            if (virtualHost != null && !virtualHost.isEmpty()) {
-                factory.setVirtualHost(virtualHost);
-            }
-            if (username != null && !username.isEmpty()) {
-                factory.setUsername(username);
-            }
-            if (password != null && !password.isEmpty()) {
-                factory.setPassword(password);
-            }
-            connection = factory.newConnection("UtilzMessagingRabbit");
+            ConnectionFactory factory = getConnectionFactory();
+
+            connection = factory.newConnection(CONNECTION_NAME);
             channel = connection.createChannel();
-            channel.exchangeDeclare(EXCHANGE_NAME, BuiltinExchangeType.TOPIC, true);
         } catch (Exception e) {
-            plugin.getLogger().warning("[Messaging RabbitMQ] Connection failed: " + e.getMessage());
+            logger.warning("[Messaging RabbitMQ] Connection failed: " + e.getMessage());
             connection = null;
             channel = null;
         }
+    }
+
+    private @NotNull ConnectionFactory getConnectionFactory() {
+        ConnectionFactory factory = new ConnectionFactory();
+        factory.setHost(host);
+        factory.setPort(port);
+        if (virtualHost != null && !virtualHost.isEmpty()) {
+            factory.setVirtualHost(virtualHost);
+        }
+        if (username != null && !username.isEmpty()) {
+            factory.setUsername(username);
+        }
+        if (password != null && !password.isEmpty()) {
+            factory.setPassword(password);
+        }
+        factory.setAutomaticRecoveryEnabled(true);
+        factory.setNetworkRecoveryInterval(2000);
+        factory.setTopologyRecoveryEnabled(true);
+        return factory;
     }
 
     private void ensureSubscription(String channelName) {
@@ -168,9 +183,11 @@ public final class RabbitMqMessageBackend implements MessageBackend {
         if (channel == null || !channel.isOpen()) return;
 
         try {
-            String queue = "utilz." + channelName + "." + instanceId;
+            channel.exchangeDeclare(channelName, BuiltinExchangeType.TOPIC, true);
+
+            String queue = channelName + "." + instanceId;
             channel.queueDeclare(queue, false, true, true, null);
-            channel.queueBind(queue, EXCHANGE_NAME, channelName);
+            channel.queueBind(queue, channelName, "#");
 
             DeliverCallback deliverCallback = (consumerTag, delivery) -> {
                 String body = new String(delivery.getBody(), StandardCharsets.UTF_8);
@@ -178,31 +195,30 @@ public final class RabbitMqMessageBackend implements MessageBackend {
                 try {
                     obj = JsonParser.parseString(body).getAsJsonObject();
                 } catch (Exception e) {
-                    plugin.getLogger().warning("[Messaging RabbitMQ] Invalid JSON: " + e.getMessage());
+                    logger.warning("[Messaging RabbitMQ] Invalid JSON: " + e.getMessage());
                     return;
                 }
                 List<Consumer<JsonObject>> regs = subscribers.get(channelName);
                 if (regs == null) return;
 
-                Consumer<JsonObject>[] copy;
+                List<Consumer<JsonObject>> copy;
                 synchronized (regs) {
-                    copy = regs.toArray(new Consumer[0]);
+                    copy = new ArrayList<>(regs);
                 }
 
                 for (Consumer<JsonObject> cb : copy) {
                     try {
                         cb.accept(obj);
                     } catch (Throwable t) {
-                        plugin.getLogger().warning("[Messaging RabbitMQ] Subscriber error: " + t.getMessage());
+                        logger.warning("[Messaging RabbitMQ] Subscriber error: " + t.getMessage());
                     }
                 }
             };
 
-            channel.basicConsume(queue, true, deliverCallback, consumerTag -> {
-            });
+            channel.basicConsume(queue, true, deliverCallback, consumerTag -> {});
             subscribedChannels.put(channelName, Boolean.TRUE);
         } catch (IOException e) {
-            plugin.getLogger().warning("[Messaging RabbitMQ] Subscription failed on " + channelName + ": " + e.getMessage());
+            logger.warning("[Messaging RabbitMQ] Subscription failed on " + channelName + ": " + e.getMessage());
         }
     }
 }

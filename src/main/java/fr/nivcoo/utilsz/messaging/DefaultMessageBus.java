@@ -2,6 +2,7 @@ package fr.nivcoo.utilsz.messaging;
 
 import com.google.gson.JsonObject;
 import org.bukkit.Bukkit;
+import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Map;
 import java.util.UUID;
@@ -45,6 +46,7 @@ public final class DefaultMessageBus implements MessageBus {
         }
     }
 
+    private final JavaPlugin plugin;
     private final MessageBackend backend;
     private final String channel;
 
@@ -61,10 +63,12 @@ public final class DefaultMessageBus implements MessageBus {
     });
     private final AtomicBoolean started = new AtomicBoolean(false);
 
-    public DefaultMessageBus(MessageBackend backend, String channel) {
+    public DefaultMessageBus(JavaPlugin plugin, MessageBackend backend, String channel) {
+        this.plugin = plugin;
         this.backend = backend;
         this.channel = channel;
 
+        BusAdapterRegistry.registerBuiltins();
         backend.subscribeRaw(channel, this::onIncoming);
         gc.scheduleAtFixedRate(this::gcSeen, 30, 30, TimeUnit.SECONDS);
     }
@@ -141,7 +145,7 @@ public final class DefaultMessageBus implements MessageBus {
                 if (ex != null) out.completeExceptionally(ex);
                 else out.complete((R) a.response().cast(resA.deserialize(json)));
             };
-            if (onMain) Bukkit.getScheduler().runTask(backend.getPlugin(), r);
+            if (onMain) Bukkit.getScheduler().runTask(plugin, r);
             else r.run();
         });
         return out;
@@ -168,7 +172,7 @@ public final class DefaultMessageBus implements MessageBus {
                 if (ex != null) out.completeExceptionally(ex);
                 else out.complete(responseType.cast(resA.deserialize(json)));
             };
-            if (onMain) Bukkit.getScheduler().runTask(backend.getPlugin(), r);
+            if (onMain) Bukkit.getScheduler().runTask(plugin, r);
             else r.run();
         });
         return out;
@@ -273,7 +277,7 @@ public final class DefaultMessageBus implements MessageBus {
             }
         };
 
-        if (onMain) Bukkit.getScheduler().runTask(backend.getPlugin(), run);
+        if (onMain) Bukkit.getScheduler().runTask(plugin, run);
         else run.run();
     }
 

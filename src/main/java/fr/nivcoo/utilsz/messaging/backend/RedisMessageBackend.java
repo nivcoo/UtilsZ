@@ -2,9 +2,7 @@ package fr.nivcoo.utilsz.messaging.backend;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import fr.nivcoo.utilsz.messaging.BusAdapterRegistry;
 import fr.nivcoo.utilsz.messaging.MessageBackend;
-import org.bukkit.plugin.java.JavaPlugin;
 import redis.clients.jedis.DefaultJedisClientConfig;
 import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.Jedis;
@@ -20,11 +18,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.logging.Logger;
 
 public final class RedisMessageBackend implements MessageBackend {
 
     private final JedisPool jedisPool;
-    private final JavaPlugin plugin;
+    private final Logger logger;
 
     private final Map<String, List<Consumer<JsonObject>>> subscribers = new ConcurrentHashMap<>();
 
@@ -33,25 +32,19 @@ public final class RedisMessageBackend implements MessageBackend {
     private volatile Thread listenerThread;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    public RedisMessageBackend(JavaPlugin plugin, String host, int port, String username, String password) {
-        this.plugin = plugin;
+    public RedisMessageBackend(Logger logger, String host, int port, String username, String password) {
+        this.logger = logger;
 
         DefaultJedisClientConfig.Builder cfg = DefaultJedisClientConfig.builder();
         if (username != null && !username.isEmpty()) cfg.user(username);
         if (password != null && !password.isEmpty()) cfg.password(password);
 
         this.jedisPool = new JedisPool(new HostAndPort(host, port), cfg.build());
-        BusAdapterRegistry.registerBuiltins();
     }
 
     @Override
     public String getInstanceId() {
         return instanceId;
-    }
-
-    @Override
-    public JavaPlugin getPlugin() {
-        return plugin;
     }
 
     @Override
@@ -148,7 +141,7 @@ public final class RedisMessageBackend implements MessageBackend {
                     try {
                         cb.accept(obj);
                     } catch (Throwable t) {
-                        plugin.getLogger().warning("[Messaging Redis] Subscriber error: " + t.getMessage());
+                        logger.warning("[Messaging Redis] Subscriber error: " + t.getMessage());
                     }
                 }
             }
@@ -160,7 +153,7 @@ public final class RedisMessageBackend implements MessageBackend {
                     j.subscribe(pubSub, channels);
                 } catch (Exception e) {
                     if (!running.get()) break;
-                    plugin.getLogger().warning("[Messaging Redis] Listener crashed: " + e.getMessage());
+                    logger.warning("[Messaging Redis] Listener crashed: " + e.getMessage());
                     try {
                         TimeUnit.SECONDS.sleep(2);
                     } catch (InterruptedException ex) {
