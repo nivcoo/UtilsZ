@@ -2,7 +2,6 @@ package fr.nivcoo.utilsz.messaging;
 
 import com.google.gson.JsonObject;
 import org.bukkit.Bukkit;
-import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Map;
 import java.util.UUID;
@@ -46,7 +45,6 @@ public final class DefaultMessageBus implements MessageBus {
         }
     }
 
-    private final JavaPlugin plugin;
     private final MessageBackend backend;
     private final String channel;
 
@@ -63,8 +61,7 @@ public final class DefaultMessageBus implements MessageBus {
     });
     private final AtomicBoolean started = new AtomicBoolean(false);
 
-    public DefaultMessageBus(JavaPlugin plugin, MessageBackend backend, String channel) {
-        this.plugin = plugin;
+    public DefaultMessageBus(MessageBackend backend, String channel) {
         this.backend = backend;
         this.channel = channel;
 
@@ -145,7 +142,7 @@ public final class DefaultMessageBus implements MessageBus {
                 if (ex != null) out.completeExceptionally(ex);
                 else out.complete((R) a.response().cast(resA.deserialize(json)));
             };
-            if (onMain) Bukkit.getScheduler().runTask(plugin, r);
+            if (onMain) Bukkit.getScheduler().runTask(backend.getOwnerPlugin(), r);
             else r.run();
         });
         return out;
@@ -172,7 +169,7 @@ public final class DefaultMessageBus implements MessageBus {
                 if (ex != null) out.completeExceptionally(ex);
                 else out.complete(responseType.cast(resA.deserialize(json)));
             };
-            if (onMain) Bukkit.getScheduler().runTask(plugin, r);
+            if (onMain) Bukkit.getScheduler().runTask(backend.getOwnerPlugin(), r);
             else r.run();
         });
         return out;
@@ -277,7 +274,7 @@ public final class DefaultMessageBus implements MessageBus {
             }
         };
 
-        if (onMain) Bukkit.getScheduler().runTask(plugin, run);
+        if (onMain) Bukkit.getScheduler().runTask(backend.getOwnerPlugin(), run);
         else run.run();
     }
 

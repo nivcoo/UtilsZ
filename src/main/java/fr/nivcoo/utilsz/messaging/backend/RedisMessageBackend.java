@@ -3,6 +3,7 @@ package fr.nivcoo.utilsz.messaging.backend;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import fr.nivcoo.utilsz.messaging.MessageBackend;
+import org.bukkit.plugin.java.JavaPlugin;
 import redis.clients.jedis.DefaultJedisClientConfig;
 import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.Jedis;
@@ -18,12 +19,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
-import java.util.logging.Logger;
 
 public final class RedisMessageBackend implements MessageBackend {
 
     private final JedisPool jedisPool;
-    private final Logger logger;
+    private final JavaPlugin plugin;
 
     private final Map<String, List<Consumer<JsonObject>>> subscribers = new ConcurrentHashMap<>();
 
@@ -32,8 +32,8 @@ public final class RedisMessageBackend implements MessageBackend {
     private volatile Thread listenerThread;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    public RedisMessageBackend(Logger logger, String host, int port, String username, String password) {
-        this.logger = logger;
+    public RedisMessageBackend(JavaPlugin plugin, String host, int port, String username, String password) {
+        this.plugin = plugin;
 
         DefaultJedisClientConfig.Builder cfg = DefaultJedisClientConfig.builder();
         if (username != null && !username.isEmpty()) cfg.user(username);
@@ -45,6 +45,11 @@ public final class RedisMessageBackend implements MessageBackend {
     @Override
     public String getInstanceId() {
         return instanceId;
+    }
+
+    @Override
+    public JavaPlugin getOwnerPlugin() {
+        return plugin;
     }
 
     @Override
@@ -132,16 +137,16 @@ public final class RedisMessageBackend implements MessageBackend {
                 List<Consumer<JsonObject>> regs = subscribers.get(channel);
                 if (regs == null) return;
 
-                Consumer<JsonObject>[] copy;
+                List<Consumer<JsonObject>> copy;
                 synchronized (regs) {
-                    copy = regs.toArray(new Consumer[0]);
+                    copy = new ArrayList<>(regs);
                 }
 
                 for (Consumer<JsonObject> cb : copy) {
                     try {
                         cb.accept(obj);
                     } catch (Throwable t) {
-                        logger.warning("[Messaging Redis] Subscriber error: " + t.getMessage());
+                        plugin.getLogger().warning("[Messaging Redis] Subscriber error: " + t.getMessage());
                     }
                 }
             }
@@ -153,7 +158,7 @@ public final class RedisMessageBackend implements MessageBackend {
                     j.subscribe(pubSub, channels);
                 } catch (Exception e) {
                     if (!running.get()) break;
-                    logger.warning("[Messaging Redis] Listener crashed: " + e.getMessage());
+                    plugin.getLogger().warning("[Messaging Redis] Listener crashed: " + e.getMessage());
                     try {
                         TimeUnit.SECONDS.sleep(2);
                     } catch (InterruptedException ex) {
