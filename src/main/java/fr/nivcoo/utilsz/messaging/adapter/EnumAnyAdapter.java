@@ -1,9 +1,9 @@
-package fr.nivcoo.utilsz.redis.adapter;
+package fr.nivcoo.utilsz.messaging.adapter;
 
 import com.google.gson.JsonObject;
-import fr.nivcoo.utilsz.redis.RedisTypeAdapter;
+import fr.nivcoo.utilsz.messaging.BusTypeAdapter;
 
-public final class EnumAnyAdapter implements RedisTypeAdapter<Object> {
+public final class EnumAnyAdapter implements BusTypeAdapter<Object> {
     private final Class<? extends Enum<?>> type;
 
     public EnumAnyAdapter(Class<? extends Enum<?>> type) { this.type = type; }

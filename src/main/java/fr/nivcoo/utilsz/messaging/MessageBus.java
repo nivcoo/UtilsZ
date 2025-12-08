@@ -1,14 +1,13 @@
-package fr.nivcoo.utilsz.redis.bus;
+package fr.nivcoo.utilsz.messaging;
 
 import com.google.gson.JsonObject;
-import fr.nivcoo.utilsz.redis.RedisSerializable;
 
 import java.util.concurrent.CompletableFuture;
 
-public interface RedisChannelBus {
+public interface MessageBus {
     void start();
     void close();
-    void publish(RedisSerializable evt);
+    void publish(BusMessage evt);
     void register(Class<?> clazz);
 
     default CompletableFuture<JsonObject> callRaw(String action, JsonObject payload) {

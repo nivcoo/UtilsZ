@@ -1,17 +1,27 @@
-package fr.nivcoo.utilsz.redis;
+package fr.nivcoo.utilsz.messaging.backend;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import fr.nivcoo.utilsz.messaging.BusAdapterRegistry;
+import fr.nivcoo.utilsz.messaging.MessageBackend;
 import org.bukkit.plugin.java.JavaPlugin;
-import redis.clients.jedis.*;
+import redis.clients.jedis.DefaultJedisClientConfig;
+import redis.clients.jedis.HostAndPort;
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.JedisPubSub;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
-public final class RedisManager {
+public final class RedisMessageBackend implements MessageBackend {
 
     private final JedisPool jedisPool;
     private final JavaPlugin plugin;
@@ -23,7 +33,7 @@ public final class RedisManager {
     private volatile Thread listenerThread;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    public RedisManager(JavaPlugin plugin, String host, int port, String username, String password) {
+    public RedisMessageBackend(JavaPlugin plugin, String host, int port, String username, String password) {
         this.plugin = plugin;
 
         DefaultJedisClientConfig.Builder cfg = DefaultJedisClientConfig.builder();
@@ -31,11 +41,20 @@ public final class RedisManager {
         if (password != null && !password.isEmpty()) cfg.password(password);
 
         this.jedisPool = new JedisPool(new HostAndPort(host, port), cfg.build());
-        RedisAdapterRegistry.registerBuiltins();
+        BusAdapterRegistry.registerBuiltins();
     }
 
-    public String getInstanceId() { return instanceId; }
+    @Override
+    public String getInstanceId() {
+        return instanceId;
+    }
 
+    @Override
+    public JavaPlugin getPlugin() {
+        return plugin;
+    }
+
+    @Override
     public synchronized void start() {
         if (running.get()) return;
         String[] chans = subscribers.keySet().toArray(new String[0]);
@@ -44,11 +63,15 @@ public final class RedisManager {
         startListenerInternal(chans);
     }
 
+    @Override
     public synchronized void close() {
         running.set(false);
         try {
             if (pubSub != null) {
-                try { pubSub.unsubscribe(); } catch (Exception ignored) {}
+                try {
+                    pubSub.unsubscribe();
+                } catch (Exception ignored) {
+                }
             }
             if (listenerThread != null && listenerThread.isAlive()) {
                 listenerThread.join(300);
@@ -58,10 +81,14 @@ public final class RedisManager {
         } finally {
             pubSub = null;
             listenerThread = null;
-            try { jedisPool.close(); } catch (Exception ignored) {}
+            try {
+                jedisPool.close();
+            } catch (Exception ignored) {
+            }
         }
     }
 
+    @Override
     public synchronized void subscribeRaw(String channel, Consumer<JsonObject> callback) {
         subscribers
                 .computeIfAbsent(channel, k -> Collections.synchronizedList(new ArrayList<>()))
@@ -71,9 +98,8 @@ public final class RedisManager {
         else start();
     }
 
+    @Override
     public void publish(String channel, JsonObject json) {
-        json.addProperty("__sender", instanceId);
-        json.addProperty("ts", System.currentTimeMillis());
         try (Jedis j = jedisPool.getResource()) {
             j.publish(channel, json.toString());
         }
@@ -83,7 +109,10 @@ public final class RedisManager {
         running.set(false);
         try {
             if (pubSub != null) {
-                try { pubSub.unsubscribe(); } catch (Exception ignored) {}
+                try {
+                    pubSub.unsubscribe();
+                } catch (Exception ignored) {
+                }
             }
             if (listenerThread != null && listenerThread.isAlive()) {
                 listenerThread.join(300);
@@ -111,11 +140,16 @@ public final class RedisManager {
                 if (regs == null) return;
 
                 Consumer<JsonObject>[] copy;
-                synchronized (regs) { copy = regs.toArray(new Consumer[0]); }
+                synchronized (regs) {
+                    copy = regs.toArray(new Consumer[0]);
+                }
 
                 for (Consumer<JsonObject> cb : copy) {
-                    try { cb.accept(obj); }
-                    catch (Throwable t) { plugin.getLogger().warning("[Redis] Subscriber error: " + t.getMessage()); }
+                    try {
+                        cb.accept(obj);
+                    } catch (Throwable t) {
+                        plugin.getLogger().warning("[Messaging Redis] Subscriber error: " + t.getMessage());
+                    }
                 }
             }
         };
@@ -126,16 +160,18 @@ public final class RedisManager {
                     j.subscribe(pubSub, channels);
                 } catch (Exception e) {
                     if (!running.get()) break;
-                    plugin.getLogger().warning("[Redis] Listener crashed: " + e.getMessage());
-                    try { TimeUnit.SECONDS.sleep(2); }
-                    catch (InterruptedException ex) { Thread.currentThread().interrupt(); break; }
+                    plugin.getLogger().warning("[Messaging Redis] Listener crashed: " + e.getMessage());
+                    try {
+                        TimeUnit.SECONDS.sleep(2);
+                    } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
                 }
             }
-        }, "RedisListenerThread");
+        }, "MessagingRedisListener");
 
         listenerThread.setDaemon(true);
         listenerThread.start();
     }
-
-    public JavaPlugin getPlugin() { return plugin; }
 }

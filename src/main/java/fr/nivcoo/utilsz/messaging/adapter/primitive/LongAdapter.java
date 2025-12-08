@@ -1,9 +1,9 @@
-package fr.nivcoo.utilsz.redis.adapter.primitive;
+package fr.nivcoo.utilsz.messaging.adapter.primitive;
 
 import com.google.gson.JsonObject;
-import fr.nivcoo.utilsz.redis.RedisTypeAdapter;
+import fr.nivcoo.utilsz.messaging.BusTypeAdapter;
 
-public class LongAdapter implements RedisTypeAdapter<Long> {
+public class LongAdapter implements BusTypeAdapter<Long> {
     @Override
     public JsonObject serialize(Long value) {
         JsonObject json = new JsonObject();

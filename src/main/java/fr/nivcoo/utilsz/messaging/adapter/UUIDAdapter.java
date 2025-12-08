@@ -1,11 +1,11 @@
-package fr.nivcoo.utilsz.redis.adapter;
+package fr.nivcoo.utilsz.messaging.adapter;
 
 import com.google.gson.JsonObject;
-import fr.nivcoo.utilsz.redis.RedisTypeAdapter;
+import fr.nivcoo.utilsz.messaging.BusTypeAdapter;
 
 import java.util.UUID;
 
-public class UUIDAdapter implements RedisTypeAdapter<UUID> {
+public class UUIDAdapter implements BusTypeAdapter<UUID> {
     @Override
     public JsonObject serialize(UUID value) {
         JsonObject json = new JsonObject();

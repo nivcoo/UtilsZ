@@ -1,12 +1,12 @@
-package fr.nivcoo.utilsz.redis.adapter;
+package fr.nivcoo.utilsz.messaging.adapter;
 
 import com.google.gson.JsonObject;
+import fr.nivcoo.utilsz.messaging.BusTypeAdapter;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
-import fr.nivcoo.utilsz.redis.RedisTypeAdapter;
 
-public class LocationAdapter implements RedisTypeAdapter<Location> {
+public class LocationAdapter implements BusTypeAdapter<Location> {
 
     @Override
     public JsonObject serialize(Location loc) {

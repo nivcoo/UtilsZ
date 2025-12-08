@@ -1,13 +1,13 @@
-package fr.nivcoo.utilsz.redis.adapter;
+package fr.nivcoo.utilsz.messaging.adapter;
 
 import com.google.gson.*;
-import fr.nivcoo.utilsz.redis.RedisTypeAdapter;
+import fr.nivcoo.utilsz.messaging.BusTypeAdapter;
 
 import java.util.HashMap;
 import java.util.Map;
 
 @SuppressWarnings("rawtypes")
-public class MapAdapter implements RedisTypeAdapter<Map> {
+public class MapAdapter implements BusTypeAdapter<Map> {
 
     private final Gson gson = new Gson();
 

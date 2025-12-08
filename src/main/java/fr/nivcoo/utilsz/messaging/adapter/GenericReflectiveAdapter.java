@@ -1,15 +1,15 @@
-package fr.nivcoo.utilsz.redis.adapter;
+package fr.nivcoo.utilsz.messaging.adapter;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
-import fr.nivcoo.utilsz.redis.RedisAdapterRegistry;
-import fr.nivcoo.utilsz.redis.RedisTypeAdapter;
+import fr.nivcoo.utilsz.messaging.BusAdapterRegistry;
+import fr.nivcoo.utilsz.messaging.BusTypeAdapter;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 
-public class GenericReflectiveAdapter<T> implements RedisTypeAdapter<T> {
+public class GenericReflectiveAdapter<T> implements BusTypeAdapter<T> {
 
     private final Class<T> type;
     private final Field[] fields;
@@ -38,7 +38,7 @@ public class GenericReflectiveAdapter<T> implements RedisTypeAdapter<T> {
                     json.add(field.getName(), JsonNull.INSTANCE);
                     continue;
                 }
-                RedisTypeAdapter<Object> adapter = getAdapter(field.getType());
+                BusTypeAdapter<Object> adapter = getAdapter(field.getType());
                 if (adapter == null)
                     throw new RuntimeException("No adapter for field " + field.getName() + " in " + type.getSimpleName()
                             + " of type " + field.getType().getSimpleName());
@@ -64,7 +64,7 @@ public class GenericReflectiveAdapter<T> implements RedisTypeAdapter<T> {
                     continue;
                 }
 
-                RedisTypeAdapter<Object> adapter = getAdapter(field.getType());
+                BusTypeAdapter<Object> adapter = getAdapter(field.getType());
                 if (adapter == null)
                     throw new RuntimeException("No adapter for field " + name + " in " + type.getSimpleName());
 
@@ -76,8 +76,8 @@ public class GenericReflectiveAdapter<T> implements RedisTypeAdapter<T> {
         }
     }
 
-    private RedisTypeAdapter<Object> getAdapter(Class<?> fieldType) {
-        return RedisAdapterRegistry.getAdapter(fieldType);
+    private BusTypeAdapter<Object> getAdapter(Class<?> fieldType) {
+        return BusAdapterRegistry.getAdapter(fieldType);
     }
 
     private static Class<?>[] getFieldTypes(Field[] fields) {

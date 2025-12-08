@@ -1,13 +1,13 @@
-package fr.nivcoo.utilsz.redis.adapter;
+package fr.nivcoo.utilsz.messaging.adapter;
 
 import com.google.gson.*;
-import fr.nivcoo.utilsz.redis.RedisTypeAdapter;
+import fr.nivcoo.utilsz.messaging.BusTypeAdapter;
 
 import java.util.ArrayList;
 import java.util.List;
 
 @SuppressWarnings("rawtypes")
-public class ListAdapter implements RedisTypeAdapter<List> {
+public class ListAdapter implements BusTypeAdapter<List> {
 
     @Override
     public JsonObject serialize(List value) {
