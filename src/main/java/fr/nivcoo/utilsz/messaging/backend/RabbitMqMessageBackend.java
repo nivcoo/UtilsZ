@@ -122,19 +122,13 @@ public final class RabbitMqMessageBackend implements MessageBackend {
             ensureConnection();
             if (channel == null) return;
             try {
-                channel.exchangeDeclare(channelName, BuiltinExchangeType.TOPIC, true);
-
-                String routingKey = "";
-                if (json != null && json.has("action") && json.get("action").isJsonPrimitive()) {
-                    routingKey = json.get("action").getAsString();
-                    if (routingKey == null) routingKey = "";
-                }
+                channel.exchangeDeclare(channelName, BuiltinExchangeType.FANOUT, true);
 
                 byte[] body = json == null
                         ? "{}".getBytes(StandardCharsets.UTF_8)
                         : json.toString().getBytes(StandardCharsets.UTF_8);
 
-                channel.basicPublish(channelName, routingKey, null, body);
+                channel.basicPublish(channelName, "", null, body);
             } catch (IOException e) {
                 plugin.getLogger().warning("[Messaging RabbitMQ] Publish failed on " + channelName + ": " + e.getMessage());
             }
@@ -187,11 +181,11 @@ public final class RabbitMqMessageBackend implements MessageBackend {
         if (channel == null || !channel.isOpen()) return;
 
         try {
-            channel.exchangeDeclare(channelName, BuiltinExchangeType.TOPIC, true);
+            channel.exchangeDeclare(channelName, BuiltinExchangeType.FANOUT, true);
 
             String queue = channelName + "." + instanceId;
             channel.queueDeclare(queue, false, true, true, null);
-            channel.queueBind(queue, channelName, "#");
+            channel.queueBind(queue, channelName, "");
 
             DeliverCallback deliverCallback = (consumerTag, delivery) -> {
                 String body = new String(delivery.getBody(), StandardCharsets.UTF_8);
