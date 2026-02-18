@@ -44,19 +44,82 @@ public final class ConfigManager {
                     "(?:[:\\s>]|$)"
     );
 
-    private static final Map<Class<?>, Supplier<Converter<?>>> DEFAULT_CONVERTERS =
-            Map.of(
-                    Material.class, MaterialConv::new,
-                    Sound.class, SoundConv::new,
-                    Particle.class, ParticleConv::new,
-                    Location.class, LocationConv::new,
-                    ItemStack.class, ItemStackConv::new
-            );
+    private static final Map<Class<?>, Supplier<Converter<?>>> DEFAULT_CONVERTERS = buildDefaultConverters();
 
     private final File dataFolder;
 
     public ConfigManager(File dataFolder) {
         this.dataFolder = Objects.requireNonNull(dataFolder, "dataFolder");
+    }
+
+    private static Map<Class<?>, Supplier<Converter<?>>> buildDefaultConverters() {
+        Map<Class<?>, Supplier<Converter<?>>> m = new LinkedHashMap<>();
+
+        registerConv(m, "org.bukkit.Material", "fr.nivcoo.utilsz.config.conv.MaterialConv");
+        registerConv(m, "org.bukkit.Sound", "fr.nivcoo.utilsz.config.conv.SoundConv");
+        registerConv(m, "org.bukkit.Particle", "fr.nivcoo.utilsz.config.conv.ParticleConv");
+        registerConv(m, "org.bukkit.Location", "fr.nivcoo.utilsz.config.conv.LocationConv");
+        registerConv(m, "org.bukkit.inventory.ItemStack", "fr.nivcoo.utilsz.config.conv.ItemStackConv");
+
+        return Collections.unmodifiableMap(m);
+    }
+
+    private static void registerConv(Map<Class<?>, Supplier<Converter<?>>> m, String typeName, String convName) {
+        Class<?> t = classOrNull(typeName);
+        if (t == null) return;
+
+        Class<?> conv = classOrNull(convName);
+        if (conv == null) return;
+
+        if (!Converter.class.isAssignableFrom(conv)) return;
+
+        m.put(t, () -> {
+            try {
+                return (Converter<?>) conv.getDeclaredConstructor().newInstance();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    private static Class<?> classOrNull(String name) {
+        try {
+            return Class.forName(name, false, ConfigManager.class.getClassLoader());
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Converter<Object> findConverter(Field f) {
+        WithConverter ann = f.getAnnotation(WithConverter.class);
+        if (ann == null) ann = f.getType().getAnnotation(WithConverter.class);
+        if (ann != null) {
+            try {
+                return (Converter<Object>) ann.value().getDeclaredConstructor().newInstance();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        Supplier<Converter<?>> sup = DEFAULT_CONVERTERS.get(f.getType());
+        return sup != null ? (Converter<Object>) sup.get() : null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Converter<Object> findConverterForClass(Class<?> cls) {
+        if (cls == null) return null;
+        try {
+            WithConverter ann = cls.getAnnotation(WithConverter.class);
+            if (ann != null) {
+                return (Converter<Object>) ann.value().getDeclaredConstructor().newInstance();
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        Supplier<Converter<?>> sup = DEFAULT_CONVERTERS.get(cls);
+        return sup != null ? (Converter<Object>) sup.get() : null;
     }
 
     public <T> T load(String relativePath, Class<T> cfgClass) {
@@ -528,36 +591,6 @@ public final class ConfigManager {
             cur = (Map<String, Object>) cur.computeIfAbsent(parts[i], k -> new LinkedHashMap<>());
         }
         cur.put(parts[parts.length - 1], value);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Converter<Object> findConverter(Field f) {
-        WithConverter ann = f.getAnnotation(WithConverter.class);
-        if (ann == null) ann = f.getType().getAnnotation(WithConverter.class);
-        if (ann != null) {
-            try {
-                return (Converter<Object>) ann.value().getDeclaredConstructor().newInstance();
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        }
-        Supplier<Converter<?>> sup = DEFAULT_CONVERTERS.get(f.getType());
-        return sup != null ? (Converter<Object>) sup.get() : null;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Converter<Object> findConverterForClass(Class<?> cls) {
-        if (cls == null) return null;
-        try {
-            WithConverter ann = cls.getAnnotation(WithConverter.class);
-            if (ann != null) {
-                return (Converter<Object>) ann.value().getDeclaredConstructor().newInstance();
-            }
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-        var sup = DEFAULT_CONVERTERS.get(cls);
-        return sup != null ? (Converter<Object>) sup.get() : null;
     }
 
     private Object convertFromYaml(Field f, Object raw, Object fallback) {

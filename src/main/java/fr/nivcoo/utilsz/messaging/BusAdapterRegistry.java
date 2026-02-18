@@ -56,11 +56,34 @@ public final class BusAdapterRegistry {
     public static void registerBuiltins() {
         if (initialized) return;
         initialized = true;
+
         registerPrimitives();
-        register(org.bukkit.Location.class, new LocationAdapter());
+
         register(java.util.UUID.class, new UUIDAdapter());
         register(java.util.List.class, new ListAdapter());
         register(java.util.Map.class, new MapAdapter());
+
+        tryRegisterBukkitAdapters();
+    }
+
+    private static void tryRegisterBukkitAdapters() {
+        Class<?> loc = classOrNull("org.bukkit.Location");
+        if (loc != null) {
+            registerRaw(loc, new LocationAdapter());
+        }
+    }
+
+    private static Class<?> classOrNull(String name) {
+        try {
+            return Class.forName(name, false, BusAdapterRegistry.class.getClassLoader());
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    @SuppressWarnings({"rawtypes"})
+    private static void registerRaw(Class<?> clazz, BusTypeAdapter adapter) {
+        adapters.put(clazz, adapter);
     }
 
     public static void registerPrimitives() {

@@ -8,8 +8,8 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.DeliverCallback;
-import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -27,7 +27,7 @@ public final class RabbitMqMessageBackend implements MessageBackend {
 
     private static final String CONNECTION_NAME = "MessageBusRabbitMQ";
 
-    private final JavaPlugin plugin;
+    private final Logger logger;
     private final String instanceId = UUID.randomUUID().toString();
 
     private final String host;
@@ -45,13 +45,13 @@ public final class RabbitMqMessageBackend implements MessageBackend {
     private Connection connection;
     private Channel channel;
 
-    public RabbitMqMessageBackend(JavaPlugin plugin,
+    public RabbitMqMessageBackend(Logger logger,
                                   String host,
                                   int port,
                                   String virtualHost,
                                   String username,
                                   String password) {
-        this.plugin = plugin;
+        this.logger = logger;
         this.host = host;
         this.port = port;
         this.virtualHost = virtualHost;
@@ -62,11 +62,6 @@ public final class RabbitMqMessageBackend implements MessageBackend {
     @Override
     public String getInstanceId() {
         return instanceId;
-    }
-
-    @Override
-    public JavaPlugin getOwnerPlugin() {
-        return plugin;
     }
 
     @Override
@@ -130,7 +125,7 @@ public final class RabbitMqMessageBackend implements MessageBackend {
 
                 channel.basicPublish(channelName, "", null, body);
             } catch (IOException e) {
-                plugin.getLogger().warning("[Messaging RabbitMQ] Publish failed on " + channelName + ": " + e.getMessage());
+                logger.warn("[Messaging RabbitMQ] Publish failed on {}: {}", channelName, e.getMessage());
             }
         }
     }
@@ -151,7 +146,7 @@ public final class RabbitMqMessageBackend implements MessageBackend {
             connection = factory.newConnection(CONNECTION_NAME);
             channel = connection.createChannel();
         } catch (Exception e) {
-            plugin.getLogger().warning("[Messaging RabbitMQ] Connection failed: " + e.getMessage());
+            logger.warn("[Messaging RabbitMQ] Connection failed: {}", e.getMessage());
             connection = null;
             channel = null;
         }
@@ -193,7 +188,7 @@ public final class RabbitMqMessageBackend implements MessageBackend {
                 try {
                     obj = JsonParser.parseString(body).getAsJsonObject();
                 } catch (Exception e) {
-                    plugin.getLogger().warning("[Messaging RabbitMQ] Invalid JSON: " + e.getMessage());
+                    logger.warn("[Messaging RabbitMQ] Invalid JSON: {}", e.getMessage());
                     return;
                 }
                 List<Consumer<JsonObject>> regs = subscribers.get(channelName);
@@ -208,7 +203,7 @@ public final class RabbitMqMessageBackend implements MessageBackend {
                     try {
                         cb.accept(obj);
                     } catch (Throwable t) {
-                        plugin.getLogger().warning("[Messaging RabbitMQ] Subscriber error: " + t.getMessage());
+                        logger.warn("[Messaging RabbitMQ] Subscriber error: {}", t.getMessage());
                     }
                 }
             };
@@ -216,7 +211,7 @@ public final class RabbitMqMessageBackend implements MessageBackend {
             channel.basicConsume(queue, true, deliverCallback, consumerTag -> {});
             subscribedChannels.put(channelName, Boolean.TRUE);
         } catch (IOException e) {
-            plugin.getLogger().warning("[Messaging RabbitMQ] Subscription failed on " + channelName + ": " + e.getMessage());
+            logger.warn("[Messaging RabbitMQ] Subscription failed on {}: {}", channelName, e.getMessage());
         }
     }
 }

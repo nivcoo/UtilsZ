@@ -1,7 +1,6 @@
 package fr.nivcoo.utilsz.messaging;
 
 import com.google.gson.JsonObject;
-import org.bukkit.Bukkit;
 
 import java.util.Map;
 import java.util.UUID;
@@ -9,9 +8,6 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class DefaultMessageBus implements MessageBus {
@@ -27,26 +23,15 @@ public final class DefaultMessageBus implements MessageBus {
         long ts;
     }
 
-    private static final class EventEntry<T extends BusMessage> {
-        final BusTypeAdapter<T> adapter;
-        final BusHandler<T> handler;
-
-        EventEntry(BusTypeAdapter<T> a, BusHandler<T> h) {
-            adapter = a;
-            handler = h;
-        }
+    private record EventEntry<T extends BusMessage>(BusTypeAdapter<T> adapter, BusHandler<T> handler) {
     }
 
-    private static final class RpcEntry {
-        final BusTypeAdapter<Object> reqAdapter;
-
-        RpcEntry(BusTypeAdapter<Object> ra) {
-            this.reqAdapter = ra;
-        }
+    private record RpcEntry(BusTypeAdapter<Object> reqAdapter) {
     }
 
     private final MessageBackend backend;
     private final String channel;
+    private final PlatformScheduler scheduler;
 
     private final ConcurrentMap<String, EventEntry<?>> eventHandlers = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, RpcEntry> rpcHandlers = new ConcurrentHashMap<>();
@@ -54,20 +39,17 @@ public final class DefaultMessageBus implements MessageBus {
     private final ConcurrentMap<String, Long> seen = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Boolean> selfReceive = new ConcurrentHashMap<>();
 
-    private final ScheduledExecutorService gc = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread t = new Thread(r, "MessageBusGC");
-        t.setDaemon(true);
-        return t;
-    });
     private final AtomicBoolean started = new AtomicBoolean(false);
 
-    public DefaultMessageBus(MessageBackend backend, String channel) {
+    private volatile long lastGcAt = 0L;
+
+    public DefaultMessageBus(MessageBackend backend, String channel, PlatformScheduler scheduler) {
         this.backend = backend;
         this.channel = channel;
+        this.scheduler = scheduler;
 
         BusAdapterRegistry.registerBuiltins();
         backend.subscribeRaw(channel, this::onIncoming);
-        gc.scheduleAtFixedRate(this::gcSeen, 30, 30, TimeUnit.SECONDS);
     }
 
     @Override
@@ -80,7 +62,6 @@ public final class DefaultMessageBus implements MessageBus {
         pending.forEach((cid, fut) -> fut.completeExceptionally(new CancellationException("Bus closed")));
         pending.clear();
         started.set(false);
-        gc.shutdownNow();
         backend.close();
     }
 
@@ -88,17 +69,20 @@ public final class DefaultMessageBus implements MessageBus {
     public void publish(BusMessage evt) {
         @SuppressWarnings("unchecked")
         BusTypeAdapter<Object> ad = (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) evt.getClass());
+
         Envelope env = new Envelope();
         env.kind = "evt";
         env.action = evt.getAction();
         env.mid = UUID.randomUUID().toString();
         env.payload = ad.serialize(evt);
+
         send(env);
     }
 
     @Override
     public CompletableFuture<JsonObject> callRaw(String action, JsonObject payload) {
         String cid = UUID.randomUUID().toString();
+
         Envelope env = new Envelope();
         env.kind = "req";
         env.action = action;
@@ -107,6 +91,7 @@ public final class DefaultMessageBus implements MessageBus {
 
         CompletableFuture<JsonObject> fut = new CompletableFuture<>();
         pending.put(cid, fut);
+
         send(env);
         return fut;
     }
@@ -116,6 +101,7 @@ public final class DefaultMessageBus implements MessageBus {
         BusTypeAdapter<Object> reqA = (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) reqType);
         @SuppressWarnings("unchecked")
         BusTypeAdapter<Object> resA = (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) resType);
+
         JsonObject payload = reqA.serialize(req);
         return callRaw(action, payload).thenApply(json -> resType.cast(resA.deserialize(json)));
     }
@@ -124,6 +110,7 @@ public final class DefaultMessageBus implements MessageBus {
     public <R> CompletableFuture<R> call(RpcMessage request) {
         Class<?> c = request.getClass();
         BusAction a = c.getAnnotation(BusAction.class);
+
         if (a == null || a.value().isEmpty())
             throw new IllegalArgumentException("Missing @BusAction on " + c.getName());
         if (a.response() == Void.class)
@@ -137,20 +124,23 @@ public final class DefaultMessageBus implements MessageBus {
 
         boolean onMain = request.runOnMainThread();
         CompletableFuture<R> out = new CompletableFuture<>();
+
         raw.whenComplete((json, ex) -> {
             Runnable r = () -> {
                 if (ex != null) out.completeExceptionally(ex);
                 else out.complete((R) a.response().cast(resA.deserialize(json)));
             };
-            if (onMain) Bukkit.getScheduler().runTask(backend.getOwnerPlugin(), r);
+            if (onMain) scheduler.runOnMainThread(r);
             else r.run();
         });
+
         return out;
     }
 
     public <Req, Res> CompletableFuture<Res> call(Req request, Class<Res> responseType) {
         Class<?> reqType = request.getClass();
         BusAction action = reqType.getAnnotation(BusAction.class);
+
         if (action == null || action.value().isEmpty())
             throw new IllegalArgumentException("Missing @BusAction on " + reqType.getName());
 
@@ -164,20 +154,23 @@ public final class DefaultMessageBus implements MessageBus {
 
         boolean onMain = request instanceof RpcMessage ra && ra.runOnMainThread();
         CompletableFuture<Res> out = new CompletableFuture<>();
+
         raw.whenComplete((json, ex) -> {
             Runnable r = () -> {
                 if (ex != null) out.completeExceptionally(ex);
                 else out.complete(responseType.cast(resA.deserialize(json)));
             };
-            if (onMain) Bukkit.getScheduler().runTask(backend.getOwnerPlugin(), r);
+            if (onMain) scheduler.runOnMainThread(r);
             else r.run();
         });
+
         return out;
     }
 
     @Override
     public void register(Class<?> clazz) {
         BusAction a = clazz.getAnnotation(BusAction.class);
+
         if (a == null || a.value().isEmpty())
             throw new IllegalArgumentException("Missing @BusAction on " + clazz.getName());
 
@@ -197,6 +190,8 @@ public final class DefaultMessageBus implements MessageBus {
     }
 
     private void onIncoming(JsonObject wire) {
+        maybeGcSeen();
+
         Envelope env = fromWire(wire);
         if (env == null || env.kind == null || env.action == null) return;
 
@@ -222,8 +217,10 @@ public final class DefaultMessageBus implements MessageBus {
 
     private void handleResponse(Envelope env) {
         if (env.cid == null) return;
+
         CompletableFuture<JsonObject> fut = pending.remove(env.cid);
         if (fut == null) return;
+
         if (env.error != null) fut.completeExceptionally(new RuntimeException(env.error));
         else fut.complete(env.payload != null ? env.payload : new JsonObject());
     }
@@ -231,8 +228,10 @@ public final class DefaultMessageBus implements MessageBus {
     private void handleEvent(Envelope env) {
         EventEntry<?> e = eventHandlers.get(env.action);
         if (e == null) return;
+
         @SuppressWarnings("unchecked")
         EventEntry<BusMessage> ee = (EventEntry<BusMessage>) e;
+
         BusMessage msg = ee.adapter.deserialize(env.payload != null ? env.payload : new JsonObject());
         ee.handler.handle(msg);
     }
@@ -250,7 +249,6 @@ public final class DefaultMessageBus implements MessageBus {
                     throw new IllegalStateException("Endpoint must implement RpcMessage");
 
                 Object result = ra.handle();
-
                 if (result == null) return;
 
                 @SuppressWarnings("unchecked")
@@ -274,7 +272,7 @@ public final class DefaultMessageBus implements MessageBus {
             }
         };
 
-        if (onMain) Bukkit.getScheduler().runTask(backend.getOwnerPlugin(), run);
+        if (onMain) scheduler.runOnMainThread(run);
         else run.run();
     }
 
@@ -282,12 +280,15 @@ public final class DefaultMessageBus implements MessageBus {
         JsonObject o = new JsonObject();
         o.addProperty("action", env.action);
         o.addProperty("kind", env.kind);
+
         if (env.cid != null) o.addProperty("cid", env.cid);
         if (env.mid != null) o.addProperty("mid", env.mid);
         if (env.error != null) o.addProperty("error", env.error);
         if (env.payload != null) o.add("payload", env.payload);
+
         o.addProperty("__sender", backend.getInstanceId());
         o.addProperty("ts", System.currentTimeMillis());
+
         backend.publish(channel, o);
     }
 
@@ -314,11 +315,24 @@ public final class DefaultMessageBus implements MessageBus {
         return prev != null;
     }
 
-    private void gcSeen() {
-        long cutoff = System.currentTimeMillis() - 60_000L;
+    private void maybeGcSeen() {
+        long now = System.currentTimeMillis();
+
+        if (lastGcAt == 0L) {
+            lastGcAt = now;
+            return;
+        }
+
+        long everyMs = 30_000L;
+        if ((now - lastGcAt) < everyMs) return;
+
+        lastGcAt = now;
+
+        long cutoff = now - 60_000L;
         for (Map.Entry<String, Long> e : seen.entrySet()) {
             if (e.getValue() < cutoff) seen.remove(e.getKey(), e.getValue());
         }
+
         if (seen.size() > 50_000) seen.clear();
     }
 }
