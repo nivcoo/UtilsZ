@@ -1,6 +1,7 @@
 package fr.nivcoo.utilsz.core.messaging;
 
 import com.google.gson.JsonObject;
+import org.slf4j.Logger;
 
 import java.util.Map;
 import java.util.UUID;
@@ -24,15 +25,13 @@ public final class DefaultMessageBus implements MessageBus {
         long ts;
     }
 
-    private record EventEntry<T extends BusMessage>(BusTypeAdapter<T> adapter, BusHandler<T> handler) {
-    }
-
-    private record RpcEntry(BusTypeAdapter<Object> reqAdapter) {
-    }
+    private record EventEntry<T extends BusMessage>(BusTypeAdapter<T> adapter, BusHandler<T> handler) {}
+    private record RpcEntry(BusTypeAdapter<Object> reqAdapter) {}
 
     private final MessageBackend backend;
     private final String channel;
     private final Consumer<Runnable> mainThreadExecutor;
+    private final Logger logger;
 
     private final ConcurrentMap<String, EventEntry<?>> eventHandlers = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, RpcEntry> rpcHandlers = new ConcurrentHashMap<>();
@@ -41,26 +40,39 @@ public final class DefaultMessageBus implements MessageBus {
     private final ConcurrentMap<String, Boolean> selfReceive = new ConcurrentHashMap<>();
 
     private final AtomicBoolean started = new AtomicBoolean(false);
-
     private volatile long lastGcAt = 0L;
 
-    public DefaultMessageBus(MessageBackend backend, String channel, Consumer<Runnable> mainThreadExecutor) {
+    public DefaultMessageBus(MessageBackend backend,
+                             String channel,
+                             Consumer<Runnable> mainThreadExecutor,
+                             Logger logger) {
+
         this.backend = backend;
         this.channel = channel;
         this.mainThreadExecutor = mainThreadExecutor;
+        this.logger = logger;
 
         BusAdapterRegistry.registerBuiltins();
+
+        backend.onError(t ->
+                logger.warn("[MessageBus] Backend error: {}", t.getMessage())
+        );
+
         backend.subscribeRaw(channel, this::onIncoming);
     }
 
     @Override
     public void start() {
-        if (started.compareAndSet(false, true)) backend.start();
+        if (started.compareAndSet(false, true)) {
+            backend.start();
+        }
     }
 
     @Override
     public void close() {
-        pending.forEach((cid, fut) -> fut.completeExceptionally(new CancellationException("Bus closed")));
+        pending.forEach((cid, fut) ->
+                fut.completeExceptionally(new CancellationException("Bus closed"))
+        );
         pending.clear();
         started.set(false);
         backend.close();
@@ -69,7 +81,8 @@ public final class DefaultMessageBus implements MessageBus {
     @Override
     public void publish(BusMessage evt) {
         @SuppressWarnings("unchecked")
-        BusTypeAdapter<Object> ad = (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) evt.getClass());
+        BusTypeAdapter<Object> ad =
+                (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) evt.getClass());
 
         Envelope env = new Envelope();
         env.kind = "evt";
@@ -97,14 +110,23 @@ public final class DefaultMessageBus implements MessageBus {
         return fut;
     }
 
-    public <Req, Res> CompletableFuture<Res> call(String action, Req req, Class<Req> reqType, Class<Res> resType) {
+    public <Req, Res> CompletableFuture<Res> call(String action,
+                                                  Req req,
+                                                  Class<Req> reqType,
+                                                  Class<Res> resType) {
+
         @SuppressWarnings("unchecked")
-        BusTypeAdapter<Object> reqA = (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) reqType);
+        BusTypeAdapter<Object> reqA =
+                (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) reqType);
+
         @SuppressWarnings("unchecked")
-        BusTypeAdapter<Object> resA = (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) resType);
+        BusTypeAdapter<Object> resA =
+                (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) resType);
 
         JsonObject payload = reqA.serialize(req);
-        return callRaw(action, payload).thenApply(json -> resType.cast(resA.deserialize(json)));
+
+        return callRaw(action, payload)
+                .thenApply(json -> resType.cast(resA.deserialize(json)));
     }
 
     @SuppressWarnings("unchecked")
@@ -114,11 +136,15 @@ public final class DefaultMessageBus implements MessageBus {
 
         if (a == null || a.value().isEmpty())
             throw new IllegalArgumentException("Missing @BusAction on " + c.getName());
+
         if (a.response() == Void.class)
             throw new IllegalArgumentException("This @BusAction is an event, not a RPC");
 
-        BusTypeAdapter<Object> reqA = (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) c);
-        BusTypeAdapter<Object> resA = (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) a.response());
+        BusTypeAdapter<Object> reqA =
+                (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) c);
+
+        BusTypeAdapter<Object> resA =
+                (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) a.response());
 
         JsonObject payload = reqA.serialize(request);
         CompletableFuture<JsonObject> raw = callRaw(a.value(), payload);
@@ -128,9 +154,13 @@ public final class DefaultMessageBus implements MessageBus {
 
         raw.whenComplete((json, ex) -> {
             Runnable r = () -> {
-                if (ex != null) out.completeExceptionally(ex);
-                else out.complete((R) a.response().cast(resA.deserialize(json)));
+                if (ex != null) {
+                    out.completeExceptionally(ex);
+                } else {
+                    out.complete((R) a.response().cast(resA.deserialize(json)));
+                }
             };
+
             if (onMain) mainThreadExecutor.accept(r);
             else r.run();
         });
@@ -138,7 +168,9 @@ public final class DefaultMessageBus implements MessageBus {
         return out;
     }
 
-    public <Req, Res> CompletableFuture<Res> call(Req request, Class<Res> responseType) {
+    public <Req, Res> CompletableFuture<Res> call(Req request,
+                                                  Class<Res> responseType) {
+
         Class<?> reqType = request.getClass();
         BusAction action = reqType.getAnnotation(BusAction.class);
 
@@ -146,9 +178,12 @@ public final class DefaultMessageBus implements MessageBus {
             throw new IllegalArgumentException("Missing @BusAction on " + reqType.getName());
 
         @SuppressWarnings("unchecked")
-        BusTypeAdapter<Object> reqA = (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) reqType);
+        BusTypeAdapter<Object> reqA =
+                (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) reqType);
+
         @SuppressWarnings("unchecked")
-        BusTypeAdapter<Object> resA = (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) responseType);
+        BusTypeAdapter<Object> resA =
+                (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) responseType);
 
         JsonObject payload = reqA.serialize(request);
         CompletableFuture<JsonObject> raw = callRaw(action.value(), payload);
@@ -161,6 +196,7 @@ public final class DefaultMessageBus implements MessageBus {
                 if (ex != null) out.completeExceptionally(ex);
                 else out.complete(responseType.cast(resA.deserialize(json)));
             };
+
             if (onMain) mainThreadExecutor.accept(r);
             else r.run();
         });
@@ -178,13 +214,21 @@ public final class DefaultMessageBus implements MessageBus {
         selfReceive.put(a.value(), a.receiveOwnMessages());
 
         if (RpcMessage.class.isAssignableFrom(clazz) && a.response() != Void.class) {
+
             @SuppressWarnings("unchecked")
-            BusTypeAdapter<Object> reqA = (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) clazz);
+            BusTypeAdapter<Object> reqA =
+                    (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) clazz);
+
             rpcHandlers.put(a.value(), new RpcEntry(reqA));
+
         } else if (BusMessage.class.isAssignableFrom(clazz)) {
+
             @SuppressWarnings("unchecked")
-            BusTypeAdapter<BusMessage> ad = (BusTypeAdapter<BusMessage>) BusAdapterRegistry.ensureAdapter((Class) clazz);
+            BusTypeAdapter<BusMessage> ad =
+                    (BusTypeAdapter<BusMessage>) BusAdapterRegistry.ensureAdapter((Class) clazz);
+
             eventHandlers.put(a.value(), new EventEntry<>(ad, BusMessage::execute));
+
         } else {
             throw new IllegalArgumentException("Class must implement BusMessage or RpcMessage");
         }
@@ -196,7 +240,8 @@ public final class DefaultMessageBus implements MessageBus {
         Envelope env = fromWire(wire);
         if (env == null || env.kind == null || env.action == null) return;
 
-        boolean isSelf = env.sender != null && env.sender.equals(backend.getInstanceId());
+        boolean isSelf =
+                env.sender != null && env.sender.equals(backend.getInstanceId());
 
         if ("req".equals(env.kind) || "evt".equals(env.kind)) {
             boolean allowSelf = selfReceive.getOrDefault(env.action, false);
@@ -222,8 +267,10 @@ public final class DefaultMessageBus implements MessageBus {
         CompletableFuture<JsonObject> fut = pending.remove(env.cid);
         if (fut == null) return;
 
-        if (env.error != null) fut.completeExceptionally(new RuntimeException(env.error));
-        else fut.complete(env.payload != null ? env.payload : new JsonObject());
+        if (env.error != null)
+            fut.completeExceptionally(new RuntimeException(env.error));
+        else
+            fut.complete(env.payload != null ? env.payload : new JsonObject());
     }
 
     private void handleEvent(Envelope env) {
@@ -233,7 +280,9 @@ public final class DefaultMessageBus implements MessageBus {
         @SuppressWarnings("unchecked")
         EventEntry<BusMessage> ee = (EventEntry<BusMessage>) e;
 
-        BusMessage msg = ee.adapter.deserialize(env.payload != null ? env.payload : new JsonObject());
+        BusMessage msg =
+                ee.adapter.deserialize(env.payload != null ? env.payload : new JsonObject());
+
         ee.handler.handle(msg);
     }
 
@@ -241,7 +290,9 @@ public final class DefaultMessageBus implements MessageBus {
         RpcEntry re = rpcHandlers.get(env.action);
         if (re == null || env.cid == null) return;
 
-        Object req = re.reqAdapter.deserialize(env.payload != null ? env.payload : new JsonObject());
+        Object req =
+                re.reqAdapter.deserialize(env.payload != null ? env.payload : new JsonObject());
+
         boolean onMain = req instanceof RpcMessage ra && ra.runOnMainThread();
 
         Runnable run = () -> {
@@ -253,13 +304,16 @@ public final class DefaultMessageBus implements MessageBus {
                 if (result == null) return;
 
                 @SuppressWarnings("unchecked")
-                BusTypeAdapter<Object> resA = (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) result.getClass());
+                BusTypeAdapter<Object> resA =
+                        (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter(
+                                (Class) result.getClass());
 
                 Envelope out = new Envelope();
                 out.kind = "res";
                 out.action = env.action;
                 out.cid = env.cid;
                 out.payload = resA.serialize(result);
+
                 send(out);
 
             } catch (Exception ex) {
@@ -267,8 +321,11 @@ public final class DefaultMessageBus implements MessageBus {
                 out.kind = "res";
                 out.action = env.action;
                 out.cid = env.cid;
-                out.error = ex.getMessage() != null ? ex.getMessage() : ex.toString();
+                out.error = ex.getMessage() != null
+                        ? ex.getMessage()
+                        : ex.toString();
                 out.payload = new JsonObject();
+
                 send(out);
             }
         };
@@ -279,6 +336,7 @@ public final class DefaultMessageBus implements MessageBus {
 
     private void send(Envelope env) {
         JsonObject o = new JsonObject();
+
         o.addProperty("action", env.action);
         o.addProperty("kind", env.kind);
 
@@ -296,15 +354,34 @@ public final class DefaultMessageBus implements MessageBus {
     private static Envelope fromWire(JsonObject o) {
         try {
             Envelope e = new Envelope();
+
             e.kind = o.has("kind") ? o.get("kind").getAsString() : null;
             e.action = o.has("action") ? o.get("action").getAsString() : null;
             e.cid = o.has("cid") ? o.get("cid").getAsString() : null;
             e.mid = o.has("mid") ? o.get("mid").getAsString() : null;
-            e.payload = o.has("payload") && o.get("payload").isJsonObject() ? o.getAsJsonObject("payload") : new JsonObject();
-            e.error = o.has("error") && !o.get("error").isJsonNull() ? o.get("error").getAsString() : null;
-            e.sender = o.has("__sender") ? o.get("__sender").getAsString() : null;
-            e.ts = o.has("ts") ? o.get("ts").getAsLong() : 0L;
+
+            e.payload =
+                    o.has("payload") && o.get("payload").isJsonObject()
+                            ? o.getAsJsonObject("payload")
+                            : new JsonObject();
+
+            e.error =
+                    o.has("error") && !o.get("error").isJsonNull()
+                            ? o.get("error").getAsString()
+                            : null;
+
+            e.sender =
+                    o.has("__sender")
+                            ? o.get("__sender").getAsString()
+                            : null;
+
+            e.ts =
+                    o.has("ts")
+                            ? o.get("ts").getAsLong()
+                            : 0L;
+
             return e;
+
         } catch (Exception ignore) {
             return null;
         }
@@ -330,10 +407,15 @@ public final class DefaultMessageBus implements MessageBus {
         lastGcAt = now;
 
         long cutoff = now - 60_000L;
+
         for (Map.Entry<String, Long> e : seen.entrySet()) {
-            if (e.getValue() < cutoff) seen.remove(e.getKey(), e.getValue());
+            if (e.getValue() < cutoff) {
+                seen.remove(e.getKey(), e.getValue());
+            }
         }
 
-        if (seen.size() > 50_000) seen.clear();
+        if (seen.size() > 50_000) {
+            seen.clear();
+        }
     }
 }

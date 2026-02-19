@@ -3,7 +3,6 @@ package fr.nivcoo.utilsz.core.messaging.backend;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import fr.nivcoo.utilsz.core.messaging.MessageBackend;
-import org.slf4j.Logger;
 import redis.clients.jedis.DefaultJedisClientConfig;
 import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.Jedis;
@@ -23,7 +22,6 @@ import java.util.function.Consumer;
 public final class RedisMessageBackend implements MessageBackend {
 
     private final JedisPool jedisPool;
-    private final Logger logger;
 
     private final Map<String, List<Consumer<JsonObject>>> subscribers = new ConcurrentHashMap<>();
 
@@ -32,14 +30,24 @@ public final class RedisMessageBackend implements MessageBackend {
     private volatile Thread listenerThread;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    public RedisMessageBackend(Logger logger, String host, int port, String username, String password) {
-        this.logger = logger;
+    private volatile Consumer<Throwable> errorHandler;
 
+    public RedisMessageBackend(String host, int port, String username, String password) {
         DefaultJedisClientConfig.Builder cfg = DefaultJedisClientConfig.builder();
         if (username != null && !username.isEmpty()) cfg.user(username);
         if (password != null && !password.isEmpty()) cfg.password(password);
 
         this.jedisPool = new JedisPool(new HostAndPort(host, port), cfg.build());
+    }
+
+    @Override
+    public void onError(Consumer<Throwable> handler) {
+        this.errorHandler = handler;
+    }
+
+    private void report(Throwable t) {
+        Consumer<Throwable> h = this.errorHandler;
+        if (h != null) h.accept(t);
     }
 
     @Override
@@ -50,8 +58,10 @@ public final class RedisMessageBackend implements MessageBackend {
     @Override
     public synchronized void start() {
         if (running.get()) return;
+
         String[] chans = subscribers.keySet().toArray(new String[0]);
         if (chans.length == 0) return;
+
         running.set(true);
         startListenerInternal(chans);
     }
@@ -94,7 +104,9 @@ public final class RedisMessageBackend implements MessageBackend {
     @Override
     public void publish(String channel, JsonObject json) {
         try (Jedis j = jedisPool.getResource()) {
-            j.publish(channel, json.toString());
+            j.publish(channel, json == null ? "{}" : json.toString());
+        } catch (Exception e) {
+            report(e);
         }
     }
 
@@ -119,6 +131,7 @@ public final class RedisMessageBackend implements MessageBackend {
 
         String[] chans = subscribers.keySet().toArray(new String[0]);
         if (chans.length == 0) return;
+
         running.set(true);
         startListenerInternal(chans);
     }
@@ -127,7 +140,13 @@ public final class RedisMessageBackend implements MessageBackend {
         pubSub = new JedisPubSub() {
             @Override
             public void onMessage(String channel, String message) {
-                JsonObject obj = JsonParser.parseString(message).getAsJsonObject();
+                JsonObject obj;
+                try {
+                    obj = JsonParser.parseString(message).getAsJsonObject();
+                } catch (Exception e) {
+                    report(e);
+                    return;
+                }
 
                 List<Consumer<JsonObject>> regs = subscribers.get(channel);
                 if (regs == null) return;
@@ -141,7 +160,7 @@ public final class RedisMessageBackend implements MessageBackend {
                     try {
                         cb.accept(obj);
                     } catch (Throwable t) {
-                        logger.warn("[Messaging Redis] Subscriber error: {}", t.getMessage());
+                        report(t);
                     }
                 }
             }
@@ -153,7 +172,7 @@ public final class RedisMessageBackend implements MessageBackend {
                     j.subscribe(pubSub, channels);
                 } catch (Exception e) {
                     if (!running.get()) break;
-                    logger.warn("[Messaging Redis] Listener crashed: {}", e.getMessage());
+                    report(e);
                     try {
                         TimeUnit.SECONDS.sleep(2);
                     } catch (InterruptedException ex) {

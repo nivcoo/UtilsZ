@@ -9,7 +9,6 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.DeliverCallback;
 import org.jetbrains.annotations.NotNull;
-import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -27,7 +26,6 @@ public final class RabbitMqMessageBackend implements MessageBackend {
 
     private static final String CONNECTION_NAME = "MessageBusRabbitMQ";
 
-    private final Logger logger;
     private final String instanceId = UUID.randomUUID().toString();
 
     private final String host;
@@ -42,21 +40,31 @@ public final class RabbitMqMessageBackend implements MessageBackend {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Object lock = new Object();
 
+    private volatile Consumer<Throwable> errorHandler;
+
     private Connection connection;
     private Channel channel;
 
-    public RabbitMqMessageBackend(Logger logger,
-                                  String host,
+    public RabbitMqMessageBackend(String host,
                                   int port,
                                   String virtualHost,
                                   String username,
                                   String password) {
-        this.logger = logger;
         this.host = host;
         this.port = port;
         this.virtualHost = virtualHost;
         this.username = username;
         this.password = password;
+    }
+
+    @Override
+    public void onError(Consumer<Throwable> handler) {
+        this.errorHandler = handler;
+    }
+
+    private void report(Throwable t) {
+        Consumer<Throwable> h = this.errorHandler;
+        if (h != null) h.accept(t);
     }
 
     @Override
@@ -125,13 +133,14 @@ public final class RabbitMqMessageBackend implements MessageBackend {
 
                 channel.basicPublish(channelName, "", null, body);
             } catch (IOException e) {
-                logger.warn("[Messaging RabbitMQ] Publish failed on {}: {}", channelName, e.getMessage());
+                report(e);
             }
         }
     }
 
     private void ensureConnection() {
         if (connection != null && connection.isOpen() && channel != null && channel.isOpen()) return;
+
         try {
             if (connection != null) {
                 try {
@@ -141,12 +150,13 @@ public final class RabbitMqMessageBackend implements MessageBackend {
             }
         } catch (Exception ignored) {
         }
+
         try {
             ConnectionFactory factory = getConnectionFactory();
             connection = factory.newConnection(CONNECTION_NAME);
             channel = connection.createChannel();
         } catch (Exception e) {
-            logger.warn("[Messaging RabbitMQ] Connection failed: {}", e.getMessage());
+            report(e);
             connection = null;
             channel = null;
         }
@@ -156,6 +166,7 @@ public final class RabbitMqMessageBackend implements MessageBackend {
         ConnectionFactory factory = new ConnectionFactory();
         factory.setHost(host);
         factory.setPort(port);
+
         if (virtualHost != null && !virtualHost.isEmpty()) {
             factory.setVirtualHost(virtualHost);
         }
@@ -165,9 +176,11 @@ public final class RabbitMqMessageBackend implements MessageBackend {
         if (password != null && !password.isEmpty()) {
             factory.setPassword(password);
         }
+
         factory.setAutomaticRecoveryEnabled(true);
         factory.setNetworkRecoveryInterval(2000);
         factory.setTopologyRecoveryEnabled(true);
+
         return factory;
     }
 
@@ -184,13 +197,15 @@ public final class RabbitMqMessageBackend implements MessageBackend {
 
             DeliverCallback deliverCallback = (consumerTag, delivery) -> {
                 String body = new String(delivery.getBody(), StandardCharsets.UTF_8);
+
                 JsonObject obj;
                 try {
                     obj = JsonParser.parseString(body).getAsJsonObject();
                 } catch (Exception e) {
-                    logger.warn("[Messaging RabbitMQ] Invalid JSON: {}", e.getMessage());
+                    report(e);
                     return;
                 }
+
                 List<Consumer<JsonObject>> regs = subscribers.get(channelName);
                 if (regs == null) return;
 
@@ -203,15 +218,16 @@ public final class RabbitMqMessageBackend implements MessageBackend {
                     try {
                         cb.accept(obj);
                     } catch (Throwable t) {
-                        logger.warn("[Messaging RabbitMQ] Subscriber error: {}", t.getMessage());
+                        report(t);
                     }
                 }
             };
 
             channel.basicConsume(queue, true, deliverCallback, consumerTag -> {});
             subscribedChannels.put(channelName, Boolean.TRUE);
+
         } catch (IOException e) {
-            logger.warn("[Messaging RabbitMQ] Subscription failed on {}: {}", channelName, e.getMessage());
+            report(e);
         }
     }
 }
