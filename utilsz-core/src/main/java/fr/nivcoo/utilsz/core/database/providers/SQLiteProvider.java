@@ -74,13 +74,13 @@ public class SQLiteProvider implements DatabaseProvider {
         for (int i = 0; i < elements.size(); i++) {
             Object element = elements.get(i);
 
-            if (element instanceof ColumnDefinition col) {
-                query.append("`").append(col.name()).append("` ").append(mapType(col.type()));
-                if (col.constraints() != null && !col.constraints().isEmpty()) {
-                    query.append(" ").append(col.constraints());
+            if (element instanceof ColumnDefinition(String name, String type, String constraints)) {
+                query.append("`").append(name).append("` ").append(mapType(type));
+                if (constraints != null && !constraints.isEmpty()) {
+                    query.append(" ").append(constraints);
                 }
-            } else if (element instanceof TableConstraintDefinition constraint) {
-                query.append(constraint.constraint());
+            } else if (element instanceof TableConstraintDefinition(String constraint1)) {
+                query.append(constraint1);
             } else {
                 throw new IllegalArgumentException("Unknown table element: " + element.getClass());
             }
