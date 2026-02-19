@@ -5,10 +5,7 @@ import fr.nivcoo.utilsz.core.platform.PlatformBootstrap;
 
 public final class VelocityBootstrap implements PlatformBootstrap {
 
-    private final MainThreadExecutor executor;
-
     public VelocityBootstrap() {
-        this.executor = Runnable::run;
     }
 
     @Override
@@ -28,11 +25,6 @@ public final class VelocityBootstrap implements PlatformBootstrap {
     @Override
     public int priority() {
         return 100;
-    }
-
-    @Override
-    public MainThreadExecutor mainThreadExecutor() {
-        return executor;
     }
 
 }

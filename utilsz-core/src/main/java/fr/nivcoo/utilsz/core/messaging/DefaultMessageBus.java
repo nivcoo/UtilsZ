@@ -9,6 +9,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 public final class DefaultMessageBus implements MessageBus {
 
@@ -31,7 +32,7 @@ public final class DefaultMessageBus implements MessageBus {
 
     private final MessageBackend backend;
     private final String channel;
-    private final PlatformScheduler scheduler;
+    private final Consumer<Runnable> mainThreadExecutor;
 
     private final ConcurrentMap<String, EventEntry<?>> eventHandlers = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, RpcEntry> rpcHandlers = new ConcurrentHashMap<>();
@@ -43,10 +44,10 @@ public final class DefaultMessageBus implements MessageBus {
 
     private volatile long lastGcAt = 0L;
 
-    public DefaultMessageBus(MessageBackend backend, String channel, PlatformScheduler scheduler) {
+    public DefaultMessageBus(MessageBackend backend, String channel, Consumer<Runnable> mainThreadExecutor) {
         this.backend = backend;
         this.channel = channel;
-        this.scheduler = scheduler;
+        this.mainThreadExecutor = mainThreadExecutor;
 
         BusAdapterRegistry.registerBuiltins();
         backend.subscribeRaw(channel, this::onIncoming);
@@ -130,7 +131,7 @@ public final class DefaultMessageBus implements MessageBus {
                 if (ex != null) out.completeExceptionally(ex);
                 else out.complete((R) a.response().cast(resA.deserialize(json)));
             };
-            if (onMain) scheduler.runOnMainThread(r);
+            if (onMain) mainThreadExecutor.accept(r);
             else r.run();
         });
 
@@ -160,7 +161,7 @@ public final class DefaultMessageBus implements MessageBus {
                 if (ex != null) out.completeExceptionally(ex);
                 else out.complete(responseType.cast(resA.deserialize(json)));
             };
-            if (onMain) scheduler.runOnMainThread(r);
+            if (onMain) mainThreadExecutor.accept(r);
             else r.run();
         });
 
@@ -272,7 +273,7 @@ public final class DefaultMessageBus implements MessageBus {
             }
         };
 
-        if (onMain) scheduler.runOnMainThread(run);
+        if (onMain) mainThreadExecutor.accept(run);
         else run.run();
     }
 

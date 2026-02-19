@@ -8,17 +8,7 @@ import org.bukkit.plugin.Plugin;
 
 public final class BukkitBootstrap implements PlatformBootstrap {
 
-    private final MainThreadExecutor executor;
-
     public BukkitBootstrap() {
-        Plugin plugin = Bukkit.getPluginManager().getPlugins().length > 0
-                ? Bukkit.getPluginManager().getPlugins()[0]
-                : null;
-
-        this.executor = task -> {
-            if (plugin != null) Bukkit.getScheduler().runTask(plugin, task);
-            else task.run();
-        };
     }
 
     @Override
@@ -34,11 +24,6 @@ public final class BukkitBootstrap implements PlatformBootstrap {
     @Override
     public int priority() {
         return 100;
-    }
-
-    @Override
-    public MainThreadExecutor mainThreadExecutor() {
-        return executor;
     }
 
     @Override
