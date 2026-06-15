@@ -1,6 +1,5 @@
 package fr.nivcoo.utilsz.platform.velocity.commands;
 
-import com.velocitypowered.api.command.Command;
 import com.velocitypowered.api.command.CommandMeta;
 import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.proxy.ProxyServer;
@@ -19,9 +18,7 @@ public final class VelocityCommandRegistrar implements CommandRegistrar {
 
     @Override
     public void registerRoot(String rootLabel, CommandDispatcher dispatcher) {
-
         SimpleCommand simple = new SimpleCommand() {
-
             @Override
             public void execute(Invocation invocation) {
                 dispatcher.dispatch(
