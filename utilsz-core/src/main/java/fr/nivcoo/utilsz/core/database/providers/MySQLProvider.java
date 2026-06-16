@@ -3,8 +3,10 @@ package fr.nivcoo.utilsz.core.database.providers;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import fr.nivcoo.utilsz.core.database.ColumnDefinition;
+import fr.nivcoo.utilsz.core.database.ColumnType;
 import fr.nivcoo.utilsz.core.database.DatabaseProvider;
 import fr.nivcoo.utilsz.core.database.TableConstraintDefinition;
+import fr.nivcoo.utilsz.core.database.TypedColumnDefinition;
 
 import java.sql.*;
 import java.util.List;
@@ -89,7 +91,13 @@ public class MySQLProvider implements DatabaseProvider {
 
             if (element instanceof ColumnDefinition(String name, String type, String constraints)) {
                 query.append("`").append(name).append("` ")
-                        .append(mapType(type));
+                        .append(type);
+                if (constraints != null && !constraints.isEmpty()) {
+                    query.append(" ").append(constraints);
+                }
+            } else if (element instanceof TypedColumnDefinition(String name, ColumnType type, int length, String constraints)) {
+                query.append("`").append(name).append("` ")
+                        .append(mapType(type, length));
                 if (constraints != null && !constraints.isEmpty()) {
                     query.append(" ").append(constraints);
                 }
@@ -105,13 +113,17 @@ public class MySQLProvider implements DatabaseProvider {
         executeUpdate(query.toString());
     }
 
-    private String mapType(String type) {
-        return switch (type.toUpperCase()) {
-            case "TEXT" -> "VARCHAR(255)";
-            case "INTEGER" -> "INT";
-            case "REAL" -> "DOUBLE";
-            case "BLOB" -> "LONGBLOB";
-            default -> type;
+    private String mapType(ColumnType type, int length) {
+        return switch (type) {
+            case ID -> "BIGINT";
+            case UUID -> "VARCHAR(36)";
+            case STRING -> "VARCHAR(" + (length > 0 ? length : 255) + ")";
+            case TEXT -> "TEXT";
+            case INT -> "INT";
+            case LONG -> "BIGINT";
+            case DECIMAL -> "VARCHAR(48)";
+            case BOOLEAN -> "TINYINT(1)";
+            case BLOB -> "LONGBLOB";
         };
     }
 }

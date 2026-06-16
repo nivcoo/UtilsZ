@@ -1,8 +1,10 @@
 package fr.nivcoo.utilsz.core.database.providers;
 
 import fr.nivcoo.utilsz.core.database.ColumnDefinition;
+import fr.nivcoo.utilsz.core.database.ColumnType;
 import fr.nivcoo.utilsz.core.database.DatabaseProvider;
 import fr.nivcoo.utilsz.core.database.TableConstraintDefinition;
+import fr.nivcoo.utilsz.core.database.TypedColumnDefinition;
 
 import java.sql.*;
 import java.util.List;
@@ -75,7 +77,12 @@ public class SQLiteProvider implements DatabaseProvider {
             Object element = elements.get(i);
 
             if (element instanceof ColumnDefinition(String name, String type, String constraints)) {
-                query.append("`").append(name).append("` ").append(mapType(type));
+                query.append("`").append(name).append("` ").append(type);
+                if (constraints != null && !constraints.isEmpty()) {
+                    query.append(" ").append(constraints);
+                }
+            } else if (element instanceof TypedColumnDefinition(String name, ColumnType type, int length, String constraints)) {
+                query.append("`").append(name).append("` ").append(mapType(type, length));
                 if (constraints != null && !constraints.isEmpty()) {
                     query.append(" ").append(constraints);
                 }
@@ -92,13 +99,17 @@ public class SQLiteProvider implements DatabaseProvider {
         executeUpdate(query.toString());
     }
 
-    private String mapType(String type) {
-        return switch (type.toUpperCase()) {
-            case "TEXT" -> "TEXT";
-            case "INTEGER" -> "INTEGER";
-            case "REAL" -> "REAL";
-            case "BLOB" -> "BLOB";
-            default -> type;
+    private String mapType(ColumnType type, int length) {
+        return switch (type) {
+            case ID -> "INTEGER";
+            case UUID -> "VARCHAR(36)";
+            case STRING -> "VARCHAR(" + (length > 0 ? length : 255) + ")";
+            case TEXT -> "TEXT";
+            case INT -> "INTEGER";
+            case LONG -> "BIGINT";
+            case DECIMAL -> "VARCHAR(48)";
+            case BOOLEAN -> "INTEGER";
+            case BLOB -> "BLOB";
         };
     }
 }

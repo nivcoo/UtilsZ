@@ -1,0 +1,50 @@
+package fr.nivcoo.utilsz.core.database;
+
+import java.sql.SQLException;
+import java.util.List;
+import java.util.Map;
+
+public final class DatabaseTable {
+
+    private final DatabaseManager database;
+    private final String name;
+
+    DatabaseTable(DatabaseManager database, String name) {
+        this.database = database;
+        this.name = name;
+    }
+
+    public int insert(Map<String, ?> values) throws SQLException {
+        return database.insert(name, values);
+    }
+
+    public int update(Map<String, ?> values, String where, Object... params) throws SQLException {
+        return database.update(name, values, where, params);
+    }
+
+    public int delete(String where, Object... params) throws SQLException {
+        return database.delete(name, where, params);
+    }
+
+    public boolean exists(String where, Object... params) throws SQLException {
+        return database.exists(name, where, params);
+    }
+
+    public <T> List<T> select(String columns, RowMapper<T> mapper, String where, String orderBy,
+                              int limit, Object... params) throws SQLException {
+        StringBuilder sql = new StringBuilder("SELECT ")
+                .append(columns == null || columns.isBlank() ? "*" : columns)
+                .append(" FROM ")
+                .append(name);
+        if (where != null && !where.isBlank()) {
+            sql.append(" WHERE ").append(where);
+        }
+        if (orderBy != null && !orderBy.isBlank()) {
+            sql.append(" ORDER BY ").append(orderBy);
+        }
+        if (limit > 0) {
+            sql.append(" LIMIT ").append(limit);
+        }
+        return database.query(sql.toString(), mapper, params);
+    }
+}
