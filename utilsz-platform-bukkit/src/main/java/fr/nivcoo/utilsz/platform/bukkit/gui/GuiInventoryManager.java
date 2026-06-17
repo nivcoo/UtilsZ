@@ -31,7 +31,14 @@ public final class GuiInventoryManager implements Listener {
         Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, () -> {
             if (inventories.isEmpty()) return;
 
-            for (GuiInventory inv : inventories.values()) {
+            var iterator = inventories.values().iterator();
+            while (iterator.hasNext()) {
+                GuiInventory inv = iterator.next();
+                if (!isViewing(inv.getPlayer(), inv)) {
+                    iterator.remove();
+                    continue;
+                }
+
                 int tick = 0;
                 Object currentTick = inv.get(GuiInventory.TICK);
                 if (currentTick instanceof Integer) tick = (Integer) currentTick;
@@ -95,6 +102,10 @@ public final class GuiInventoryManager implements Listener {
         Player p = (Player) e.getWhoClicked();
         GuiInventory inv = get(p);
         if (inv == null) return;
+        if (!e.getView().getTopInventory().equals(inv.getBukkitInventory())) {
+            if (!isViewing(p, inv)) inventories.remove(uuid);
+            return;
+        }
 
         int topSize = e.getView().getTopInventory().getSize();
         boolean isTop = e.getRawSlot() < topSize;
@@ -124,8 +135,13 @@ public final class GuiInventoryManager implements Listener {
         UUID uuid = e.getWhoClicked().getUniqueId();
         if (!inventories.containsKey(uuid)) return;
 
-        GuiInventory inv = get((Player) e.getWhoClicked());
+        Player p = (Player) e.getWhoClicked();
+        GuiInventory inv = get(p);
         if (inv == null) return;
+        if (!e.getView().getTopInventory().equals(inv.getBukkitInventory())) {
+            if (!isViewing(p, inv)) inventories.remove(uuid);
+            return;
+        }
 
         boolean cancelTopDrag = inv.getProvider().cancelTopDrag();
         if (!cancelTopDrag) {
@@ -136,6 +152,13 @@ public final class GuiInventoryManager implements Listener {
         int topSize = e.getView().getTopInventory().getSize();
         boolean touchesTop = e.getRawSlots().stream().anyMatch(raw -> raw < topSize);
         e.setCancelled(touchesTop);
+    }
+
+    private boolean isViewing(Player player, GuiInventory inv) {
+        return player != null
+                && player.isOnline()
+                && inv != null
+                && player.getOpenInventory().getTopInventory().equals(inv.getBukkitInventory());
     }
 
     @EventHandler(priority = EventPriority.HIGH)
