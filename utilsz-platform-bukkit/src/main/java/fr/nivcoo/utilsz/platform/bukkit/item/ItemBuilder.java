@@ -13,10 +13,11 @@ import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
 import org.bukkit.inventory.meta.SkullMeta;
+import com.destroystokyo.paper.profile.PlayerProfile;
+import com.destroystokyo.paper.profile.ProfileProperty;
 
-import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 public final class ItemBuilder {
@@ -173,12 +174,7 @@ public final class ItemBuilder {
         if (stack.getType() != Material.PLAYER_HEAD || base64 == null || base64.isEmpty()) return this;
 
         SkullMeta m = (SkullMeta) meta();
-
-        if (!tryPaperSetTexture(m, base64)) {
-            return this;
-        }
-
-        stack.setItemMeta(m);
+        if (applyTextureProfile(m, base64)) stack.setItemMeta(m);
         return this;
     }
 
@@ -190,27 +186,14 @@ public final class ItemBuilder {
         return this;
     }
 
-    private static boolean tryPaperSetTexture(SkullMeta meta, String base64) {
+    private static boolean applyTextureProfile(SkullMeta meta, String base64) {
         try {
-            Class<?> playerProfileCls = Class.forName("com.destroystokyo.paper.profile.PlayerProfile");
-            Class<?> profilePropertyCls = Class.forName("com.destroystokyo.paper.profile.ProfileProperty");
-
-            Method createProfile = Bukkit.class.getMethod("createProfile", UUID.class, String.class);
-            Object profile = createProfile.invoke(null,
-                    UUID.nameUUIDFromBytes(Objects.requireNonNull(base64).getBytes()),
+            PlayerProfile profile = Bukkit.createProfile(
+                    UUID.nameUUIDFromBytes(base64.getBytes(StandardCharsets.UTF_8)),
                     null
             );
-
-            Object prop = profilePropertyCls
-                    .getConstructor(String.class, String.class)
-                    .newInstance("textures", base64);
-
-            Method setProperty = playerProfileCls.getMethod("setProperty", profilePropertyCls);
-            setProperty.invoke(profile, prop);
-
-            Method setPlayerProfile = meta.getClass().getMethod("setPlayerProfile", playerProfileCls);
-            setPlayerProfile.invoke(meta, profile);
-
+            profile.setProperty(new ProfileProperty("textures", base64));
+            meta.setPlayerProfile(profile);
             return true;
         } catch (Throwable ignored) {
             return false;
