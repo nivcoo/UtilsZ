@@ -89,20 +89,21 @@ public class MariaDBProvider implements DatabaseProvider {
         for (int i = 0; i < elements.size(); i++) {
             Object element = elements.get(i);
 
-            if (element instanceof ColumnDefinition(String name, String type, String constraints)) {
-                query.append("`").append(name).append("` ").append(type);
-                if (constraints != null && !constraints.isEmpty()) {
-                    query.append(" ").append(constraints);
+            switch (element) {
+                case ColumnDefinition(String name, String type, String constraints) -> {
+                    query.append("`").append(name).append("` ").append(type);
+                    if (constraints != null && !constraints.isEmpty()) {
+                        query.append(" ").append(constraints);
+                    }
                 }
-            } else if (element instanceof TypedColumnDefinition(String name, ColumnType type, int length, String constraints)) {
-                query.append("`").append(name).append("` ").append(mapType(type, length));
-                if (constraints != null && !constraints.isEmpty()) {
-                    query.append(" ").append(constraints);
+                case TypedColumnDefinition(String name, ColumnType type, int length, String constraints) -> {
+                    query.append("`").append(name).append("` ").append(mapType(type, length));
+                    if (constraints != null && !constraints.isEmpty()) {
+                        query.append(" ").append(constraints);
+                    }
                 }
-            } else if (element instanceof TableConstraintDefinition(String constraint)) {
-                query.append(constraint);
-            } else {
-                throw new IllegalArgumentException("Unknown table element: " + element.getClass());
+                case TableConstraintDefinition(String constraint) -> query.append(constraint);
+                default -> throw new IllegalArgumentException("Unknown table element: " + element.getClass());
             }
 
             if (i < elements.size() - 1) query.append(", ");
@@ -114,12 +115,11 @@ public class MariaDBProvider implements DatabaseProvider {
 
     private String mapType(ColumnType type, int length) {
         return switch (type) {
-            case ID -> "BIGINT";
+            case ID, LONG -> "BIGINT";
             case UUID -> "VARCHAR(36)";
             case STRING -> "VARCHAR(" + (length > 0 ? length : 255) + ")";
             case TEXT -> "TEXT";
             case INT -> "INT";
-            case LONG -> "BIGINT";
             case DECIMAL -> "VARCHAR(48)";
             case BOOLEAN -> "TINYINT(1)";
             case BLOB -> "LONGBLOB";
