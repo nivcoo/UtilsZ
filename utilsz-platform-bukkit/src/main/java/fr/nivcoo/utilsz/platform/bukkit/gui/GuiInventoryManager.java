@@ -8,6 +8,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Collection;
@@ -19,10 +20,12 @@ public final class GuiInventoryManager implements Listener {
 
     private final JavaPlugin plugin;
     private final HashMap<UUID, GuiInventory> inventories;
+    private final HashMap<UUID, GuiInventory> pendingOpens;
 
     public GuiInventoryManager(JavaPlugin plugin) {
         this.plugin = plugin;
         this.inventories = new HashMap<>();
+        this.pendingOpens = new HashMap<>();
     }
 
     public void init() {
@@ -34,6 +37,7 @@ public final class GuiInventoryManager implements Listener {
             var iterator = inventories.values().iterator();
             while (iterator.hasNext()) {
                 GuiInventory inv = iterator.next();
+                if (pendingOpens.containsKey(inv.getPlayer().getUniqueId())) continue;
                 if (!isViewing(inv.getPlayer(), inv)) {
                     iterator.remove();
                     continue;
@@ -66,6 +70,12 @@ public final class GuiInventoryManager implements Listener {
         GuiInventory inv = new GuiInventory(p, provider, params);
         provider.init(inv);
         inventories.put(p.getUniqueId(), inv);
+        if (shouldDeferOpen(p, inv)) {
+            UUID uuid = p.getUniqueId();
+            pendingOpens.put(uuid, inv);
+            p.closeInventory();
+            return inv;
+        }
         inv.open();
         return inv;
     }
@@ -103,7 +113,7 @@ public final class GuiInventoryManager implements Listener {
         GuiInventory inv = get(p);
         if (inv == null) return;
         if (!e.getView().getTopInventory().equals(inv.getBukkitInventory())) {
-            if (!isViewing(p, inv)) inventories.remove(uuid);
+            if (!pendingOpens.containsKey(uuid) && !isViewing(p, inv)) inventories.remove(uuid);
             return;
         }
 
@@ -139,7 +149,7 @@ public final class GuiInventoryManager implements Listener {
         GuiInventory inv = get(p);
         if (inv == null) return;
         if (!e.getView().getTopInventory().equals(inv.getBukkitInventory())) {
-            if (!isViewing(p, inv)) inventories.remove(uuid);
+            if (!pendingOpens.containsKey(uuid) && !isViewing(p, inv)) inventories.remove(uuid);
             return;
         }
 
@@ -161,9 +171,28 @@ public final class GuiInventoryManager implements Listener {
                 && player.getOpenInventory().getTopInventory().equals(inv.getBukkitInventory());
     }
 
+    private boolean shouldDeferOpen(Player player, GuiInventory next) {
+        if (player == null || !player.isOnline()) return false;
+        org.bukkit.inventory.Inventory current = player.getOpenInventory().getTopInventory();
+        return current.getType() != InventoryType.CRAFTING
+                && !current.equals(next.getBukkitInventory())
+                && inventories.values().stream().noneMatch(inv -> current.equals(inv.getBukkitInventory()));
+    }
+
     @EventHandler(priority = EventPriority.HIGH)
     public void onClose(InventoryCloseEvent e) {
         UUID uuid = e.getPlayer().getUniqueId();
+        GuiInventory pending = pendingOpens.get(uuid);
+        if (pending != null && !pending.getBukkitInventory().equals(e.getInventory())) {
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (pendingOpens.get(uuid) != pending) return;
+                pendingOpens.remove(uuid);
+                if (pending.getPlayer().isOnline() && inventories.get(uuid) == pending) {
+                    pending.open();
+                }
+            }, 4L);
+        }
+
         GuiInventory inv = inventories.get(uuid);
         if (inv == null) return;
 
