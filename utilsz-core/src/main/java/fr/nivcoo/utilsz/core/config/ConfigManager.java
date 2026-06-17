@@ -574,16 +574,25 @@ public final class ConfigManager {
 
         if (Map.class.isAssignableFrom(t)) {
             Elements el = f.getAnnotation(Elements.class);
-            if (el != null && raw instanceof Map<?, ?> in) {
-                Map<String, Object> out = new LinkedHashMap<>();
+            if (raw instanceof Map<?, ?> in) {
+                Class<?> keyCls = mapKeyClass(f);
+                Class<?> valueCls = mapValueClass(f);
+                Converter<Object> valueConv = findConverterForClass(valueCls);
+                Map<Object, Object> out = new LinkedHashMap<>();
                 for (var e : in.entrySet()) {
                     Object v = e.getValue();
-                    if (v instanceof Map<?, ?> m) out.put(String.valueOf(e.getKey()), fromMapToPojo(el.value(), m));
-                    else out.put(String.valueOf(e.getKey()), v);
+                    Object key = convertSimple(keyCls != null ? keyCls : String.class, e.getKey(), f);
+                    if (el != null && el.value() != Object.class && v instanceof Map<?, ?> m) {
+                        out.put(key, fromMapToPojo(el.value(), m));
+                    } else if (valueConv != null) {
+                        out.put(key, valueConv.read(v, null, f));
+                    } else {
+                        out.put(key, convertSimple(valueCls != null ? valueCls : Object.class, v, f));
+                    }
                 }
                 return out;
             }
-            return (raw instanceof Map<?, ?> m) ? new LinkedHashMap<>(m) : Map.of();
+            return Map.of();
         }
 
         if (raw instanceof Map<?, ?> m) return fromMapToPojo(t, m);
@@ -649,6 +658,36 @@ public final class ConfigManager {
             return out;
         }
 
+        if (v instanceof Map<?, ?> map) {
+            Class<?> valueCls = mapValueClass(f);
+            Converter<Object> valueConv = findConverterForClass(valueCls);
+            Elements el = f.getAnnotation(Elements.class);
+            TextMode mode = f.isAnnotationPresent(TextFormat.class)
+                    ? f.getAnnotation(TextFormat.class).value()
+                    : TextMode.AUTO;
+
+            Map<String, Object> out = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : map.entrySet()) {
+                Object value = e.getValue();
+                if (value == null) {
+                    out.put(mapKeyToYaml(e.getKey()), null);
+                } else if (el != null && el.value() != Object.class) {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    export(value, "", m, new LinkedHashMap<>());
+                    out.put(mapKeyToYaml(e.getKey()), m);
+                } else if (valueCls == Component.class && value instanceof Component c) {
+                    out.put(mapKeyToYaml(e.getKey()), serializeComponent(c, mode));
+                } else if (value instanceof Enum<?> en) {
+                    out.put(mapKeyToYaml(e.getKey()), en.name());
+                } else if (valueConv != null) {
+                    out.put(mapKeyToYaml(e.getKey()), valueConv.write(value, f));
+                } else {
+                    out.put(mapKeyToYaml(e.getKey()), value);
+                }
+            }
+            return out;
+        }
+
         return v;
     }
 
@@ -659,6 +698,30 @@ public final class ConfigManager {
             if (args.length == 1 && args[0] instanceof Class<?> c) return c;
         }
         return null;
+    }
+
+    private static Class<?> mapKeyClass(Field f) {
+        var gt = f.getGenericType();
+        if (gt instanceof ParameterizedType p) {
+            var args = p.getActualTypeArguments();
+            if (args.length == 2 && args[0] instanceof Class<?> c) return c;
+        }
+        return null;
+    }
+
+    private static Class<?> mapValueClass(Field f) {
+        var gt = f.getGenericType();
+        if (gt instanceof ParameterizedType p) {
+            var args = p.getActualTypeArguments();
+            if (args.length == 2 && args[1] instanceof Class<?> c) return c;
+        }
+        return null;
+    }
+
+    private static String mapKeyToYaml(Object key) {
+        if (key == null) return "null";
+        if (key instanceof Enum<?> en) return en.name();
+        return String.valueOf(key);
     }
 
     private static List<?> normalizeToList(Object raw) {
