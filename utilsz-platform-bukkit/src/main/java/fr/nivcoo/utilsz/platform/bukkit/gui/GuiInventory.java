@@ -5,13 +5,16 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.InventoryView;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.function.Consumer;
 
-public final class GuiInventory {
+public final class GuiInventory implements InventoryHolder {
 
     public static final String TICK = "tick";
 
@@ -38,7 +41,7 @@ public final class GuiInventory {
 
         Component initialTitle = provider.title(this);
         this.bukkitInventory = Bukkit.createInventory(
-                player, rows * 9, initialTitle == null ? Component.empty() : initialTitle
+                this, rows * 9, initialTitle == null ? Component.empty() : initialTitle
         );
 
         put(TICK, 0);
@@ -63,11 +66,16 @@ public final class GuiInventory {
         if (curPlain.equals(newPlain)) return;
 
         org.bukkit.inventory.Inventory newInv =
-                Bukkit.createInventory(player, bukkitInventory.getSize(), newTitle);
+                Bukkit.createInventory(this, bukkitInventory.getSize(), newTitle);
         newInv.setContents(bukkitInventory.getContents());
 
         this.bukkitInventory = newInv;
         player.openInventory(newInv);
+    }
+
+    @Override
+    public @NotNull Inventory getInventory() {
+        return bukkitInventory;
     }
 
     public Player getPlayer() {

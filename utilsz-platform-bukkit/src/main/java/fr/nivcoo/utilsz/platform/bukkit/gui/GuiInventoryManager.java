@@ -176,6 +176,7 @@ public final class GuiInventoryManager implements Listener {
         org.bukkit.inventory.Inventory current = player.getOpenInventory().getTopInventory();
         return current.getType() != InventoryType.CRAFTING
                 && !current.equals(next.getBukkitInventory())
+                && !(current.getHolder() instanceof GuiInventory)
                 && inventories.values().stream().noneMatch(inv -> current.equals(inv.getBukkitInventory()));
     }
 
