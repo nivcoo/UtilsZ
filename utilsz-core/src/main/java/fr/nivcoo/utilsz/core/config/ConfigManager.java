@@ -13,6 +13,7 @@ import org.yaml.snakeyaml.Yaml;
 import java.io.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -554,7 +555,8 @@ public final class ConfigManager {
 
         if (List.class.isAssignableFrom(t)) {
             Elements el = f.getAnnotation(Elements.class);
-            Class<?> elemCls = listElementClass(f);
+            Type elemType = listElementType(f);
+            Class<?> elemCls = rawClass(elemType);
             Converter<Object> elemConv = findConverterForClass(elemCls);
 
             List<?> input = normalizeToList(raw);
@@ -565,6 +567,8 @@ public final class ConfigManager {
                     out.add(fromMapToPojo(el.value(), map));
                 } else if (elemConv != null) {
                     out.add(elemConv.read(elemRaw, null, f));
+                } else if (elemType instanceof ParameterizedType) {
+                    out.add(convertFromYamlValue(elemType, elemRaw, f));
                 } else {
                     out.add(convertSimple(elemCls != null ? elemCls : Object.class, elemRaw, f));
                 }
@@ -575,17 +579,25 @@ public final class ConfigManager {
         if (Map.class.isAssignableFrom(t)) {
             Elements el = f.getAnnotation(Elements.class);
             if (raw instanceof Map<?, ?> in) {
-                Class<?> keyCls = mapKeyClass(f);
-                Class<?> valueCls = mapValueClass(f);
+                Type keyType = mapKeyType(f);
+                Type valueType = mapValueType(f);
+                Class<?> keyCls = rawClass(keyType);
+                Class<?> valueCls = rawClass(valueType);
                 Converter<Object> valueConv = findConverterForClass(valueCls);
                 Map<Object, Object> out = new LinkedHashMap<>();
+                Map<?, ?> fallbackMap = fallback instanceof Map<?, ?> fm ? fm : Map.of();
                 for (var e : in.entrySet()) {
                     Object v = e.getValue();
                     Object key = convertSimple(keyCls != null ? keyCls : String.class, e.getKey(), f);
+                    Object fallbackValue = fallbackMap.containsKey(key)
+                            ? fallbackMap.get(key)
+                            : fallbackMap.get(String.valueOf(key));
                     if (el != null && el.value() != Object.class && v instanceof Map<?, ?> m) {
                         out.put(key, fromMapToPojo(el.value(), m));
                     } else if (valueConv != null) {
                         out.put(key, valueConv.read(v, null, f));
+                    } else if (valueType instanceof ParameterizedType) {
+                        out.put(key, convertFromYamlValue(valueType, v, f, fallbackValue));
                     } else {
                         out.put(key, convertSimple(valueCls != null ? valueCls : Object.class, v, f));
                     }
@@ -616,7 +628,8 @@ public final class ConfigManager {
         if (v.getClass().isEnum()) return ((Enum<?>) v).name();
 
         if (v instanceof List<?> list) {
-            Class<?> elemCls = listElementClass(f);
+            Type elemType = listElementType(f);
+            Class<?> elemCls = rawClass(elemType);
             boolean listOfComponent = (elemCls == Component.class);
             Converter<Object> elemConv = findConverterForClass(elemCls);
 
@@ -651,6 +664,8 @@ public final class ConfigManager {
                     out.add(en.name());
                 } else if (elemConv != null) {
                     out.add(elemConv.write(e, f));
+                } else if (elemType instanceof ParameterizedType) {
+                    out.add(convertToYamlValue(elemType, e, f, mode));
                 } else if (shouldExportAsPojo(elemCls, e)) {
                     Map<String, Object> m = new LinkedHashMap<>();
                     export(e, "", m, new LinkedHashMap<>());
@@ -663,7 +678,8 @@ public final class ConfigManager {
         }
 
         if (v instanceof Map<?, ?> map) {
-            Class<?> valueCls = mapValueClass(f);
+            Type valueType = mapValueType(f);
+            Class<?> valueCls = rawClass(valueType);
             Converter<Object> valueConv = findConverterForClass(valueCls);
             Elements el = f.getAnnotation(Elements.class);
             TextMode mode = f.isAnnotationPresent(TextFormat.class)
@@ -685,6 +701,8 @@ public final class ConfigManager {
                     out.put(mapKeyToYaml(e.getKey()), en.name());
                 } else if (valueConv != null) {
                     out.put(mapKeyToYaml(e.getKey()), valueConv.write(value, f));
+                } else if (valueType instanceof ParameterizedType) {
+                    out.put(mapKeyToYaml(e.getKey()), convertToYamlValue(valueType, value, f, mode));
                 } else if (shouldExportAsPojo(valueCls, value)) {
                     Map<String, Object> m = new LinkedHashMap<>();
                     export(value, "", m, new LinkedHashMap<>());
@@ -699,30 +717,121 @@ public final class ConfigManager {
         return v;
     }
 
-    private static Class<?> listElementClass(Field f) {
-        var gt = f.getGenericType();
-        if (gt instanceof ParameterizedType p) {
-            var args = p.getActualTypeArguments();
-            if (args.length == 1 && args[0] instanceof Class<?> c) return c;
+    private Object convertFromYamlValue(Type type, Object raw, Field contextField) {
+        return convertFromYamlValue(type, raw, contextField, null);
+    }
+
+    private Object convertFromYamlValue(Type type, Object raw, Field contextField, Object fallback) {
+        if (raw == null) return null;
+
+        Class<?> cls = rawClass(type);
+        if (type instanceof ParameterizedType p && cls != null) {
+            Type[] args = p.getActualTypeArguments();
+            if (List.class.isAssignableFrom(cls) && args.length == 1) {
+                List<?> input = normalizeToList(raw);
+                List<Object> out = new ArrayList<>(input.size());
+                for (Object elem : input) out.add(convertFromYamlValue(args[0], elem, contextField));
+                return out;
+            }
+            if (Map.class.isAssignableFrom(cls) && args.length == 2 && raw instanceof Map<?, ?> input) {
+                Class<?> keyCls = rawClass(args[0]);
+                Map<?, ?> fallbackMap = fallback instanceof Map<?, ?> fm ? fm : Map.of();
+                Map<Object, Object> out = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> entry : input.entrySet()) {
+                    Object key = convertSimple(keyCls != null ? keyCls : String.class, entry.getKey(), contextField);
+                    Object fallbackValue = fallbackMap.containsKey(key)
+                            ? fallbackMap.get(key)
+                            : fallbackMap.get(String.valueOf(key));
+                    out.put(key, convertFromYamlValue(args[1], entry.getValue(), contextField, fallbackValue));
+                }
+                return out;
+            }
         }
-        return null;
+
+        Converter<Object> conv = findConverterForClass(cls);
+        if (conv != null) return conv.read(raw, null, contextField);
+        if (cls != null && raw instanceof Map<?, ?> m && isConfigPojo(cls)) return fromMapToPojo(cls, m);
+        if (cls != null && isConfigPojo(cls)) return fallback != null ? fallback : newInstance(cls);
+        return convertSimple(cls != null ? cls : Object.class, raw, contextField);
+    }
+
+    private Object convertToYamlValue(Type type, Object value, Field contextField, TextMode mode) {
+        if (value == null) return null;
+
+        Class<?> cls = rawClass(type);
+        if (type instanceof ParameterizedType p && cls != null) {
+            Type[] args = p.getActualTypeArguments();
+            if (List.class.isAssignableFrom(cls) && args.length == 1 && value instanceof List<?> list) {
+                List<Object> out = new ArrayList<>(list.size());
+                for (Object element : list) out.add(convertToYamlValue(args[0], element, contextField, mode));
+                return out;
+            }
+            if (Map.class.isAssignableFrom(cls) && args.length == 2 && value instanceof Map<?, ?> map) {
+                Map<String, Object> out = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> entry : map.entrySet()) {
+                    out.put(mapKeyToYaml(entry.getKey()), convertToYamlValue(args[1], entry.getValue(), contextField, mode));
+                }
+                return out;
+            }
+        }
+
+        if (cls == Component.class && value instanceof Component c) return serializeComponent(c, mode);
+        if (value instanceof Enum<?> en) return en.name();
+
+        Converter<Object> conv = findConverterForClass(cls);
+        if (conv != null) return conv.write(value, contextField);
+
+        Class<?> exportType = cls != null && cls != Object.class ? cls : value.getClass();
+        if (isConfigPojo(exportType)) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            export(value, "", m, new LinkedHashMap<>());
+            return m;
+        }
+        return value;
+    }
+
+    private static Class<?> listElementClass(Field f) {
+        return rawClass(listElementType(f));
     }
 
     private static Class<?> mapKeyClass(Field f) {
+        return rawClass(mapKeyType(f));
+    }
+
+    private static Class<?> mapValueClass(Field f) {
+        return rawClass(mapValueType(f));
+    }
+
+    private static Type listElementType(Field f) {
         var gt = f.getGenericType();
         if (gt instanceof ParameterizedType p) {
             var args = p.getActualTypeArguments();
-            if (args.length == 2 && args[0] instanceof Class<?> c) return c;
+            if (args.length == 1) return args[0];
         }
         return null;
     }
 
-    private static Class<?> mapValueClass(Field f) {
+    private static Type mapKeyType(Field f) {
         var gt = f.getGenericType();
         if (gt instanceof ParameterizedType p) {
             var args = p.getActualTypeArguments();
-            if (args.length == 2 && args[1] instanceof Class<?> c) return c;
+            if (args.length == 2) return args[0];
         }
+        return null;
+    }
+
+    private static Type mapValueType(Field f) {
+        var gt = f.getGenericType();
+        if (gt instanceof ParameterizedType p) {
+            var args = p.getActualTypeArguments();
+            if (args.length == 2) return args[1];
+        }
+        return null;
+    }
+
+    private static Class<?> rawClass(Type type) {
+        if (type instanceof Class<?> c) return c;
+        if (type instanceof ParameterizedType p && p.getRawType() instanceof Class<?> c) return c;
         return null;
     }
 
