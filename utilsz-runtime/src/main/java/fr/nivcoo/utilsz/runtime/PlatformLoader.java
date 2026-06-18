@@ -12,7 +12,7 @@ final class PlatformLoader {
     static PlatformBootstrap detect() {
 
         PlatformBootstrap selected = ServiceLoader
-                .load(PlatformBootstrap.class)
+                .load(PlatformBootstrap.class, PlatformBootstrap.class.getClassLoader())
                 .stream()
                 .map(ServiceLoader.Provider::get)
                 .filter(PlatformBootstrap::isCompatible)

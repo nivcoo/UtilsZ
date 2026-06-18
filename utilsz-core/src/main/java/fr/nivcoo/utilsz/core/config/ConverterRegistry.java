@@ -24,7 +24,7 @@ public final class ConverterRegistry {
 
             Map<Class<?>, Supplier<Converter<?>>> out = new LinkedHashMap<>();
 
-            ServiceLoader.load(ConverterProvider.class)
+            ServiceLoader.load(ConverterProvider.class, ConverterProvider.class.getClassLoader())
                     .stream()
                     .map(ServiceLoader.Provider::get)
                     .sorted(Comparator.comparingInt(ConverterProvider::priority))
