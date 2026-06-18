@@ -651,6 +651,10 @@ public final class ConfigManager {
                     out.add(en.name());
                 } else if (elemConv != null) {
                     out.add(elemConv.write(e, f));
+                } else if (shouldExportAsPojo(elemCls, e)) {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    export(e, "", m, new LinkedHashMap<>());
+                    out.add(m);
                 } else {
                     out.add(e);
                 }
@@ -681,6 +685,10 @@ public final class ConfigManager {
                     out.put(mapKeyToYaml(e.getKey()), en.name());
                 } else if (valueConv != null) {
                     out.put(mapKeyToYaml(e.getKey()), valueConv.write(value, f));
+                } else if (shouldExportAsPojo(valueCls, value)) {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    export(value, "", m, new LinkedHashMap<>());
+                    out.put(mapKeyToYaml(e.getKey()), m);
                 } else {
                     out.put(mapKeyToYaml(e.getKey()), value);
                 }
@@ -722,6 +730,27 @@ public final class ConfigManager {
         if (key == null) return "null";
         if (key instanceof Enum<?> en) return en.name();
         return String.valueOf(key);
+    }
+
+    private static boolean shouldExportAsPojo(Class<?> declaredType, Object value) {
+        return declaredType != null
+                && declaredType != Object.class
+                && declaredType.isInstance(value)
+                && isConfigPojo(declaredType);
+    }
+
+    private static boolean isConfigPojo(Class<?> type) {
+        return type != null
+                && !type.isPrimitive()
+                && type != String.class
+                && !Number.class.isAssignableFrom(type)
+                && type != Boolean.class
+                && type != Character.class
+                && type != Component.class
+                && !type.isEnum()
+                && !Collection.class.isAssignableFrom(type)
+                && !Map.class.isAssignableFrom(type)
+                && hasPublicFields(type);
     }
 
     private static List<?> normalizeToList(Object raw) {
@@ -778,10 +807,13 @@ public final class ConfigManager {
         return raw;
     }
 
-    @SuppressWarnings("unchecked")
     private Object fromMapToPojo(Class<?> t, Map<?, ?> m) {
         Object inst = newInstance(t);
-        inject(new LinkedHashMap<>((Map<String, Object>) m), inst, "");
+        Map<String, Object> values = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : m.entrySet()) {
+            values.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        inject(values, inst, "");
         return inst;
     }
 
