@@ -660,10 +660,10 @@ public final class ConfigManager {
                 }
                 if (listOfComponent && e instanceof Component c) {
                     out.add(serializeComponent(c, mode));
-                } else if (e instanceof Enum<?> en) {
-                    out.add(en.name());
                 } else if (elemConv != null) {
                     out.add(elemConv.write(e, f));
+                } else if (e instanceof Enum<?> en) {
+                    out.add(en.name());
                 } else if (elemType instanceof ParameterizedType) {
                     out.add(convertToYamlValue(elemType, e, f, mode));
                 } else if (shouldExportAsPojo(elemCls, e)) {
@@ -697,10 +697,10 @@ public final class ConfigManager {
                     out.put(mapKeyToYaml(e.getKey()), m);
                 } else if (valueCls == Component.class && value instanceof Component c) {
                     out.put(mapKeyToYaml(e.getKey()), serializeComponent(c, mode));
-                } else if (value instanceof Enum<?> en) {
-                    out.put(mapKeyToYaml(e.getKey()), en.name());
                 } else if (valueConv != null) {
                     out.put(mapKeyToYaml(e.getKey()), valueConv.write(value, f));
+                } else if (value instanceof Enum<?> en) {
+                    out.put(mapKeyToYaml(e.getKey()), en.name());
                 } else if (valueType instanceof ParameterizedType) {
                     out.put(mapKeyToYaml(e.getKey()), convertToYamlValue(valueType, value, f, mode));
                 } else if (shouldExportAsPojo(valueCls, value)) {
@@ -776,10 +776,11 @@ public final class ConfigManager {
         }
 
         if (cls == Component.class && value instanceof Component c) return serializeComponent(c, mode);
-        if (value instanceof Enum<?> en) return en.name();
 
         Converter<Object> conv = findConverterForClass(cls);
         if (conv != null) return conv.write(value, contextField);
+
+        if (value instanceof Enum<?> en) return en.name();
 
         Class<?> exportType = cls != null && cls != Object.class ? cls : value.getClass();
         if (isConfigPojo(exportType)) {
