@@ -1,9 +1,11 @@
 package fr.nivcoo.utilsz.runtime;
 
+import fr.nivcoo.utilsz.core.module.UtilsZModules;
+
 public final class RuntimeInitializer {
 
     static {
-        Runtime.setPlatform(PlatformLoader.detect());
+        UtilsZModules.load();
     }
 
     private RuntimeInitializer() {}

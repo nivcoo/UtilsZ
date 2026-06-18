@@ -1,12 +1,8 @@
 package fr.nivcoo.utilsz.platform.velocity;
 
-import fr.nivcoo.utilsz.core.platform.MainThreadExecutor;
-import fr.nivcoo.utilsz.core.platform.PlatformBootstrap;
+import fr.nivcoo.utilsz.core.module.UtilsZModule;
 
-public final class VelocityBootstrap implements PlatformBootstrap {
-
-    public VelocityBootstrap() {
-    }
+public final class VelocityModule implements UtilsZModule {
 
     @Override
     public boolean isCompatible() {
@@ -14,7 +10,7 @@ public final class VelocityBootstrap implements PlatformBootstrap {
             Class.forName(
                     "com.velocitypowered.api.proxy.ProxyServer",
                     false,
-                    VelocityBootstrap.class.getClassLoader()
+                    VelocityModule.class.getClassLoader()
             );
             return true;
         } catch (Throwable t) {
@@ -26,5 +22,4 @@ public final class VelocityBootstrap implements PlatformBootstrap {
     public int priority() {
         return 100;
     }
-
 }

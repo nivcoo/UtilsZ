@@ -1,12 +1,11 @@
 package fr.nivcoo.utilsz.core.config;
 
 import fr.nivcoo.utilsz.core.config.annotations.Converter;
-import fr.nivcoo.utilsz.core.config.spi.ConverterProvider;
+import fr.nivcoo.utilsz.core.module.UtilsZModule;
+import fr.nivcoo.utilsz.core.module.UtilsZModules;
 
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.ServiceLoader;
 import java.util.function.Supplier;
 
 public final class ConverterRegistry {
@@ -24,19 +23,16 @@ public final class ConverterRegistry {
 
             Map<Class<?>, Supplier<Converter<?>>> out = new LinkedHashMap<>();
 
-            ServiceLoader.load(ConverterProvider.class, ConverterProvider.class.getClassLoader())
-                    .stream()
-                    .map(ServiceLoader.Provider::get)
-                    .sorted(Comparator.comparingInt(ConverterProvider::priority))
-                    .forEach(p -> putProvider(out, p));
+            UtilsZModules.compatible()
+                    .forEach(module -> putConverters(out, module));
 
             cached = Map.copyOf(out);
             return cached;
         }
     }
 
-    private static void putProvider(Map<Class<?>, Supplier<Converter<?>>> out, ConverterProvider provider) {
-        Map<Class<?>, Supplier<Converter<?>>> converters = provider.converters();
+    private static void putConverters(Map<Class<?>, Supplier<Converter<?>>> out, UtilsZModule module) {
+        Map<Class<?>, Supplier<Converter<?>>> converters = module.converters();
         if (converters != null) out.putAll(converters);
     }
 }
