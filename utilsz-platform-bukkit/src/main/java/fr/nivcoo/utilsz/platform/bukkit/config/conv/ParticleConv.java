@@ -27,10 +27,7 @@ public final class ParticleConv implements Converter<Particle> {
     @Override
     public Object write(Particle value, Field f) {
         if (value == null) return null;
-        NamespacedKey key = value.getKey();
-        if (key != null) return key.asString();
-
-        key = Registry.PARTICLE_TYPE.getKey(value);
-        return key != null ? key.asString() : value.name().toLowerCase();
+        return value.name();
     }
+
 }

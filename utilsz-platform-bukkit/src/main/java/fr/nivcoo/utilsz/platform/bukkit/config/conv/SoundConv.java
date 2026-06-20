@@ -27,6 +27,8 @@ public final class SoundConv implements Converter<Sound> {
     public Object write(Sound value, Field f) {
         if (value == null) return null;
         NamespacedKey key = Registry.SOUNDS.getKey(value);
-        return key != null ? key.asString() : null;
+        if (key == null) return null;
+        return NamespacedKey.MINECRAFT.equals(key.getNamespace()) ? key.getKey() : key.asString();
     }
+
 }

@@ -88,7 +88,7 @@ public final class ConfigManager {
 
         Map<String, Object> out = new LinkedHashMap<>();
         Map<String, List<String>> comments = new LinkedHashMap<>();
-        export(instance, rootName(cfgClass), out, comments);
+        export(instance, rootName(cfgClass), existing, out, comments);
 
         if (shouldSaveOnLoad(cfgClass)) {
             Comment rootC = cfgClass.getAnnotation(Comment.class);
@@ -177,7 +177,7 @@ public final class ConfigManager {
         }
     }
 
-    private void export(Object bean, String prefix, Map<String, Object> out, Map<String, List<String>> comments) {
+    private void export(Object bean, String prefix, Map<String, Object> existing, Map<String, Object> out, Map<String, List<String>> comments) {
         for (Field f : bean.getClass().getFields()) {
             if (isStatic(f)) continue;
             String path = keyPath(f, prefix);
@@ -190,11 +190,11 @@ public final class ConfigManager {
 
                         Comment sc = sec.getClass().getAnnotation(Comment.class);
                         if (sc != null) comments.put(path, Arrays.asList(sc.value()));
-                        export(sec, path, out, comments);
+                        export(sec, path, existing, out, comments);
                     }
                 } else {
                     Object v = f.get(bean);
-                    Object yamlVal = convertToYaml(f, v);
+                    Object yamlVal = convertToYamlPreserving(f, v, getByPath(existing, path));
                     putByPath(out, path, yamlVal);
                     Comment c = f.getAnnotation(Comment.class);
                     if (c != null) comments.put(path, Arrays.asList(c.value()));
@@ -646,7 +646,7 @@ public final class ConfigManager {
                         continue;
                     }
                     Map<String, Object> m = new LinkedHashMap<>();
-                    export(e, "", m, new LinkedHashMap<>());
+                    export(e, "", Map.of(), m, new LinkedHashMap<>());
                     out.add(m);
                 }
                 return out;
@@ -668,7 +668,7 @@ public final class ConfigManager {
                     out.add(convertToYamlValue(elemType, e, f, mode));
                 } else if (shouldExportAsPojo(elemCls, e)) {
                     Map<String, Object> m = new LinkedHashMap<>();
-                    export(e, "", m, new LinkedHashMap<>());
+                    export(e, "", Map.of(), m, new LinkedHashMap<>());
                     out.add(m);
                 } else {
                     out.add(e);
@@ -693,7 +693,7 @@ public final class ConfigManager {
                     out.put(mapKeyToYaml(e.getKey()), null);
                 } else if (el != null && el.value() != Object.class) {
                     Map<String, Object> m = new LinkedHashMap<>();
-                    export(value, "", m, new LinkedHashMap<>());
+                    export(value, "", Map.of(), m, new LinkedHashMap<>());
                     out.put(mapKeyToYaml(e.getKey()), m);
                 } else if (valueCls == Component.class && value instanceof Component c) {
                     out.put(mapKeyToYaml(e.getKey()), serializeComponent(c, mode));
@@ -705,7 +705,7 @@ public final class ConfigManager {
                     out.put(mapKeyToYaml(e.getKey()), convertToYamlValue(valueType, value, f, mode));
                 } else if (shouldExportAsPojo(valueCls, value)) {
                     Map<String, Object> m = new LinkedHashMap<>();
-                    export(value, "", m, new LinkedHashMap<>());
+                    export(value, "", Map.of(), m, new LinkedHashMap<>());
                     out.put(mapKeyToYaml(e.getKey()), m);
                 } else {
                     out.put(mapKeyToYaml(e.getKey()), value);
@@ -715,6 +715,19 @@ public final class ConfigManager {
         }
 
         return v;
+    }
+
+    private Object convertToYamlPreserving(Field f, Object value, Object existingRaw) {
+        if (existingRaw != null && preservesValue(f, existingRaw, value)) return existingRaw;
+        return convertToYaml(f, value);
+    }
+
+    private boolean preservesValue(Field f, Object raw, Object value) {
+        try {
+            return Objects.equals(convertFromYaml(f, raw, null), value);
+        } catch (RuntimeException ignored) {
+            return false;
+        }
     }
 
     private Object convertFromYamlValue(Type type, Object raw, Field contextField) {
@@ -785,7 +798,7 @@ public final class ConfigManager {
         Class<?> exportType = cls != null && cls != Object.class ? cls : value.getClass();
         if (isConfigPojo(exportType)) {
             Map<String, Object> m = new LinkedHashMap<>();
-            export(value, "", m, new LinkedHashMap<>());
+            export(value, "", Map.of(), m, new LinkedHashMap<>());
             return m;
         }
         return value;

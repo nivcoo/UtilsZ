@@ -27,7 +27,7 @@ public final class MaterialConv implements Converter<Material> {
     @Override
     public Object write(Material value, Field f) {
         if (value == null) return null;
-        NamespacedKey key = Registry.MATERIAL.getKey(value);
-        return key != null ? key.asString() : null;
+        return value.name();
     }
+
 }
