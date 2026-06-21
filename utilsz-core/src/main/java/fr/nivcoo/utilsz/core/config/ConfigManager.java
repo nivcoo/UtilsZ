@@ -266,8 +266,8 @@ public final class ConfigManager {
     private void writeSection(StringBuilder sb, Map<String, Object> map,
                               Map<String, List<String>> comments, String base, int indent) {
         int i = 0;
-        for (Map.Entry<String, Object> e : map.entrySet()) {
-            String k = e.getKey();
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            String k = mapKeyToYaml(e.getKey());
             Object v = e.getValue();
             String full = base.isEmpty() ? k : base + "." + k;
 
@@ -298,22 +298,22 @@ public final class ConfigManager {
                 sb.append("\n");
                 for (Object it : list) {
                     if (it instanceof Map<?, ?> mm) {
-                        Map<String, Object> m = (Map<String, Object>) mm;
+                        Map<?, ?> m = mm;
                         if (m.isEmpty()) {
                             sb.append("  ".repeat(indent + 1)).append("- {}\n");
                         } else {
-                            Iterator<Map.Entry<String, Object>> itr = m.entrySet().iterator();
-                            Map.Entry<String, Object> first = itr.next();
+                            Iterator<? extends Map.Entry<?, ?>> itr = m.entrySet().iterator();
+                            Map.Entry<?, ?> first = itr.next();
 
                             sb.append("  ".repeat(indent + 1))
                                     .append("- ")
-                                    .append(formatMapKey(first.getKey())).append(": ");
+                                    .append(formatMapKey(mapKeyToYaml(first.getKey()))).append(": ");
                             writeValue(sb, first.getValue(), comments, "", indent + 1);
 
                             while (itr.hasNext()) {
-                                Map.Entry<String, Object> me = itr.next();
+                                Map.Entry<?, ?> me = itr.next();
                                 sb.append("  ".repeat(indent + 2))
-                                        .append(formatMapKey(me.getKey())).append(": ");
+                                        .append(formatMapKey(mapKeyToYaml(me.getKey()))).append(": ");
                                 writeValue(sb, me.getValue(), comments, "", indent + 2);
                             }
                         }
@@ -371,22 +371,22 @@ public final class ConfigManager {
                 sb.append("\n");
                 for (Object it : list) {
                     if (it instanceof Map<?, ?> mm) {
-                        Map<String, Object> sub = (Map<String, Object>) mm;
+                        Map<?, ?> sub = mm;
                         if (sub.isEmpty()) {
                             sb.append("  ".repeat(indent + 1)).append("- {}\n");
                         } else {
-                            Iterator<Map.Entry<String, Object>> itr = sub.entrySet().iterator();
-                            Map.Entry<String, Object> first = itr.next();
+                            Iterator<? extends Map.Entry<?, ?>> itr = sub.entrySet().iterator();
+                            Map.Entry<?, ?> first = itr.next();
 
                             sb.append("  ".repeat(indent + 1))
                                     .append("- ")
-                                    .append(formatMapKey(first.getKey())).append(": ");
+                                    .append(formatMapKey(mapKeyToYaml(first.getKey()))).append(": ");
                             writeValue(sb, first.getValue(), comments, base, indent + 1);
 
                             while (itr.hasNext()) {
-                                Map.Entry<String, Object> me = itr.next();
+                                Map.Entry<?, ?> me = itr.next();
                                 sb.append("  ".repeat(indent + 2))
-                                        .append(formatMapKey(me.getKey())).append(": ");
+                                        .append(formatMapKey(mapKeyToYaml(me.getKey()))).append(": ");
                                 writeValue(sb, me.getValue(), comments, base, indent + 2);
                             }
                         }
