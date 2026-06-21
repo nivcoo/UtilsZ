@@ -161,6 +161,14 @@ public final class ItemBuilder {
         return this;
     }
 
+    public ItemBuilder customModelData(int data) {
+        if (data <= 0) return this;
+        ItemMeta m = meta();
+        m.setCustomModelData(data);
+        stack.setItemMeta(m);
+        return this;
+    }
+
     public ItemBuilder leatherColor(Color c) {
         ItemMeta m = meta();
         if (m instanceof LeatherArmorMeta lam && c != null) {
