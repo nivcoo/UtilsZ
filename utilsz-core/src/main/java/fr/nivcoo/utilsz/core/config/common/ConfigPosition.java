@@ -1,6 +1,4 @@
-package fr.nivcoo.utilsz.platform.bukkit.location;
-
-import org.bukkit.Location;
+package fr.nivcoo.utilsz.core.config.common;
 
 @SuppressWarnings("unused")
 public class ConfigPosition {
@@ -34,16 +32,6 @@ public class ConfigPosition {
 
     public static ConfigPosition of(double x, double y, double z, float yaw, float pitch) {
         return new ConfigPosition(x, y, z, yaw, pitch);
-    }
-
-    public Location relativeTo(Location origin) {
-        if (origin == null || origin.getWorld() == null) {
-            throw new IllegalArgumentException("Origin and world cannot be null.");
-        }
-        Location location = origin.clone().add(x, y, z);
-        if (yaw != null) location.setYaw(yaw);
-        if (pitch != null) location.setPitch(pitch);
-        return location;
     }
 
     public int blockX() {
