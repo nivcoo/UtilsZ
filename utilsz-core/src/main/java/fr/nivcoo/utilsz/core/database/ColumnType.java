@@ -7,6 +7,8 @@ public enum ColumnType {
     TEXT,
     INT,
     LONG,
+    DOUBLE,
+    FLOAT,
     DECIMAL,
     BOOLEAN,
     BLOB;

@@ -108,6 +108,7 @@ public class SQLiteProvider implements DatabaseProvider {
             case TEXT -> "TEXT";
             case LONG -> "BIGINT";
             case DECIMAL -> "VARCHAR(48)";
+            case DOUBLE, FLOAT -> "REAL";
             case BLOB -> "BLOB";
         };
     }

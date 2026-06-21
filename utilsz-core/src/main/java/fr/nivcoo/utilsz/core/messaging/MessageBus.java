@@ -17,4 +17,8 @@ public interface MessageBus {
     default CompletableFuture<JsonObject> callRaw(String action, JsonObject payload) {
         throw new UnsupportedOperationException();
     }
+
+    default <Req, Res> CompletableFuture<Res> call(Req request, Class<Res> responseType) {
+        throw new UnsupportedOperationException();
+    }
 }

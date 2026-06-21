@@ -121,6 +121,8 @@ public class MariaDBProvider implements DatabaseProvider {
             case TEXT -> "TEXT";
             case INT -> "INT";
             case DECIMAL -> "VARCHAR(48)";
+            case DOUBLE -> "DOUBLE";
+            case FLOAT -> "FLOAT";
             case BOOLEAN -> "TINYINT(1)";
             case BLOB -> "LONGBLOB";
         };
