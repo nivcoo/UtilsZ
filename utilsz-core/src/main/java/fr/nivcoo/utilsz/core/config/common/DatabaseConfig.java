@@ -8,6 +8,7 @@ import fr.nivcoo.utilsz.core.database.DatabaseType;
 import java.io.File;
 
 @Section
+@SuppressWarnings("unused")
 public class DatabaseConfig {
 
     @Comment("sqlite / mysql / mariadb")
@@ -47,12 +48,14 @@ public class DatabaseConfig {
     }
 
     @Section
+    @SuppressWarnings("unused")
     public static class Sqlite {
         @Comment("Chemin SQLite relatif au dossier plugin.")
         public String path = "database.db";
     }
 
     @Section
+    @SuppressWarnings("unused")
     public static class Mysql {
         public String host = "127.0.0.1";
         public int port = 3306;

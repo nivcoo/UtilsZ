@@ -4,6 +4,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
+@SuppressWarnings("unused")
 public abstract class PlaceablePluginItem<T, B extends PluginBlock<T>> extends PluginItem<T> {
 
     private final B block;

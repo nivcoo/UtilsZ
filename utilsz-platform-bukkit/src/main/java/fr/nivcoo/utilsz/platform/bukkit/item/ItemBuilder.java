@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 
+@SuppressWarnings("unused")
 public final class ItemBuilder {
 
     private final ItemStack stack;

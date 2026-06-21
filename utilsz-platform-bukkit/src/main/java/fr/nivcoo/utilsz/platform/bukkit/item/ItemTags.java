@@ -8,6 +8,7 @@ import org.bukkit.plugin.Plugin;
 
 import java.util.Optional;
 
+@SuppressWarnings("unused")
 public final class ItemTags {
 
     private final Plugin plugin;

@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import java.util.function.Consumer;
 
 @Section
+@SuppressWarnings("unused")
 public class MessagingConfig {
 
     public boolean enabled = false;
@@ -63,6 +64,7 @@ public class MessagingConfig {
     }
 
     @Section
+    @SuppressWarnings("unused")
     public static class Redis {
         public String host = "127.0.0.1";
         public int port = 6379;
@@ -71,6 +73,7 @@ public class MessagingConfig {
     }
 
     @Section
+    @SuppressWarnings("unused")
     public static class Rabbit {
         public String host = "127.0.0.1";
         public int port = 5672;

@@ -9,6 +9,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Optional;
 
+@SuppressWarnings("unused")
 public abstract class PluginBlock<T> {
 
     private final JavaPlugin plugin;

@@ -7,6 +7,7 @@ import org.bukkit.plugin.Plugin;
 
 import java.util.Optional;
 
+@SuppressWarnings("unused")
 public final class EntityTags {
 
     private final Plugin plugin;

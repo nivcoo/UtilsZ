@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
+@SuppressWarnings("unused")
 public final class PluginItemRegistry implements Listener {
 
     private final JavaPlugin plugin;

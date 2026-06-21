@@ -9,6 +9,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Optional;
 
+@SuppressWarnings("unused")
 public abstract class PluginItem<T> {
 
     public static final String ITEM_ID_TAG = "utilsz-item-id";
