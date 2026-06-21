@@ -177,7 +177,7 @@ public class DatabaseManager {
     private void bind(PreparedStatement statement, Object... params) throws SQLException {
         if (params == null) return;
         for (int i = 0; i < params.length; i++) {
-            statement.setObject(i + 1, params[i]);
+            statement.setObject(i + 1, DatabaseCodecs.encode(params[i]));
         }
     }
 

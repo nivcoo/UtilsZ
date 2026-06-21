@@ -32,19 +32,19 @@ public final class ModelRepository<T> {
     }
 
     public int update(Object id, Map<String, ?> values) throws SQLException {
-        return update(values, table.idWhere(), id);
+        return update(values, table.idWhere(), table.encodeValue(table.idColumn(), id));
     }
 
     public int update(Map<String, ?> values, String where, Object... params) throws SQLException {
-        return database.update(table.name(), values, where, params);
+        return database.update(table.name(), table.encodeValues(values), where, table.encodeWhereParams(where, params));
     }
 
     public int delete(String where, Object... params) throws SQLException {
-        return database.delete(table.name(), where, params);
+        return database.delete(table.name(), where, table.encodeWhereParams(where, params));
     }
 
     public boolean exists(String where, Object... params) throws SQLException {
-        return database.exists(table.name(), where, params);
+        return database.exists(table.name(), where, table.encodeWhereParams(where, params));
     }
 
     public ModelQuery<T> find() {

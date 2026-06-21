@@ -1,6 +1,7 @@
 package fr.nivcoo.utilsz.core.module;
 
-import fr.nivcoo.utilsz.core.config.annotations.Converter;
+import fr.nivcoo.utilsz.core.conversion.Converter;
+import fr.nivcoo.utilsz.core.database.DatabaseCodec;
 
 import java.util.Map;
 import java.util.function.Supplier;
@@ -18,6 +19,10 @@ public interface UtilsZModule {
     }
 
     default Map<Class<?>, Supplier<Converter<?>>> converters() {
+        return Map.of();
+    }
+
+    default Map<Class<?>, Supplier<DatabaseCodec<?>>> databaseCodecs() {
         return Map.of();
     }
 }

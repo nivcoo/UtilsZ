@@ -5,6 +5,7 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -33,6 +34,14 @@ public final class DatabaseRow {
         if (column == null) return null;
         Object value = values.get(column);
         return value != null ? value : values.get(column.toLowerCase(Locale.ROOT));
+    }
+
+    public <T> T get(String column, Class<T> type) {
+        return DatabaseCodecs.decode(get(column), type);
+    }
+
+    public <T> List<T> getList(String column, Class<T> elementType) {
+        return DatabaseCodecs.decodeList(get(column), elementType);
     }
 
     public String getString(String column) {
@@ -66,7 +75,6 @@ public final class DatabaseRow {
     }
 
     public UUID getUuid(String column) {
-        String value = getString(column);
-        return value == null || value.isBlank() ? null : UUID.fromString(value);
+        return get(column, UUID.class);
     }
 }

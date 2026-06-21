@@ -1,6 +1,5 @@
-package fr.nivcoo.utilsz.core.config;
+package fr.nivcoo.utilsz.core.conversion;
 
-import fr.nivcoo.utilsz.core.config.annotations.Converter;
 import fr.nivcoo.utilsz.core.module.UtilsZModule;
 import fr.nivcoo.utilsz.core.module.UtilsZModules;
 
@@ -12,19 +11,18 @@ public final class ConverterRegistry {
 
     private static volatile Map<Class<?>, Supplier<Converter<?>>> cached;
 
-    private ConverterRegistry() {}
+    private ConverterRegistry() {
+    }
 
     public static Map<Class<?>, Supplier<Converter<?>>> all() {
-        Map<Class<?>, Supplier<Converter<?>>> c = cached;
-        if (c != null) return c;
+        Map<Class<?>, Supplier<Converter<?>>> current = cached;
+        if (current != null) return current;
 
         synchronized (ConverterRegistry.class) {
             if (cached != null) return cached;
 
             Map<Class<?>, Supplier<Converter<?>>> out = new LinkedHashMap<>();
-
-            UtilsZModules.compatible()
-                    .forEach(module -> putConverters(out, module));
+            UtilsZModules.compatible().forEach(module -> putConverters(out, module));
 
             cached = Map.copyOf(out);
             return cached;

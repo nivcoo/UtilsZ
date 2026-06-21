@@ -1,15 +1,16 @@
-package fr.nivcoo.utilsz.platform.bukkit.config.conv;
+package fr.nivcoo.utilsz.platform.bukkit.conversion;
 
-import fr.nivcoo.utilsz.core.config.annotations.Converter;
+import fr.nivcoo.utilsz.core.conversion.Converter;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
 import org.bukkit.Sound;
 
 import java.lang.reflect.Field;
 
-public final class SoundConv implements Converter<Sound> {
+public class SoundConv implements Converter<Sound> {
+
     @Override
-    public Sound read(Object raw, Sound fallback, Field f) {
+    public Sound read(Object raw, Sound fallback, Field field) {
         if (raw == null) return fallback;
         String name = String.valueOf(raw).trim().toLowerCase();
 
@@ -24,11 +25,10 @@ public final class SoundConv implements Converter<Sound> {
     }
 
     @Override
-    public Object write(Sound value, Field f) {
+    public Object write(Sound value, Field field) {
         if (value == null) return null;
         NamespacedKey key = Registry.SOUNDS.getKey(value);
         if (key == null) return null;
         return NamespacedKey.MINECRAFT.equals(key.getNamespace()) ? key.getKey() : key.asString();
     }
-
 }

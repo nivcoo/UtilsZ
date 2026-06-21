@@ -1,16 +1,16 @@
-package fr.nivcoo.utilsz.platform.bukkit.config.conv;
+package fr.nivcoo.utilsz.platform.bukkit.conversion;
 
-import fr.nivcoo.utilsz.core.config.annotations.Converter;
+import fr.nivcoo.utilsz.core.conversion.Converter;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Registry;
 
 import java.lang.reflect.Field;
 
-public final class ParticleConv implements Converter<Particle> {
+public class ParticleConv implements Converter<Particle> {
 
     @Override
-    public Particle read(Object raw, Particle fallback, Field f) {
+    public Particle read(Object raw, Particle fallback, Field field) {
         if (raw == null) return fallback;
         String name = String.valueOf(raw).trim().toLowerCase();
 
@@ -25,9 +25,8 @@ public final class ParticleConv implements Converter<Particle> {
     }
 
     @Override
-    public Object write(Particle value, Field f) {
+    public Object write(Particle value, Field field) {
         if (value == null) return null;
         return value.name();
     }
-
 }

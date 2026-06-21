@@ -21,26 +21,26 @@ public final class ModelQuery<T> {
 
     public ModelQuery<T> where(String column, Object value) {
         where.add(column + " = ?");
-        params.add(value);
+        params.add(table.encodeValue(column, value));
         return this;
     }
 
     public ModelQuery<T> whereLessOrEqual(String column, Object value) {
         where.add(column + " <= ?");
-        params.add(value);
+        params.add(table.encodeValue(column, value));
         return this;
     }
 
     public ModelQuery<T> whereGreaterOrEqual(String column, Object value) {
         where.add(column + " >= ?");
-        params.add(value);
+        params.add(table.encodeValue(column, value));
         return this;
     }
 
     public ModelQuery<T> whereRaw(String condition, Object... values) {
         where.add(condition);
         if (values != null) {
-            params.addAll(List.of(values));
+            params.addAll(List.of(table.encodeWhereParams(condition, values)));
         }
         return this;
     }

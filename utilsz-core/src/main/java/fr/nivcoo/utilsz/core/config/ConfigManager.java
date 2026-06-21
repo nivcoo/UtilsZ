@@ -1,6 +1,8 @@
 package fr.nivcoo.utilsz.core.config;
 
 import fr.nivcoo.utilsz.core.config.annotations.*;
+import fr.nivcoo.utilsz.core.conversion.Converter;
+import fr.nivcoo.utilsz.core.conversion.ConverterRegistry;
 import fr.nivcoo.utilsz.core.config.text.TextMode;
 import fr.nivcoo.utilsz.core.config.validation.Validatable;
 import net.kyori.adventure.text.Component;

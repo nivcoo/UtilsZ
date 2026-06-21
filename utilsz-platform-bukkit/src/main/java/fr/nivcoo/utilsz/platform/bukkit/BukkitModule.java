@@ -1,14 +1,14 @@
 package fr.nivcoo.utilsz.platform.bukkit;
 
-import fr.nivcoo.utilsz.core.config.annotations.Converter;
+import fr.nivcoo.utilsz.core.conversion.Converter;
 import fr.nivcoo.utilsz.core.module.UtilsZModule;
-import fr.nivcoo.utilsz.platform.bukkit.config.conv.ItemStackConv;
-import fr.nivcoo.utilsz.platform.bukkit.config.conv.LocationConv;
-import fr.nivcoo.utilsz.platform.bukkit.config.conv.MaterialConv;
-import fr.nivcoo.utilsz.platform.bukkit.config.conv.ParticleConv;
-import fr.nivcoo.utilsz.platform.bukkit.config.conv.SoundConv;
+import fr.nivcoo.utilsz.platform.bukkit.conversion.ItemStackConv;
+import fr.nivcoo.utilsz.platform.bukkit.conversion.MaterialConv;
+import fr.nivcoo.utilsz.platform.bukkit.conversion.ParticleConv;
+import fr.nivcoo.utilsz.platform.bukkit.conversion.SoundConv;
+import fr.nivcoo.utilsz.platform.bukkit.conversion.StoredLocationConv;
+import fr.nivcoo.utilsz.platform.bukkit.location.StoredLocation;
 import fr.nivcoo.utilsz.platform.bukkit.messaging.BukkitMessagingAdapters;
-import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
@@ -46,7 +46,7 @@ public final class BukkitModule implements UtilsZModule {
         converters.put(Material.class, MaterialConv::new);
         converters.put(Sound.class, SoundConv::new);
         converters.put(Particle.class, ParticleConv::new);
-        converters.put(Location.class, LocationConv::new);
+        converters.put(StoredLocation.class, StoredLocationConv::new);
         converters.put(ItemStack.class, ItemStackConv::new);
         return converters;
     }

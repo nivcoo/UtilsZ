@@ -1,5 +1,7 @@
 package fr.nivcoo.utilsz.core.config.annotations;
 
+import fr.nivcoo.utilsz.core.conversion.Converter;
+
 import java.lang.annotation.*;
 
 @Retention(RetentionPolicy.RUNTIME)
