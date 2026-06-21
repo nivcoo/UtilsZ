@@ -42,6 +42,10 @@ public abstract class PluginItem<T> {
         ItemDelivery.giveOrDrop(player, create(data));
     }
 
+    public void give(Player player, T data, int amount) {
+        ItemDelivery.giveOrDrop(player, create(data), amount);
+    }
+
     public Optional<T> read(ItemStack item) {
         if (!matches(item)) return Optional.empty();
         return readData(item);
@@ -51,6 +55,10 @@ public abstract class PluginItem<T> {
         return tags.getString(item, ITEM_ID_TAG)
                 .map(id()::equals)
                 .orElse(false);
+    }
+
+    public boolean interactInAir() {
+        return false;
     }
 
     protected JavaPlugin plugin() {

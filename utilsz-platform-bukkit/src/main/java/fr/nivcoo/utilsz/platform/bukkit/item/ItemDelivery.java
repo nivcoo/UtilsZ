@@ -9,6 +9,8 @@ import java.util.Map;
 
 @SuppressWarnings("unused")
 public final class ItemDelivery {
+    public static final int MAX_DELIVERY_AMOUNT = 10_000;
+
     private ItemDelivery() {
     }
 
@@ -23,5 +25,28 @@ public final class ItemDelivery {
             player.getWorld().dropItemNaturally(player.getLocation(), item);
         }
         return leftovers;
+    }
+
+    public static List<ItemStack> giveOrDrop(Player player, ItemStack item, int amount) {
+        if (item == null || item.getType().isAir()) return List.of();
+        return giveOrDrop(player, split(item, amount).toArray(ItemStack[]::new));
+    }
+
+    public static List<ItemStack> split(ItemStack item, int amount) {
+        List<ItemStack> stacks = new ArrayList<>();
+        if (item == null || item.getType().isAir()) return stacks;
+
+        int remaining = Math.max(1, Math.min(amount, MAX_DELIVERY_AMOUNT));
+        int stackSize = Math.max(1, item.getMaxStackSize());
+
+        while (remaining > 0) {
+            int next = Math.min(stackSize, remaining);
+            ItemStack stack = item.clone();
+            stack.setAmount(next);
+            stacks.add(stack);
+            remaining -= next;
+        }
+
+        return stacks;
     }
 }

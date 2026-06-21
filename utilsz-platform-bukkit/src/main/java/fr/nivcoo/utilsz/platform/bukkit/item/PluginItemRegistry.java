@@ -5,6 +5,7 @@ import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -57,9 +58,17 @@ public final class PluginItemRegistry implements Listener {
         dispatchClick(event.getCurrentItem(), player, event);
     }
 
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler
     public void onInteract(PlayerInteractEvent event) {
-        dispatchInteract(event.getItem(), event.getPlayer(), event);
+        Action action = event.getAction();
+        boolean air = action == Action.RIGHT_CLICK_AIR || action == Action.LEFT_CLICK_AIR;
+        if (air) {
+            dispatchInteract(event.getItem(), event.getPlayer(), event, true);
+            return;
+        }
+
+        if (event.isCancelled()) return;
+        dispatchInteract(event.getItem(), event.getPlayer(), event, false);
         if (!event.isCancelled()) dispatchBlockInteract(event.getClickedBlock(), event.getPlayer(), event);
     }
 
@@ -87,14 +96,15 @@ public final class PluginItemRegistry implements Listener {
         return true;
     }
 
-    private void dispatchInteract(ItemStack stack, Player player, PlayerInteractEvent event) {
+    private void dispatchInteract(ItemStack stack, Player player, PlayerInteractEvent event, boolean air) {
         if (stack == null || stack.getType().isAir()) return;
         for (PluginItem<?> item : items.values()) {
-            if (dispatchInteractOne(item, stack, player, event)) return;
+            if (dispatchInteractOne(item, stack, player, event, air)) return;
         }
     }
 
-    private <T> boolean dispatchInteractOne(PluginItem<T> item, ItemStack stack, Player player, PlayerInteractEvent event) {
+    private <T> boolean dispatchInteractOne(PluginItem<T> item, ItemStack stack, Player player, PlayerInteractEvent event, boolean air) {
+        if (air && !item.interactInAir()) return false;
         Optional<T> data = item.read(stack);
         if (data.isEmpty()) return false;
         item.onInteract(player, data.get(), event);
