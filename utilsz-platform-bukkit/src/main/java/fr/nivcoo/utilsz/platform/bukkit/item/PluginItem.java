@@ -7,6 +7,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.HashMap;
 import java.util.Optional;
 
 @SuppressWarnings("unused")
@@ -38,11 +39,19 @@ public abstract class PluginItem<T> {
         return item;
     }
 
-    public void give(Player player, T data) {
-        ItemDelivery.giveOrDrop(player, create(data));
+    public HashMap<Integer, ItemStack> give(Player player, T data) {
+        return give(player, data, 1);
     }
 
-    public void give(Player player, T data, int amount) {
+    public HashMap<Integer, ItemStack> give(Player player, T data, int amount) {
+        return ItemDelivery.give(player, create(data), amount);
+    }
+
+    public void giveOrDrop(Player player, T data) {
+        giveOrDrop(player, data, 1);
+    }
+
+    public void giveOrDrop(Player player, T data, int amount) {
         ItemDelivery.giveOrDrop(player, create(data), amount);
     }
 
