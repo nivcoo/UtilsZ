@@ -8,39 +8,41 @@ import java.util.StringJoiner;
 public final class ModelQuery<T> {
 
     private final DatabaseManager database;
-    private final Table<T> table;
+    private final ModelSchema<T> schema;
+    private final RowMapper<T> mapper;
     private final List<String> where = new ArrayList<>();
     private final List<Object> params = new ArrayList<>();
     private String orderBy;
     private int limit;
 
-    ModelQuery(DatabaseManager database, Table<T> table) {
+    ModelQuery(DatabaseManager database, ModelSchema<T> schema, RowMapper<T> mapper) {
         this.database = database;
-        this.table = table;
+        this.schema = schema;
+        this.mapper = mapper;
     }
 
     public ModelQuery<T> where(String column, Object value) {
         where.add(column + " = ?");
-        params.add(table.encodeValue(column, value));
+        params.add(schema.encodeValue(column, value));
         return this;
     }
 
     public ModelQuery<T> whereLessOrEqual(String column, Object value) {
         where.add(column + " <= ?");
-        params.add(table.encodeValue(column, value));
+        params.add(schema.encodeValue(column, value));
         return this;
     }
 
     public ModelQuery<T> whereGreaterOrEqual(String column, Object value) {
         where.add(column + " >= ?");
-        params.add(table.encodeValue(column, value));
+        params.add(schema.encodeValue(column, value));
         return this;
     }
 
     public ModelQuery<T> whereRaw(String condition, Object... values) {
         where.add(condition);
         if (values != null) {
-            params.addAll(List.of(table.encodeWhereParams(condition, values)));
+            params.addAll(List.of(schema.encodeWhereParams(condition, values)));
         }
         return this;
     }
@@ -60,9 +62,9 @@ public final class ModelQuery<T> {
         for (String condition : where) {
             joiner.add(condition);
         }
-        return database.table(table.name()).select(
-                table.selectColumns(),
-                table.mapper(),
+        return database.table(schema.name()).select(
+                schema.selectColumns(),
+                mapper,
                 joiner.length() == 0 ? null : joiner.toString(),
                 orderBy,
                 limit,

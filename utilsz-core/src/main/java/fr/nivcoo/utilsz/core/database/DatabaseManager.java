@@ -8,6 +8,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.StringJoiner;
 
@@ -59,8 +60,8 @@ public class DatabaseManager {
         return new DatabaseTable(this, tableName);
     }
 
-    public <T> ModelRepository<T> model(Table<T> table) {
-        return new ModelRepository<>(this, table);
+    public <T> ModelRepository<T> model(DatabaseModel<T> model) {
+        return new ModelRepository<>(this, Objects.requireNonNull(model, "model"));
     }
 
     public int execute(String query, Object... params) throws SQLException {

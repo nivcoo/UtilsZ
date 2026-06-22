@@ -8,47 +8,49 @@ import java.util.Map;
 public final class ModelRepository<T> {
 
     private final DatabaseManager database;
-    private final Table<T> table;
+    private final ModelSchema<T> schema;
+    private final RowMapper<T> mapper;
 
-    ModelRepository(DatabaseManager database, Table<T> table) {
+    ModelRepository(DatabaseManager database, DatabaseModel<T> model) {
         this.database = database;
-        this.table = table;
+        this.schema = model.schema();
+        this.mapper = model::from;
     }
 
     public void createTable() throws SQLException {
-        database.createTable(table.name(), table.definitions(database.getType()));
-        for (ModelIndex index : table.indexes()) {
-            database.createIndexIfAbsent(table.name(), index.name(), index.columns());
+        database.createTable(schema.name(), schema.definitions(database.getType()));
+        for (ModelIndex index : schema.indexes()) {
+            database.createIndexIfAbsent(schema.name(), index.name(), index.columns());
         }
     }
 
     public int insert(T model) throws SQLException {
         Map<String, Object> values = new LinkedHashMap<>();
-        for (ModelColumn<T> column : table.columns()) {
+        for (ModelColumn<T> column : schema.columns()) {
             if (column.generated()) continue;
             values.put(column.name(), column.toDatabase(model));
         }
-        return database.insert(table.name(), values);
+        return database.insert(schema.name(), values);
     }
 
     public int update(Object id, Map<String, ?> values) throws SQLException {
-        return update(values, table.idWhere(), table.encodeValue(table.idColumn(), id));
+        return update(values, schema.idWhere(), schema.encodeValue(schema.idColumn(), id));
     }
 
     public int update(Map<String, ?> values, String where, Object... params) throws SQLException {
-        return database.update(table.name(), table.encodeValues(values), where, table.encodeWhereParams(where, params));
+        return database.update(schema.name(), schema.encodeValues(values), where, schema.encodeWhereParams(where, params));
     }
 
     public int delete(String where, Object... params) throws SQLException {
-        return database.delete(table.name(), where, table.encodeWhereParams(where, params));
+        return database.delete(schema.name(), where, schema.encodeWhereParams(where, params));
     }
 
     public boolean exists(String where, Object... params) throws SQLException {
-        return database.exists(table.name(), where, table.encodeWhereParams(where, params));
+        return database.exists(schema.name(), where, schema.encodeWhereParams(where, params));
     }
 
     public ModelQuery<T> find() {
-        return new ModelQuery<>(database, table);
+        return new ModelQuery<>(database, schema, mapper);
     }
 
     public List<T> all() throws SQLException {
