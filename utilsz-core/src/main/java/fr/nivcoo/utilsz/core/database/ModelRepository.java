@@ -45,6 +45,10 @@ public final class ModelRepository<T> {
         return database.delete(schema.name(), where, schema.encodeWhereParams(where, params));
     }
 
+    public int clear() throws SQLException {
+        return database.delete(schema.name(), null);
+    }
+
     public boolean exists(String where, Object... params) throws SQLException {
         return database.exists(schema.name(), where, schema.encodeWhereParams(where, params));
     }
