@@ -406,7 +406,7 @@ public final class ConfigManager {
     private String formatScalar(Object v) {
         if (v == null) return "null";
         if (v instanceof String s) {
-            String out = s.replace("\"", "\\\"");
+            String out = s.replace("\\", "\\\\").replace("\"", "\\\"");
             return "\"" + out + "\"";
         }
         return String.valueOf(v);
