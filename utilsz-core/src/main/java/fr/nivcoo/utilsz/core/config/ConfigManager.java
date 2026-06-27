@@ -271,7 +271,7 @@ public final class ConfigManager {
             Object v = e.getValue();
             String full = base.isEmpty() ? k : base + "." + k;
 
-            if (i > 0 && v instanceof Map) sb.append("\n");
+            if (i > 0 && (indent == 0 || v instanceof Map)) sb.append("\n");
             i++;
 
             List<String> c = comments.get(full);
