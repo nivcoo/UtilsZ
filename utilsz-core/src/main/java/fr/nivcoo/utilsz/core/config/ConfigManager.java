@@ -153,7 +153,7 @@ public final class ConfigManager {
     }
 
     private void inject(Map<String, Object> src, Object bean, String prefix) {
-        for (Field f : bean.getClass().getDeclaredFields()) {
+        for (Field f : orderedConfigFields(bean.getClass(), false)) {
             if (isStatic(f)) continue;
             f.setAccessible(true);
             String path = keyPath(f, prefix);
@@ -180,7 +180,7 @@ public final class ConfigManager {
     }
 
     private void export(Object bean, String prefix, Map<String, Object> existing, Map<String, Object> out, Map<String, List<String>> comments) {
-        for (Field f : bean.getClass().getFields()) {
+        for (Field f : orderedConfigFields(bean.getClass(), true)) {
             if (isStatic(f)) continue;
             String path = keyPath(f, prefix);
             try {
@@ -208,7 +208,7 @@ public final class ConfigManager {
     }
 
     private void validate(Object bean, String prefix) {
-        for (Field f : bean.getClass().getFields()) {
+        for (Field f : orderedConfigFields(bean.getClass(), true)) {
             if (isStatic(f)) continue;
             String path = keyPath(f, prefix);
             try {
@@ -465,6 +465,22 @@ public final class ConfigManager {
 
     private static boolean isStatic(Field f) {
         return (f.getModifiers() & java.lang.reflect.Modifier.STATIC) != 0;
+    }
+
+    private static List<Field> orderedConfigFields(Class<?> type, boolean publicOnly) {
+        List<Field> fields = new ArrayList<>();
+        collectConfigFields(type, publicOnly, fields);
+        return fields;
+    }
+
+    private static void collectConfigFields(Class<?> type, boolean publicOnly, List<Field> fields) {
+        if (type == null || type == Object.class) return;
+        collectConfigFields(type.getSuperclass(), publicOnly, fields);
+        for (Field field : type.getDeclaredFields()) {
+            if (field.isSynthetic()) continue;
+            if (publicOnly && !java.lang.reflect.Modifier.isPublic(field.getModifiers())) continue;
+            fields.add(field);
+        }
     }
 
     private static String toSnake(String s) {
