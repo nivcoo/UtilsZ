@@ -180,23 +180,40 @@ public final class ConfigManager {
     }
 
     private void export(Object bean, String prefix, Map<String, Object> existing, Map<String, Object> out, Map<String, List<String>> comments) {
+        export(bean, prefix, existing, out, comments, false);
+    }
+
+    private void export(Object bean, String prefix, Map<String, Object> existing, Map<String, Object> out, Map<String, List<String>> comments, boolean optionalContext) {
         for (Field f : orderedConfigFields(bean.getClass(), true)) {
             if (isStatic(f)) continue;
             String path = keyPath(f, prefix);
             try {
+                boolean required = f.isAnnotationPresent(Required.class);
+                boolean optional = !required && (optionalContext || f.isAnnotationPresent(OptionalSection.class));
                 if (isSectionField(f)) {
                     Object sec = f.get(bean);
                     if (sec != null) {
-                        Comment fc = f.getAnnotation(Comment.class);
-                        if (fc != null) comments.put(path, Arrays.asList(fc.value()));
-
-                        Comment sc = sec.getClass().getAnnotation(Comment.class);
-                        if (sc != null) comments.put(path, Arrays.asList(sc.value()));
-                        export(sec, path, existing, out, comments);
+                        if (optional) {
+                            Map<String, Object> tempOut = new LinkedHashMap<>();
+                            Map<String, List<String>> tempComments = new LinkedHashMap<>();
+                            exportSection(sec, path, existing, tempOut, tempComments, f, true);
+                            Object exported = getByPath(tempOut, path);
+                            Object existingRaw = getByPath(existing, path);
+                            if (existingRaw == null && isEmptyYamlNode(exported)) continue;
+                            mergeYaml(out, tempOut);
+                            comments.putAll(tempComments);
+                            continue;
+                        }
+                        exportSection(sec, path, existing, out, comments, f, false);
                     }
                 } else {
                     Object v = f.get(bean);
                     Object yamlVal = convertToYamlPreserving(f, v, getByPath(existing, path));
+                    if (optional
+                            && getByPath(existing, path) == null
+                            && isEmptyYamlNode(yamlVal)) {
+                        continue;
+                    }
                     putByPath(out, path, yamlVal);
                     Comment c = f.getAnnotation(Comment.class);
                     if (c != null) comments.put(path, Arrays.asList(c.value()));
@@ -483,6 +500,21 @@ public final class ConfigManager {
         }
     }
 
+    private void exportSection(Object section, String path, Map<String, Object> existing,
+                               Map<String, Object> out, Map<String, List<String>> comments, Field field) {
+        exportSection(section, path, existing, out, comments, field, false);
+    }
+
+    private void exportSection(Object section, String path, Map<String, Object> existing,
+                               Map<String, Object> out, Map<String, List<String>> comments, Field field, boolean optionalContext) {
+        Comment fc = field.getAnnotation(Comment.class);
+        if (fc != null) comments.put(path, Arrays.asList(fc.value()));
+
+        Comment sc = section.getClass().getAnnotation(Comment.class);
+        if (sc != null) comments.put(path, Arrays.asList(sc.value()));
+        export(section, path, existing, out, comments, optionalContext);
+    }
+
     private static String toSnake(String s) {
         return s.replaceAll("([a-z0-9])([A-Z])", "$1_$2").toLowerCase();
     }
@@ -548,6 +580,28 @@ public final class ConfigManager {
             cur = (Map<String, Object>) m;
         }
         return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void mergeYaml(Map<String, Object> target, Map<String, Object> source) {
+        for (Map.Entry<String, Object> entry : source.entrySet()) {
+            Object existing = target.get(entry.getKey());
+            Object value = entry.getValue();
+            if (existing instanceof Map<?, ?> existingMap && value instanceof Map<?, ?> valueMap) {
+                mergeYaml((Map<String, Object>) existingMap, (Map<String, Object>) valueMap);
+                continue;
+            }
+            target.put(entry.getKey(), value);
+        }
+    }
+
+    private static boolean isEmptyYamlNode(Object value) {
+        return switch (value) {
+            case null -> true;
+            case Map<?, ?> map -> map.isEmpty() || map.values().stream().allMatch(ConfigManager::isEmptyYamlNode);
+            case Collection<?> collection -> collection.isEmpty() || collection.stream().allMatch(ConfigManager::isEmptyYamlNode);
+            default -> false;
+        };
     }
 
     @SuppressWarnings("unchecked")
