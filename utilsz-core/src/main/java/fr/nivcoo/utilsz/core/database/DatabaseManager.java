@@ -72,6 +72,32 @@ public class DatabaseManager {
         }
     }
 
+    public <T> T transaction(SqlTransaction<T> transaction) throws SQLException {
+        Objects.requireNonNull(transaction, "transaction");
+        try (Connection connection = getConnection()) {
+            boolean autoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                T result = transaction.execute(connection);
+                connection.commit();
+                return result;
+            } catch (SQLException | RuntimeException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(autoCommit);
+            }
+        }
+    }
+
+    public int execute(Connection connection, String query, Object... params) throws SQLException {
+        Objects.requireNonNull(connection, "connection");
+        try (PreparedStatement statement = connection.prepareStatement(query)) {
+            bind(statement, params);
+            return statement.executeUpdate();
+        }
+    }
+
     public <T> List<T> query(String query, RowMapper<T> mapper, Object... params) throws SQLException {
         try (Connection connection = getConnection();
              PreparedStatement statement = connection.prepareStatement(query)) {
@@ -131,6 +157,28 @@ public class DatabaseManager {
         return execute(sql, allParams.toArray());
     }
 
+    public int update(Connection connection, String table, Map<String, ?> values, String where, Object... params) throws SQLException {
+        if (values == null || values.isEmpty()) {
+            throw new IllegalArgumentException("Cannot update an empty value map.");
+        }
+
+        StringJoiner assignments = new StringJoiner(", ");
+        List<Object> allParams = new ArrayList<>();
+        for (Map.Entry<String, ?> entry : values.entrySet()) {
+            assignments.add(quote(entry.getKey()) + " = ?");
+            allParams.add(entry.getValue());
+        }
+        if (params != null) {
+            allParams.addAll(List.of(params));
+        }
+
+        String sql = "UPDATE " + quote(table) + " SET " + assignments;
+        if (where != null && !where.isBlank()) {
+            sql += " WHERE " + where;
+        }
+        return execute(connection, sql, allParams.toArray());
+    }
+
     public int delete(String table, String where, Object... params) throws SQLException {
         String sql = "DELETE FROM " + quote(table);
         if (where != null && !where.isBlank()) {
@@ -188,5 +236,10 @@ public class DatabaseManager {
         }
         String clean = identifier.replace("`", "");
         return "`" + clean + "`";
+    }
+
+    @FunctionalInterface
+    public interface SqlTransaction<T> {
+        T execute(Connection connection) throws SQLException;
     }
 }
