@@ -23,12 +23,12 @@ public final class ConfigItemFactory {
     }
 
     public static ItemStack create(ConfigItem def, Logger logger) {
-        if (def == null || def.material == null || def.material.isAir()) return null;
+        if (def == null || !def.enabled || def.material == null || def.material.isAir()) return null;
 
         ItemBuilder builder = ItemBuilder.of(def.material, Math.max(1, def.amount))
                 .texture(def.texture)
                 .customModelData(def.customModelData)
-                .glow(def.glow);
+                .glow(Boolean.TRUE.equals(def.glow));
         if (def.name != null) builder.name(def.name);
         if (def.lore != null && !def.lore.isEmpty()) builder.loreComponents(def.lore);
         ItemStack stack = builder.build();
@@ -41,7 +41,12 @@ public final class ConfigItemFactory {
         }
 
         boolean isBook = stack.getType() == Material.ENCHANTED_BOOK;
-        for (Map.Entry<String, Integer> entry : def.enchantments.entrySet()) {
+        if (def.enchants == null || def.enchants.isEmpty()) {
+            stack.setItemMeta(meta);
+            return stack;
+        }
+
+        for (Map.Entry<String, Integer> entry : def.enchants.entrySet()) {
             Enchantment enchantment = enchantment(entry.getKey());
             if (enchantment == null) {
                 if (logger != null) logger.warning("Invalid enchantment: " + entry.getKey());

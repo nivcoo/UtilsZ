@@ -189,7 +189,7 @@ public final class ConfigManager {
             String path = keyPath(f, prefix);
             try {
                 boolean required = f.isAnnotationPresent(Required.class);
-                boolean optional = !required && (optionalContext || f.isAnnotationPresent(OptionalSection.class));
+                boolean optional = !required && (optionalContext || isOptionalField(f));
                 if (isSectionField(f)) {
                     Object sec = f.get(bean);
                     if (sec != null) {
@@ -211,7 +211,7 @@ public final class ConfigManager {
                     Object yamlVal = convertToYamlPreserving(f, v, getByPath(existing, path));
                     if (optional
                             && getByPath(existing, path) == null
-                            && isEmptyYamlNode(yamlVal)) {
+                            && (isEmptyYamlNode(yamlVal) || isDefaultFieldValue(f, v))) {
                         continue;
                     }
                     putByPath(out, path, yamlVal);
@@ -484,6 +484,10 @@ public final class ConfigManager {
         return (f.getModifiers() & java.lang.reflect.Modifier.STATIC) != 0;
     }
 
+    private static boolean isOptionalField(Field f) {
+        return f.isAnnotationPresent(fr.nivcoo.utilsz.core.config.annotations.Optional.class);
+    }
+
     private static List<Field> orderedConfigFields(Class<?> type, boolean publicOnly) {
         List<Field> fields = new ArrayList<>();
         collectConfigFields(type, publicOnly, fields);
@@ -602,6 +606,18 @@ public final class ConfigManager {
             case Collection<?> collection -> collection.isEmpty() || collection.stream().allMatch(ConfigManager::isEmptyYamlNode);
             default -> false;
         };
+    }
+
+    private static boolean isDefaultFieldValue(Field field, Object value) {
+        try {
+            Object defaults = newInstance(field.getDeclaringClass());
+            field.setAccessible(true);
+            return Objects.equals(value, field.get(defaults));
+        } catch (RuntimeException ignored) {
+            return false;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     @SuppressWarnings("unchecked")

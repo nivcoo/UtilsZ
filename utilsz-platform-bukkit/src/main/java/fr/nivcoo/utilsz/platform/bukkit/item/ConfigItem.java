@@ -1,26 +1,40 @@
 package fr.nivcoo.utilsz.platform.bukkit.item;
 
 import fr.nivcoo.utilsz.core.config.ConfigManager;
+import fr.nivcoo.utilsz.core.config.annotations.Comment;
 import fr.nivcoo.utilsz.core.config.annotations.Name;
+import fr.nivcoo.utilsz.core.config.annotations.Optional;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemFlag;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 @SuppressWarnings("unused")
 public class ConfigItem {
 
+    @Optional
+    public boolean enabled = true;
+    @Comment("Slot unique 0-53.")
+    @Optional
+    public Integer slot = null;
+    @Comment("Slots multiples 0-53 pour dupliquer le même item.")
+    @Optional
+    public List<Integer> slots = List.of();
     public Material material = Material.STONE;
     public int amount = 1;
+    @Optional
     public String texture = "";
     public Component name = null;
     public List<Component> lore = List.of();
-    public Map<String, Integer> enchantments = new LinkedHashMap<>();
+    @Optional
+    public Map<String, Integer> enchants = null;
+    @Optional
     public List<ItemFlag> flags = List.of();
-    public boolean glow = false;
+    @Optional
+    public Boolean glow = null;
+    @Optional
     @Name("custom_model_data")
     public int customModelData = 0;
 
