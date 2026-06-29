@@ -26,6 +26,10 @@ public class ConfigItem {
     public int amount = 1;
     @Optional
     public String texture = "";
+    @Comment("UUID du propriétaire de la tête joueur. Ignoré si texture est renseignée.")
+    @Optional
+    @Name("skull_owner")
+    public String skullOwner = "";
     public Component name = null;
     public List<Component> lore = List.of();
     @Optional

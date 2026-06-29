@@ -10,6 +10,7 @@ import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.Map;
+import java.util.UUID;
 import java.util.logging.Logger;
 
 @SuppressWarnings("unused")
@@ -29,6 +30,7 @@ public final class ConfigItemFactory {
                 .texture(def.texture)
                 .customModelData(def.customModelData)
                 .glow(Boolean.TRUE.equals(def.glow));
+        applySkullOwner(def, logger, builder);
         if (def.name != null) builder.name(def.name);
         if (def.lore != null && !def.lore.isEmpty()) builder.loreComponents(def.lore);
         ItemStack stack = builder.build();
@@ -63,6 +65,18 @@ public final class ConfigItemFactory {
 
         stack.setItemMeta(meta);
         return stack;
+    }
+
+    private static void applySkullOwner(ConfigItem def, Logger logger, ItemBuilder builder) {
+        if (def.material != Material.PLAYER_HEAD) return;
+        if (def.texture != null && !def.texture.isBlank()) return;
+        if (def.skullOwner == null || def.skullOwner.isBlank()) return;
+
+        try {
+            builder.skullOwner(UUID.fromString(def.skullOwner));
+        } catch (IllegalArgumentException e) {
+            if (logger != null) logger.warning("Invalid skull_owner UUID: " + def.skullOwner);
+        }
     }
 
     public static Enchantment enchantment(String name) {

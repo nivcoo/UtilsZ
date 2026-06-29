@@ -1,6 +1,7 @@
 package fr.nivcoo.utilsz.core.database;
 
 import java.sql.SQLException;
+import java.sql.Connection;
 import java.util.List;
 import java.util.Map;
 
@@ -18,6 +19,10 @@ public final class DatabaseTable {
         return database.insert(name, values);
     }
 
+    public int insert(Connection connection, Map<String, ?> values) throws SQLException {
+        return database.insert(connection, name, values);
+    }
+
     public int update(Map<String, ?> values, String where, Object... params) throws SQLException {
         return database.update(name, values, where, params);
     }
@@ -26,8 +31,16 @@ public final class DatabaseTable {
         return database.delete(name, where, params);
     }
 
+    public int delete(Connection connection, String where, Object... params) throws SQLException {
+        return database.delete(connection, name, where, params);
+    }
+
     public boolean exists(String where, Object... params) throws SQLException {
         return database.exists(name, where, params);
+    }
+
+    public boolean exists(Connection connection, String where, Object... params) throws SQLException {
+        return database.exists(connection, name, where, params);
     }
 
     public <T> List<T> select(String columns, RowMapper<T> mapper, String where, String orderBy,

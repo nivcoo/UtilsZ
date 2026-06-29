@@ -1,6 +1,7 @@
 package fr.nivcoo.utilsz.core.database;
 
 import java.sql.SQLException;
+import java.sql.Connection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,12 +26,16 @@ public final class ModelRepository<T> {
     }
 
     public int insert(T model) throws SQLException {
+        return insert(null, model);
+    }
+
+    public int insert(Connection connection, T model) throws SQLException {
         Map<String, Object> values = new LinkedHashMap<>();
         for (ModelColumn<T> column : schema.columns()) {
             if (column.generated()) continue;
             values.put(column.name(), column.toDatabase(model));
         }
-        return database.insert(schema.name(), values);
+        return database.insert(connection, schema.name(), values);
     }
 
     public int update(Object id, Map<String, ?> values) throws SQLException {
@@ -49,12 +54,20 @@ public final class ModelRepository<T> {
         return database.delete(schema.name(), where, schema.encodeWhereParams(where, params));
     }
 
+    public int delete(Connection connection, String where, Object... params) throws SQLException {
+        return database.delete(connection, schema.name(), where, schema.encodeWhereParams(where, params));
+    }
+
     public int clear() throws SQLException {
         return database.delete(schema.name(), null);
     }
 
     public boolean exists(String where, Object... params) throws SQLException {
         return database.exists(schema.name(), where, schema.encodeWhereParams(where, params));
+    }
+
+    public boolean exists(Connection connection, String where, Object... params) throws SQLException {
+        return database.exists(connection, schema.name(), where, schema.encodeWhereParams(where, params));
     }
 
     public ModelQuery<T> find() {

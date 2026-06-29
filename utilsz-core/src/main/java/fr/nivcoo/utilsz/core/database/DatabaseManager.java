@@ -101,6 +101,18 @@ public class DatabaseManager {
     public <T> List<T> query(String query, RowMapper<T> mapper, Object... params) throws SQLException {
         try (Connection connection = getConnection();
              PreparedStatement statement = connection.prepareStatement(query)) {
+            return query(statement, mapper, params);
+        }
+    }
+
+    public <T> List<T> query(Connection connection, String query, RowMapper<T> mapper, Object... params) throws SQLException {
+        Objects.requireNonNull(connection, "connection");
+        try (PreparedStatement statement = connection.prepareStatement(query)) {
+            return query(statement, mapper, params);
+        }
+    }
+
+    private <T> List<T> query(PreparedStatement statement, RowMapper<T> mapper, Object... params) throws SQLException {
             bind(statement, params);
             try (ResultSet rs = statement.executeQuery()) {
                 List<T> out = new ArrayList<>();
@@ -109,7 +121,6 @@ public class DatabaseManager {
                 }
                 return out;
             }
-        }
     }
 
     public <T> Optional<T> queryOne(String query, RowMapper<T> mapper, Object... params) throws SQLException {
@@ -117,7 +128,16 @@ public class DatabaseManager {
         return rows.isEmpty() ? Optional.empty() : Optional.ofNullable(rows.getFirst());
     }
 
+    public <T> Optional<T> queryOne(Connection connection, String query, RowMapper<T> mapper, Object... params) throws SQLException {
+        List<T> rows = query(connection, query, mapper, params);
+        return rows.isEmpty() ? Optional.empty() : Optional.ofNullable(rows.getFirst());
+    }
+
     public int insert(String table, Map<String, ?> values) throws SQLException {
+        return insert(null, table, values);
+    }
+
+    public int insert(Connection connection, String table, Map<String, ?> values) throws SQLException {
         if (values == null || values.isEmpty()) {
             throw new IllegalArgumentException("Cannot insert an empty value map.");
         }
@@ -131,8 +151,8 @@ public class DatabaseManager {
             params.add(entry.getValue());
         }
 
-        return execute("INSERT INTO " + quote(table) + "(" + columns + ") VALUES (" + placeholders + ")",
-                params.toArray());
+        String sql = "INSERT INTO " + quote(table) + "(" + columns + ") VALUES (" + placeholders + ")";
+        return connection == null ? execute(sql, params.toArray()) : execute(connection, sql, params.toArray());
     }
 
     public int update(String table, Map<String, ?> values, String where, Object... params) throws SQLException {
@@ -180,20 +200,28 @@ public class DatabaseManager {
     }
 
     public int delete(String table, String where, Object... params) throws SQLException {
+        return delete(null, table, where, params);
+    }
+
+    public int delete(Connection connection, String table, String where, Object... params) throws SQLException {
         String sql = "DELETE FROM " + quote(table);
         if (where != null && !where.isBlank()) {
             sql += " WHERE " + where;
         }
-        return execute(sql, params);
+        return connection == null ? execute(sql, params) : execute(connection, sql, params);
     }
 
     public boolean exists(String table, String where, Object... params) throws SQLException {
+        return exists(null, table, where, params);
+    }
+
+    public boolean exists(Connection connection, String table, String where, Object... params) throws SQLException {
         String sql = "SELECT 1 FROM " + quote(table);
         if (where != null && !where.isBlank()) {
             sql += " WHERE " + where;
         }
         sql += " LIMIT 1";
-        return queryOne(sql, row -> 1, params).isPresent();
+        return queryOne(connection, sql, row -> 1, params).isPresent();
     }
 
     public void createIndexIfAbsent(String table, String index, List<String> columns) throws SQLException {
