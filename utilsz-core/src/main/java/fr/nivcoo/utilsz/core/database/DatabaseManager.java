@@ -91,7 +91,7 @@ public class DatabaseManager {
     }
 
     public int execute(Connection connection, String query, Object... params) throws SQLException {
-        Objects.requireNonNull(connection, "connection");
+        if (connection == null) return execute(query, params);
         try (PreparedStatement statement = connection.prepareStatement(query)) {
             bind(statement, params);
             return statement.executeUpdate();
@@ -106,7 +106,7 @@ public class DatabaseManager {
     }
 
     public <T> List<T> query(Connection connection, String query, RowMapper<T> mapper, Object... params) throws SQLException {
-        Objects.requireNonNull(connection, "connection");
+        if (connection == null) return query(query, mapper, params);
         try (PreparedStatement statement = connection.prepareStatement(query)) {
             return query(statement, mapper, params);
         }
@@ -178,6 +178,7 @@ public class DatabaseManager {
     }
 
     public int update(Connection connection, String table, Map<String, ?> values, String where, Object... params) throws SQLException {
+        if (connection == null) return update(table, values, where, params);
         if (values == null || values.isEmpty()) {
             throw new IllegalArgumentException("Cannot update an empty value map.");
         }
