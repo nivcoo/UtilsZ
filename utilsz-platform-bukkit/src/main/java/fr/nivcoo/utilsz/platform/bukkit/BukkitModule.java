@@ -5,6 +5,7 @@ import fr.nivcoo.utilsz.core.module.UtilsZModule;
 import fr.nivcoo.utilsz.platform.bukkit.conversion.ItemStackConv;
 import fr.nivcoo.utilsz.platform.bukkit.conversion.MaterialConv;
 import fr.nivcoo.utilsz.platform.bukkit.conversion.ParticleConv;
+import fr.nivcoo.utilsz.platform.bukkit.conversion.PotionEffectTypeConv;
 import fr.nivcoo.utilsz.platform.bukkit.conversion.SoundConv;
 import fr.nivcoo.utilsz.platform.bukkit.conversion.StoredLocationConv;
 import fr.nivcoo.utilsz.platform.bukkit.location.StoredLocation;
@@ -13,6 +14,7 @@ import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.potion.PotionEffectType;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -46,6 +48,7 @@ public final class BukkitModule implements UtilsZModule {
         converters.put(Material.class, MaterialConv::new);
         converters.put(Sound.class, SoundConv::new);
         converters.put(Particle.class, ParticleConv::new);
+        converters.put(PotionEffectType.class, PotionEffectTypeConv::new);
         converters.put(StoredLocation.class, StoredLocationConv::new);
         converters.put(ItemStack.class, ItemStackConv::new);
         return converters;
