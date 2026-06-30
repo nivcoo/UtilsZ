@@ -6,7 +6,7 @@
     <parent>
         <groupId>fr.nivcoo</groupId>
         <artifactId>utilsz-parent</artifactId>
-        <version>1.3.97</version>
+        <version>1.3.98</version>
     </parent>
 
     <artifactId>utilsz-platform-bukkit</artifactId>
@@ -24,6 +24,11 @@
             <artifactId>paper-api</artifactId>
             <version>[26.1.2.build,)</version>
             <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>net.kyori</groupId>
+            <artifactId>adventure-text-serializer-plain</artifactId>
         </dependency>
     </dependencies>
 </project>
