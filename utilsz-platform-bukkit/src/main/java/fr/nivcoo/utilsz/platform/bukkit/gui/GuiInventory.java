@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.function.Consumer;
 
+@SuppressWarnings("unused")
 public final class GuiInventory implements InventoryHolder {
 
     public static final String TICK = "tick";
@@ -108,6 +109,19 @@ public final class GuiInventory implements InventoryHolder {
             throw new IllegalArgumentException("pos must be between 0 and " + (rows * 9 - 1) + ", but is " + pos);
         items[pos] = item;
         bukkitInventory.setItem(pos, item.getItemStack());
+    }
+
+    public void clear(int col, int row) {
+        if (col < 1 || col > 9) throw new IllegalArgumentException("col must be between 1 and 9 but is " + col);
+        if (row < 1 || row > rows) throw new IllegalArgumentException("row must be between 1 and " + rows);
+        clear(locToPos(col, row));
+    }
+
+    public void clear(int pos) {
+        if (pos < 0 || pos > rows * 9 - 1)
+            throw new IllegalArgumentException("pos must be between 0 and " + (rows * 9 - 1) + ", but is " + pos);
+        items[pos] = null;
+        bukkitInventory.setItem(pos, null);
     }
 
     public void fill(ClickableItem item) {
