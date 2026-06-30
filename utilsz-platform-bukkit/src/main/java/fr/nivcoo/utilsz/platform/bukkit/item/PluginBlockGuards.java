@@ -7,12 +7,10 @@ import org.bukkit.block.data.type.Chest;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.function.Predicate;
-
 @SuppressWarnings("unused")
 public final class PluginBlockGuards {
 
-    private static final BlockFace[] HORIZONTAL = {
+    public static final BlockFace[] HORIZONTAL_FACES = {
             BlockFace.NORTH,
             BlockFace.SOUTH,
             BlockFace.EAST,
@@ -34,13 +32,5 @@ public final class PluginBlockGuards {
 
     public static boolean createsMergedChest(Block block) {
         return block != null && block.getBlockData() instanceof Chest chest && chest.getType() != Chest.Type.SINGLE;
-    }
-
-    public static boolean touchesAdjacent(Block block, Predicate<Block> predicate) {
-        if (block == null || predicate == null) return false;
-        for (BlockFace face : HORIZONTAL) {
-            if (predicate.test(block.getRelative(face))) return true;
-        }
-        return false;
     }
 }

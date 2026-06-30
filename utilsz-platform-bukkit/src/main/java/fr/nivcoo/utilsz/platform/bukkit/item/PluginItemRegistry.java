@@ -2,6 +2,7 @@ package fr.nivcoo.utilsz.platform.bukkit.item;
 
 import org.bukkit.Bukkit;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -75,6 +76,7 @@ public final class PluginItemRegistry implements Listener {
     @EventHandler(ignoreCancelled = true)
     public void onPlace(BlockPlaceEvent event) {
         dispatchPlace(event.getItemInHand(), event.getPlayer(), event);
+        if (!event.isCancelled()) dispatchAdjacentPlaceGuards(event);
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -152,5 +154,35 @@ public final class PluginItemRegistry implements Listener {
         if (data.isEmpty()) return false;
         block.onBreak(event.getPlayer(), data.get(), event);
         return true;
+    }
+
+    private void dispatchAdjacentPlaceGuards(BlockPlaceEvent event) {
+        Block placed = event.getBlockPlaced();
+        if (placed == null) return;
+        for (BlockFace face : PluginBlockGuards.HORIZONTAL_FACES) {
+            Block adjacent = placed.getRelative(face);
+            for (PluginBlock<?> block : blocks.values()) {
+                if (dispatchAdjacentPlaceGuardOne(block, adjacent, event)) return;
+            }
+        }
+    }
+
+    private <T> boolean dispatchAdjacentPlaceGuardOne(PluginBlock<T> block, Block adjacent, BlockPlaceEvent event) {
+        Optional<T> data = block.read(adjacent);
+        if (data.isEmpty()) return false;
+        T value = data.get();
+        Player player = event.getPlayer();
+        if (PluginBlockGuards.createsMergedChest(event.getBlockPlaced())
+                && block.shouldPreventMergedChest(player, value, event)) {
+            event.setCancelled(true);
+            block.onMergedChestPrevented(player, value, event);
+            return true;
+        }
+        if (block.shouldPreventAdjacentTouch(player, value, event)) {
+            event.setCancelled(true);
+            block.onAdjacentTouchPrevented(player, value, event);
+            return true;
+        }
+        return false;
     }
 }

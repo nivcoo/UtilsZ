@@ -34,10 +34,17 @@ public abstract class PluginBlock<T> {
     }
 
     public boolean shouldPreventMergedChest(Player player, T data, BlockPlaceEvent event) {
-        return false;
+        return true;
     }
 
     public void onMergedChestPrevented(Player player, T data, BlockPlaceEvent event) {
+    }
+
+    public boolean shouldPreventAdjacentTouch(Player player, T data, BlockPlaceEvent event) {
+        return false;
+    }
+
+    public void onAdjacentTouchPrevented(Player player, T data, BlockPlaceEvent event) {
     }
 
     public void onInteract(Player player, T data, PlayerInteractEvent event) {
