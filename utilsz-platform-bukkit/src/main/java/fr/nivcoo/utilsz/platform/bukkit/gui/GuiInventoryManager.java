@@ -9,6 +9,7 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Collection;
@@ -131,7 +132,7 @@ public final class GuiInventoryManager implements Listener {
             }
         }
 
-        org.bukkit.inventory.Inventory clicked = e.getClickedInventory();
+        Inventory clicked = e.getClickedInventory();
         if (clicked == null) return;
         if (!inv.getBukkitInventory().equals(clicked)) return;
 
@@ -173,11 +174,17 @@ public final class GuiInventoryManager implements Listener {
 
     private boolean shouldDeferOpen(Player player, GuiInventory next) {
         if (player == null || !player.isOnline()) return false;
-        org.bukkit.inventory.Inventory current = player.getOpenInventory().getTopInventory();
+        Inventory current = player.getOpenInventory().getTopInventory();
         return current.getType() != InventoryType.CRAFTING
                 && !current.equals(next.getBukkitInventory())
-                && !(current.getHolder() instanceof GuiInventory)
-                && inventories.values().stream().noneMatch(inv -> current.equals(inv.getBukkitInventory()));
+                && !isManagedInventory(current);
+    }
+
+    private boolean isManagedInventory(Inventory inventory) {
+        if (inventory == null) return false;
+        if (inventory.getHolder() instanceof GuiInventory) return true;
+        if (inventory.getHolder() instanceof ManagedGuiInventoryHolder holder && holder.isManagedGuiInventory()) return true;
+        return inventories.values().stream().anyMatch(inv -> inventory.equals(inv.getBukkitInventory()));
     }
 
     @EventHandler(priority = EventPriority.HIGH)

@@ -27,7 +27,7 @@ public final class GuiInventory implements InventoryHolder {
 
     private final List<Integer> excludeCases;
     private final ClickableItem[] items;
-    private org.bukkit.inventory.Inventory bukkitInventory;
+    private Inventory bukkitInventory;
 
     public GuiInventory(Player player, GuiProvider provider, Consumer<GuiInventory> params) {
         this.values = new HashMap<>();
@@ -65,8 +65,7 @@ public final class GuiInventory implements InventoryHolder {
         String newPlain = PLAIN.serialize(newTitle);
         if (curPlain.equals(newPlain)) return;
 
-        org.bukkit.inventory.Inventory newInv =
-                Bukkit.createInventory(this, bukkitInventory.getSize(), newTitle);
+        Inventory newInv = Bukkit.createInventory(this, bukkitInventory.getSize(), newTitle);
         newInv.setContents(bukkitInventory.getContents());
 
         this.bukkitInventory = newInv;
@@ -86,7 +85,7 @@ public final class GuiInventory implements InventoryHolder {
         return provider;
     }
 
-    public org.bukkit.inventory.Inventory getBukkitInventory() {
+    public Inventory getBukkitInventory() {
         return bukkitInventory;
     }
 
