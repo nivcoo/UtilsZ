@@ -46,7 +46,7 @@ public final class ModelRepository<T> {
         return database.update(schema.name(), schema.encodeValues(values), where, schema.encodeWhereParams(where, params));
     }
 
-    public int update(java.sql.Connection connection, Map<String, ?> values, String where, Object... params) throws SQLException {
+    public int update(Connection connection, Map<String, ?> values, String where, Object... params) throws SQLException {
         return database.update(connection, schema.name(), schema.encodeValues(values), where, schema.encodeWhereParams(where, params));
     }
 

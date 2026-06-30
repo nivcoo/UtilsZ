@@ -12,7 +12,9 @@ import fr.nivcoo.utilsz.core.messaging.adapter.primitive.ShortAdapter;
 import fr.nivcoo.utilsz.core.messaging.adapter.primitive.StringAdapter;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 public final class BusAdapterRegistry {
 
@@ -59,8 +61,8 @@ public final class BusAdapterRegistry {
 
         registerPrimitives();
 
-        register(java.util.UUID.class, new UUIDAdapter());
-        register(java.util.List.class, new ListAdapter());
+        register(UUID.class, new UUIDAdapter());
+        register(List.class, new ListAdapter());
         register(Map.class, new MapAdapter());
     }
 

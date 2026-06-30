@@ -17,6 +17,7 @@ import com.destroystokyo.paper.profile.PlayerProfile;
 import com.destroystokyo.paper.profile.ProfileProperty;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -105,7 +106,7 @@ public final class ItemBuilder {
 
         var sec = LegacyComponentSerializer.legacySection();
         var amp = LegacyComponentSerializer.legacyAmpersand();
-        java.util.ArrayList<Component> out = new java.util.ArrayList<>(legacyLines.size());
+        ArrayList<Component> out = new ArrayList<>(legacyLines.size());
 
         for (String s : legacyLines) {
             if (s == null) { out.add(style(Component.empty())); continue; }

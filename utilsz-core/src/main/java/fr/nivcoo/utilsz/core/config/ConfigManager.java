@@ -1,6 +1,7 @@
 package fr.nivcoo.utilsz.core.config;
 
 import fr.nivcoo.utilsz.core.config.annotations.*;
+import fr.nivcoo.utilsz.core.config.annotations.Optional;
 import fr.nivcoo.utilsz.core.conversion.Converter;
 import fr.nivcoo.utilsz.core.conversion.ConverterRegistry;
 import fr.nivcoo.utilsz.core.config.text.TextMode;
@@ -14,6 +15,7 @@ import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
@@ -481,11 +483,11 @@ public final class ConfigManager {
     }
 
     private static boolean isStatic(Field f) {
-        return (f.getModifiers() & java.lang.reflect.Modifier.STATIC) != 0;
+        return (f.getModifiers() & Modifier.STATIC) != 0;
     }
 
     private static boolean isOptionalField(Field f) {
-        return f.isAnnotationPresent(fr.nivcoo.utilsz.core.config.annotations.Optional.class);
+        return f.isAnnotationPresent(Optional.class);
     }
 
     private static List<Field> orderedConfigFields(Class<?> type, boolean publicOnly) {
@@ -499,7 +501,7 @@ public final class ConfigManager {
         collectConfigFields(type.getSuperclass(), publicOnly, fields);
         for (Field field : type.getDeclaredFields()) {
             if (field.isSynthetic()) continue;
-            if (publicOnly && !java.lang.reflect.Modifier.isPublic(field.getModifiers())) continue;
+            if (publicOnly && !Modifier.isPublic(field.getModifiers())) continue;
             fields.add(field);
         }
     }
@@ -566,8 +568,8 @@ public final class ConfigManager {
                 || t == Boolean.class
                 || t == Character.class
                 || t == Component.class
-                || java.util.Collection.class.isAssignableFrom(t)
-                || java.util.Map.class.isAssignableFrom(t)) {
+                || Collection.class.isAssignableFrom(t)
+                || Map.class.isAssignableFrom(t)) {
             return false;
         }
         return t.isAnnotationPresent(Section.class) || hasPublicFields(t);
