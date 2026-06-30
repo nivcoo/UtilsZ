@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.UUID;
 import java.util.function.Consumer;
 
+@SuppressWarnings("unused")
 public final class GuiInventoryManager implements Listener {
 
     private final JavaPlugin plugin;
