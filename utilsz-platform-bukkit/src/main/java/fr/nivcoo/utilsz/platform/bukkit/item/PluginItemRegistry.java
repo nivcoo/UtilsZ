@@ -141,7 +141,9 @@ public final class PluginItemRegistry implements Listener {
     private <T> boolean dispatchBlockInteractOne(PluginBlock<T> block, Block clickedBlock, Player player, PlayerInteractEvent event) {
         Optional<T> data = block.read(clickedBlock);
         if (data.isEmpty()) return false;
-        block.onInteract(player, data.get(), event);
+        T value = data.get();
+        if (block.shouldPassThroughInteract(player, value, event)) return true;
+        block.onInteract(player, value, event);
         return true;
     }
 

@@ -21,6 +21,11 @@ public abstract class PlaceablePluginItem<T, B extends PluginBlock<T>> extends P
 
     @Override
     public void onPlace(Player player, T data, BlockPlaceEvent event) {
+        if (block.shouldPreventMergedChest(player, data, event) && PluginBlockGuards.createsMergedChest(event.getBlockPlaced())) {
+            event.setCancelled(true);
+            block.onMergedChestPrevented(player, data, event);
+            return;
+        }
         block.onPlace(player, data, event);
     }
 }

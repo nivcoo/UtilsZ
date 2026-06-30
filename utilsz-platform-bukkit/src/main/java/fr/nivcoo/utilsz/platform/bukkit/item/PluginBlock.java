@@ -29,6 +29,17 @@ public abstract class PluginBlock<T> {
     public void onPlace(Player player, T data, BlockPlaceEvent event) {
     }
 
+    public boolean shouldPassThroughInteract(Player player, T data, PlayerInteractEvent event) {
+        return PluginBlockGuards.shouldPassThroughPlaceableInteract(event);
+    }
+
+    public boolean shouldPreventMergedChest(Player player, T data, BlockPlaceEvent event) {
+        return false;
+    }
+
+    public void onMergedChestPrevented(Player player, T data, BlockPlaceEvent event) {
+    }
+
     public void onInteract(Player player, T data, PlayerInteractEvent event) {
     }
 
