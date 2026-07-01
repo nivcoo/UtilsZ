@@ -15,7 +15,6 @@ import java.util.Map;
 public class ConfigItem {
 
     public Material material = Material.STONE;
-    public int amount = 1;
     @Optional
     public String texture = "";
     @Comment("UUID du propriétaire de la tête joueur. Ignoré si texture est renseignée.")
@@ -37,9 +36,8 @@ public class ConfigItem {
     public ConfigItem() {
     }
 
-    public ConfigItem(Material material, int amount, String name, List<String> lore) {
+    public ConfigItem(Material material, String name, List<String> lore) {
         this.material = material;
-        this.amount = amount;
         this.name = ConfigManager.parseDynamic(name);
         this.lore = lore == null ? List.of() : lore.stream().map(ConfigManager::parseDynamic).toList();
     }

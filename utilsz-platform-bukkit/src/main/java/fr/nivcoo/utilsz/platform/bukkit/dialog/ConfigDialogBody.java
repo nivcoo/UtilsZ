@@ -11,7 +11,7 @@ public class ConfigDialogBody {
     public ConfigDialogBodyType type = ConfigDialogBodyType.TEXT;
     public Component text = ConfigManager.parseDynamic("&7Texte");
     public int width = 300;
-    public ConfigItem item = new ConfigItem(Material.STONE, 1, "&fItem", null);
+    public ConfigItem item = new ConfigItem(Material.STONE, "&fItem", null);
     public boolean showDecorations = true;
     public boolean showTooltip = true;
     public int itemWidth = 16;

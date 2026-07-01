@@ -1,6 +1,7 @@
 package fr.nivcoo.utilsz.platform.bukkit.item;
 
 import fr.nivcoo.utilsz.core.config.ConfigManager;
+import fr.nivcoo.utilsz.platform.bukkit.gui.ConfigGuiItem;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
@@ -28,7 +29,7 @@ public final class ConfigItemFactory {
     public static ItemStack create(ConfigItem def, Logger logger) {
         if (def == null || def.material == null || def.material.isAir()) return null;
 
-        ItemBuilder builder = ItemBuilder.of(def.material, Math.max(1, def.amount))
+        ItemBuilder builder = ItemBuilder.of(def.material, amount(def))
                 .texture(def.texture)
                 .customModelData(def.customModelData);
         applySkullOwner(def, logger, builder);
@@ -71,9 +72,14 @@ public final class ConfigItemFactory {
 
     public static ConfigItem copy(ConfigItem def) {
         if (def == null) return null;
-        ConfigItem copy = new ConfigItem();
+        ConfigItem copy = def instanceof ConfigGuiItem ? new ConfigGuiItem() : new ConfigItem();
+        if (copy instanceof ConfigGuiItem copyGui && def instanceof ConfigGuiItem gui) {
+            copyGui.amount = gui.amount;
+            copyGui.enabled = gui.enabled;
+            copyGui.slot = gui.slot;
+            copyGui.slots = gui.slots == null ? List.of() : List.copyOf(gui.slots);
+        }
         copy.material = def.material;
-        copy.amount = def.amount;
         copy.texture = def.texture;
         copy.skullOwner = def.skullOwner;
         copy.name = def.name;
@@ -121,5 +127,9 @@ public final class ConfigItemFactory {
         Enchantment enchantment = Registry.ENCHANTMENT.get(key);
         if (enchantment != null) return enchantment;
         return Enchantment.getByName(name.toUpperCase());
+    }
+
+    private static int amount(ConfigItem def) {
+        return def instanceof ConfigGuiItem gui ? Math.max(1, gui.amount) : 1;
     }
 }
