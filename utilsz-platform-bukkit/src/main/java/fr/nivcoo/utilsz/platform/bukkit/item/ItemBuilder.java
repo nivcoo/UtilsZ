@@ -18,9 +18,7 @@ import com.destroystokyo.paper.profile.ProfileProperty;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @SuppressWarnings("unused")
@@ -52,13 +50,7 @@ public final class ItemBuilder {
     }
 
     private void setMeta(ItemMeta meta) {
-        Map<Enchantment, Integer> enchants = new LinkedHashMap<>(stack.getEnchantments());
         stack.setItemMeta(meta);
-        for (Map.Entry<Enchantment, Integer> entry : enchants.entrySet()) {
-            if (!stack.containsEnchantment(entry.getKey())) {
-                stack.addUnsafeEnchantment(entry.getKey(), entry.getValue());
-            }
-        }
     }
 
     private Component style(Component c) {

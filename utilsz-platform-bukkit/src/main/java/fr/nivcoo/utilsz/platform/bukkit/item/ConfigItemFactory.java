@@ -11,7 +11,6 @@ import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.List;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Logger;
@@ -47,7 +46,7 @@ public final class ConfigItemFactory {
 
         boolean isBook = stack.getType() == Material.ENCHANTED_BOOK;
         if (def.enchants == null || def.enchants.isEmpty()) {
-            setItemMeta(stack, meta);
+            stack.setItemMeta(meta);
             return stack;
         }
 
@@ -66,18 +65,8 @@ public final class ConfigItemFactory {
             }
         }
 
-        setItemMeta(stack, meta);
-        return stack;
-    }
-
-    private static void setItemMeta(ItemStack stack, ItemMeta meta) {
-        Map<Enchantment, Integer> enchants = new LinkedHashMap<>(stack.getEnchantments());
         stack.setItemMeta(meta);
-        for (Map.Entry<Enchantment, Integer> entry : enchants.entrySet()) {
-            if (!stack.containsEnchantment(entry.getKey())) {
-                stack.addUnsafeEnchantment(entry.getKey(), entry.getValue());
-            }
-        }
+        return stack;
     }
 
     public static ConfigItem copy(ConfigItem def) {
