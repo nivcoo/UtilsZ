@@ -141,7 +141,7 @@ public final class ItemBuilder {
     public ItemBuilder glow(boolean enabled) {
         if (!enabled) return this;
         if (stack.getEnchantments().isEmpty()) {
-            enchant(Enchantment.LURE, 1);
+            stack.addUnsafeEnchantment(Enchantment.LURE, 1);
             addFlag(ItemFlag.HIDE_ENCHANTS);
         }
         return this;

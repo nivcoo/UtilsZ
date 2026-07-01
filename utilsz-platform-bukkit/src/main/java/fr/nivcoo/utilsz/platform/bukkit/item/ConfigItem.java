@@ -14,14 +14,6 @@ import java.util.Map;
 @SuppressWarnings("unused")
 public class ConfigItem {
 
-    @Optional
-    public boolean enabled = true;
-    @Comment("Slot unique 0-53.")
-    @Optional
-    public Integer slot = null;
-    @Comment("Slots multiples 0-53 pour dupliquer le même item.")
-    @Optional
-    public List<Integer> slots = List.of();
     public Material material = Material.STONE;
     public int amount = 1;
     @Optional

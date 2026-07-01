@@ -1,5 +1,6 @@
 package fr.nivcoo.utilsz.platform.bukkit.item;
 
+import fr.nivcoo.utilsz.core.config.ConfigManager;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
@@ -9,6 +10,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Logger;
@@ -24,7 +26,7 @@ public final class ConfigItemFactory {
     }
 
     public static ItemStack create(ConfigItem def, Logger logger) {
-        if (def == null || !def.enabled || def.material == null || def.material.isAir()) return null;
+        if (def == null || def.material == null || def.material.isAir()) return null;
 
         ItemBuilder builder = ItemBuilder.of(def.material, Math.max(1, def.amount))
                 .texture(def.texture)
@@ -65,6 +67,33 @@ public final class ConfigItemFactory {
 
         stack.setItemMeta(meta);
         return stack;
+    }
+
+    public static ConfigItem copy(ConfigItem def) {
+        if (def == null) return null;
+        ConfigItem copy = new ConfigItem();
+        copy.material = def.material;
+        copy.amount = def.amount;
+        copy.texture = def.texture;
+        copy.skullOwner = def.skullOwner;
+        copy.name = def.name;
+        copy.lore = def.lore == null ? List.of() : List.copyOf(def.lore);
+        copy.enchants = def.enchants;
+        copy.flags = def.flags == null ? List.of() : List.copyOf(def.flags);
+        copy.glow = def.glow;
+        copy.customModelData = def.customModelData;
+        return copy;
+    }
+
+    public static ConfigItem format(ConfigItem def, Map<String, ?> placeholders) {
+        ConfigItem copy = copy(def);
+        if (copy == null) return null;
+        Map<String, ?> safePlaceholders = placeholders == null ? Map.of() : placeholders;
+        copy.name = ConfigManager.fmt(copy.name, safePlaceholders);
+        copy.lore = copy.lore == null ? List.of() : copy.lore.stream()
+                .map(line -> ConfigManager.fmt(line, safePlaceholders))
+                .toList();
+        return copy;
     }
 
     private static void applySkullOwner(ConfigItem def, Logger logger, ItemBuilder builder) {
