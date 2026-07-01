@@ -553,6 +553,16 @@ public final class ConfigManager {
         return node.startsWith(prefix + ".") ? node : prefix + "." + node;
     }
 
+    private static void omitConfigFields(Field contextField, Map<String, Object> yaml) {
+        OmitConfigFields omit = contextField.getAnnotation(OmitConfigFields.class);
+        if (omit == null || yaml == null || yaml.isEmpty()) return;
+        for (String field : omit.value()) {
+            if (field == null || field.isBlank()) continue;
+            yaml.remove(field);
+            yaml.remove(toSnake(field));
+        }
+    }
+
     private static boolean hasPublicFields(Class<?> t) {
         if (t.isEnum()) return false;
         for (Field f : t.getFields()) if (!isStatic(f)) return true;
@@ -735,9 +745,10 @@ public final class ConfigManager {
                         out.add(null);
                         continue;
                     }
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    export(e, "", Map.of(), m, new LinkedHashMap<>());
-                    out.add(m);
+                        Map<String, Object> m = new LinkedHashMap<>();
+                        export(e, "", Map.of(), m, new LinkedHashMap<>());
+                        omitConfigFields(f, m);
+                        out.add(m);
                 }
                 return out;
             }
@@ -759,6 +770,7 @@ public final class ConfigManager {
                 } else if (shouldExportAsPojo(elemCls, e)) {
                     Map<String, Object> m = new LinkedHashMap<>();
                     export(e, "", Map.of(), m, new LinkedHashMap<>());
+                    omitConfigFields(f, m);
                     out.add(m);
                 } else {
                     out.add(e);
@@ -784,6 +796,7 @@ public final class ConfigManager {
                 } else if (el != null && el.value() != Object.class) {
                     Map<String, Object> m = new LinkedHashMap<>();
                     export(value, "", Map.of(), m, new LinkedHashMap<>());
+                    omitConfigFields(f, m);
                     out.put(mapKeyToYaml(e.getKey()), m);
                 } else if (valueCls == Component.class && value instanceof Component c) {
                     out.put(mapKeyToYaml(e.getKey()), serializeComponent(c, mode));
@@ -796,11 +809,19 @@ public final class ConfigManager {
                 } else if (shouldExportAsPojo(valueCls, value)) {
                     Map<String, Object> m = new LinkedHashMap<>();
                     export(value, "", Map.of(), m, new LinkedHashMap<>());
+                    omitConfigFields(f, m);
                     out.put(mapKeyToYaml(e.getKey()), m);
                 } else {
                     out.put(mapKeyToYaml(e.getKey()), value);
                 }
             }
+            return out;
+        }
+
+        if (shouldExportAsPojo(f.getType(), v)) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            export(v, "", Map.of(), out, new LinkedHashMap<>());
+            omitConfigFields(f, out);
             return out;
         }
 
