@@ -11,6 +11,7 @@ import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Logger;
@@ -30,11 +31,11 @@ public final class ConfigItemFactory {
 
         ItemBuilder builder = ItemBuilder.of(def.material, Math.max(1, def.amount))
                 .texture(def.texture)
-                .customModelData(def.customModelData)
-                .glow(Boolean.TRUE.equals(def.glow));
+                .customModelData(def.customModelData);
         applySkullOwner(def, logger, builder);
         if (def.name != null) builder.name(def.name);
         if (def.lore != null && !def.lore.isEmpty()) builder.loreComponents(def.lore);
+        if (Boolean.TRUE.equals(def.glow)) builder.glow(true);
         ItemStack stack = builder.build();
 
         ItemMeta meta = stack.getItemMeta();
@@ -46,7 +47,7 @@ public final class ConfigItemFactory {
 
         boolean isBook = stack.getType() == Material.ENCHANTED_BOOK;
         if (def.enchants == null || def.enchants.isEmpty()) {
-            stack.setItemMeta(meta);
+            setItemMeta(stack, meta);
             return stack;
         }
 
@@ -65,8 +66,18 @@ public final class ConfigItemFactory {
             }
         }
 
-        stack.setItemMeta(meta);
+        setItemMeta(stack, meta);
         return stack;
+    }
+
+    private static void setItemMeta(ItemStack stack, ItemMeta meta) {
+        Map<Enchantment, Integer> enchants = new LinkedHashMap<>(stack.getEnchantments());
+        stack.setItemMeta(meta);
+        for (Map.Entry<Enchantment, Integer> entry : enchants.entrySet()) {
+            if (!stack.containsEnchantment(entry.getKey())) {
+                stack.addUnsafeEnchantment(entry.getKey(), entry.getValue());
+            }
+        }
     }
 
     public static ConfigItem copy(ConfigItem def) {

@@ -18,7 +18,9 @@ import com.destroystokyo.paper.profile.ProfileProperty;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @SuppressWarnings("unused")
@@ -47,6 +49,16 @@ public final class ItemBuilder {
         ItemMeta m = stack.getItemMeta();
         if (m == null) m = Bukkit.getItemFactory().getItemMeta(stack.getType());
         return m;
+    }
+
+    private void setMeta(ItemMeta meta) {
+        Map<Enchantment, Integer> enchants = new LinkedHashMap<>(stack.getEnchantments());
+        stack.setItemMeta(meta);
+        for (Map.Entry<Enchantment, Integer> entry : enchants.entrySet()) {
+            if (!stack.containsEnchantment(entry.getKey())) {
+                stack.addUnsafeEnchantment(entry.getKey(), entry.getValue());
+            }
+        }
     }
 
     private Component style(Component c) {
@@ -80,7 +92,7 @@ public final class ItemBuilder {
     public ItemBuilder name(Component c) {
         ItemMeta m = meta();
         m.displayName(style(c));
-        stack.setItemMeta(m);
+        setMeta(m);
         return this;
     }
 
@@ -92,7 +104,7 @@ public final class ItemBuilder {
         ItemMeta m = meta();
         if (lines != null) m.lore(lines.stream().map(this::style).toList());
         else m.lore(null);
-        stack.setItemMeta(m);
+        setMeta(m);
         return this;
     }
 
@@ -100,7 +112,7 @@ public final class ItemBuilder {
         ItemMeta m = meta();
         if (legacyLines == null || legacyLines.isEmpty()) {
             m.lore(null);
-            stack.setItemMeta(m);
+            setMeta(m);
             return this;
         }
 
@@ -115,14 +127,14 @@ public final class ItemBuilder {
         }
 
         m.lore(out);
-        stack.setItemMeta(m);
+        setMeta(m);
         return this;
     }
 
     public ItemBuilder addFlag(ItemFlag... flags) {
         ItemMeta m = meta();
         m.addItemFlags(flags);
-        stack.setItemMeta(m);
+        setMeta(m);
         return this;
     }
 
@@ -134,15 +146,15 @@ public final class ItemBuilder {
         if (e == null || level <= 0) return this;
         ItemMeta m = meta();
         m.addEnchant(e, level, true);
-        stack.setItemMeta(m);
+        setMeta(m);
         return this;
     }
 
     public ItemBuilder glow(boolean enabled) {
         if (!enabled) return this;
+        addFlag(ItemFlag.HIDE_ENCHANTS);
         if (stack.getEnchantments().isEmpty()) {
             stack.addUnsafeEnchantment(Enchantment.LURE, 1);
-            addFlag(ItemFlag.HIDE_ENCHANTS);
         }
         return this;
     }
@@ -150,7 +162,7 @@ public final class ItemBuilder {
     public ItemBuilder unbreakable(boolean u) {
         ItemMeta m = meta();
         m.setUnbreakable(u);
-        stack.setItemMeta(m);
+        setMeta(m);
         return this;
     }
 
@@ -158,7 +170,7 @@ public final class ItemBuilder {
         ItemMeta m = meta();
         if (m instanceof Damageable d) {
             d.setDamage(Math.max(0, dmg));
-            stack.setItemMeta(m);
+            setMeta(m);
         }
         return this;
     }
@@ -167,7 +179,7 @@ public final class ItemBuilder {
         if (data <= 0) return this;
         ItemMeta m = meta();
         m.setCustomModelData(data);
-        stack.setItemMeta(m);
+        setMeta(m);
         return this;
     }
 
@@ -175,7 +187,7 @@ public final class ItemBuilder {
         ItemMeta m = meta();
         if (m instanceof LeatherArmorMeta lam && c != null) {
             lam.setColor(c);
-            stack.setItemMeta(m);
+            setMeta(m);
         }
         return this;
     }
@@ -184,7 +196,7 @@ public final class ItemBuilder {
         if (stack.getType() != Material.PLAYER_HEAD || base64 == null || base64.isEmpty()) return this;
 
         SkullMeta m = (SkullMeta) meta();
-        if (applyTextureProfile(m, base64)) stack.setItemMeta(m);
+        if (applyTextureProfile(m, base64)) setMeta(m);
         return this;
     }
 
@@ -192,7 +204,7 @@ public final class ItemBuilder {
         if (stack.getType() != Material.PLAYER_HEAD || owner == null) return this;
         SkullMeta m = (SkullMeta) meta();
         m.setOwningPlayer(Bukkit.getOfflinePlayer(owner));
-        stack.setItemMeta(m);
+        setMeta(m);
         return this;
     }
 
