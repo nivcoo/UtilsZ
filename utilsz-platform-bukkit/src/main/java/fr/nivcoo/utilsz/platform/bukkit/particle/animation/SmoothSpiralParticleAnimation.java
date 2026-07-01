@@ -21,7 +21,7 @@ public final class SmoothSpiralParticleAnimation implements ParticleAnimationRen
         double radius = Math.max(0.0, spiral.radius);
         double height = Math.max(0.05, spiral.height);
         double pointSpacing = Math.max(0.05, spiral.pointSpacing);
-        int points = Math.clamp(spiral.trailLength * 4L, 12, 96);
+        int points = Math.clamp(spiral.trailLength * 2L, 4, 48);
         for (int index = 0; index < points; index++) {
             double angle = phase - index * pointSpacing;
             double yRatio = (Math.sin(angle * 0.5) + 1.0) * 0.5;
