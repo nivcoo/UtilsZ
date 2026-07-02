@@ -1,5 +1,6 @@
 package fr.nivcoo.utilsz.platform.bukkit.item;
 
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
@@ -29,13 +30,36 @@ public final class ItemDelivery {
 
         for (ItemStack item : give(player, items).values()) {
             if (item == null || item.getType().isAir()) continue;
-            player.getWorld().dropItemNaturally(player.getLocation(), item);
+            drop(player.getLocation(), item);
         }
     }
 
     public static void giveOrDrop(Player player, ItemStack item, int amount) {
         if (item == null || item.getType().isAir()) return;
         giveOrDrop(player, split(item, amount).toArray(ItemStack[]::new));
+    }
+
+    public static void drop(Location location, ItemStack... items) {
+        if (location == null || location.getWorld() == null || items == null || items.length == 0) return;
+        for (ItemStack item : items) {
+            if (item == null || item.getType().isAir()) continue;
+            location.getWorld().dropItemNaturally(location, item);
+        }
+    }
+
+    public static void drop(Location location, ItemStack item, int amount) {
+        if (item == null || item.getType().isAir()) return;
+        drop(location, split(item, amount).toArray(ItemStack[]::new));
+    }
+
+    public static void dropAtBlock(Location location, ItemStack... items) {
+        if (location == null) return;
+        drop(location.clone().add(0.5, 0.5, 0.5), items);
+    }
+
+    public static void dropAtBlock(Location location, ItemStack item, int amount) {
+        if (item == null || item.getType().isAir()) return;
+        dropAtBlock(location, split(item, amount).toArray(ItemStack[]::new));
     }
 
     private static List<ItemStack> split(ItemStack item, int amount) {

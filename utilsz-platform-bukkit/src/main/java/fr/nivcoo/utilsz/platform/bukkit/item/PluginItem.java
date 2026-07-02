@@ -1,5 +1,6 @@
 package fr.nivcoo.utilsz.platform.bukkit.item;
 
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -53,6 +54,22 @@ public abstract class PluginItem<T> {
 
     public void giveOrDrop(Player player, T data, int amount) {
         ItemDelivery.giveOrDrop(player, create(data), amount);
+    }
+
+    public void drop(Location location, T data) {
+        drop(location, data, 1);
+    }
+
+    public void drop(Location location, T data, int amount) {
+        ItemDelivery.drop(location, create(data), amount);
+    }
+
+    public void dropAtBlock(Location location, T data) {
+        dropAtBlock(location, data, 1);
+    }
+
+    public void dropAtBlock(Location location, T data, int amount) {
+        ItemDelivery.dropAtBlock(location, create(data), amount);
     }
 
     public Optional<T> read(ItemStack item) {
