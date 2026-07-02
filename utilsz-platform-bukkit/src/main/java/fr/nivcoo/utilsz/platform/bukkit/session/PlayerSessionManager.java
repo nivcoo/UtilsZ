@@ -36,7 +36,6 @@ public final class PlayerSessionManager implements Listener {
 
     private final JavaPlugin plugin;
     private final Map<UUID, PlayerSession<?>> sessions = new ConcurrentHashMap<>();
-    private final Map<UUID, Integer> lastInteractTick = new ConcurrentHashMap<>();
     private boolean initialized;
 
     public PlayerSessionManager(JavaPlugin plugin) {
@@ -69,7 +68,6 @@ public final class PlayerSessionManager implements Listener {
 
     public void clear() {
         sessions.clear();
-        lastInteractTick.clear();
     }
 
     public void removeIf(BiPredicate<UUID, PlayerSession<?>> predicate) {
@@ -81,7 +79,6 @@ public final class PlayerSessionManager implements Listener {
     public void onInteract(PlayerInteractEvent event) {
         TargetSession<?> session = targetSession(event.getPlayer());
         if (session == null) return;
-        markInteract(event.getPlayer());
         if (event.getHand() == EquipmentSlot.OFF_HAND) {
             event.setCancelled(true);
             return;
@@ -102,14 +99,7 @@ public final class PlayerSessionManager implements Listener {
         Player player = event.getPlayer();
         TargetSession<?> session = targetSession(player);
         if (session == null || event.getHand() == EquipmentSlot.OFF_HAND) return;
-        if (lastInteractTick.getOrDefault(player.getUniqueId(), -1) == Bukkit.getCurrentTick()) return;
         event.setCancelled(true);
-        Block target = player.getTargetBlockExact(6);
-        if (target == null) {
-            cancelTarget(player, session, session.onCancel());
-            return;
-        }
-        handleBlock(player, session, target, Action.RIGHT_CLICK_BLOCK);
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
@@ -163,7 +153,6 @@ public final class PlayerSessionManager implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
         sessions.remove(event.getPlayer().getUniqueId());
-        lastInteractTick.remove(event.getPlayer().getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -180,10 +169,6 @@ public final class PlayerSessionManager implements Listener {
     private TargetSession<?> targetSession(Player player) {
         PlayerSession<?> session = sessions.get(player.getUniqueId());
         return session instanceof TargetSession<?> targetSession ? targetSession : null;
-    }
-
-    private void markInteract(Player player) {
-        lastInteractTick.put(player.getUniqueId(), Bukkit.getCurrentTick());
     }
 
     private <T> void handleBlock(Player player, TargetSession<T> session, Block block, Action action) {
