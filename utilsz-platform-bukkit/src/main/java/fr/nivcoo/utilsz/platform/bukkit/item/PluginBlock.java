@@ -88,10 +88,6 @@ public abstract class PluginBlock<T> {
         return true;
     }
 
-    public boolean shouldDropItemOnDestroy(T data, PluginBlockDestroyContext context) {
-        return true;
-    }
-
     public void onInteract(Player player, T data, PlayerInteractEvent event) {
     }
 

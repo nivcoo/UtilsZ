@@ -1,7 +1,6 @@
 package fr.nivcoo.utilsz.platform.bukkit.item;
 
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -38,7 +37,6 @@ public final class PluginItemRegistry implements Listener {
     private final JavaPlugin plugin;
     private final Map<String, PluginItem<?>> items = new LinkedHashMap<>();
     private final Map<String, PluginBlock<?>> blocks = new LinkedHashMap<>();
-    private final Map<String, PlaceablePluginItem<?, ?>> placeableItemsByBlock = new LinkedHashMap<>();
     private boolean initialized;
 
     public PluginItemRegistry(JavaPlugin plugin) {
@@ -48,9 +46,6 @@ public final class PluginItemRegistry implements Listener {
     public PluginItemRegistry register(PluginItem<?> item) {
         if (item == null) return this;
         items.put(item.id(), item);
-        if (item instanceof PlaceablePluginItem<?, ?> placeableItem) {
-            placeableItemsByBlock.put(placeableItem.block().id(), placeableItem);
-        }
         return this;
     }
 
@@ -63,7 +58,6 @@ public final class PluginItemRegistry implements Listener {
     public void unregister(String id) {
         items.remove(id);
         blocks.remove(id);
-        placeableItemsByBlock.entrySet().removeIf(entry -> entry.getKey().equals(id) || entry.getValue().id().equals(id));
     }
 
     public void init() {
@@ -364,20 +358,7 @@ public final class PluginItemRegistry implements Listener {
         PluginBlockDestroyContext context = new PluginBlockDestroyContext(target, baseContext.cause(), baseContext.event());
         if (!block.shouldDestroy(value, context)) return true;
         block.onDestroy(value, context);
-        if (block.shouldDropItemOnDestroy(value, context)) dropPlaceableItem(block, value, target);
         if (!target.getType().isAir()) target.setType(Material.AIR, false);
         return true;
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> void dropPlaceableItem(PluginBlock<T> block, T data, Block target) {
-        PlaceablePluginItem<T, ?> item = (PlaceablePluginItem<T, ?>) placeableItemsByBlock.get(block.id());
-        if (item == null) {
-            return;
-        } else {
-            target.getWorld();
-        }
-        Location location = target.getLocation().add(0.5, 0.5, 0.5);
-        target.getWorld().dropItemNaturally(location, item.create(data));
     }
 }
