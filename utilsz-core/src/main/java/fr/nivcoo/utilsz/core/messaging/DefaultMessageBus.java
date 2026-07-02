@@ -22,6 +22,7 @@ public final class DefaultMessageBus implements MessageBus {
         JsonObject payload;
         String error;
         String sender;
+        String target;
         long ts;
     }
 
@@ -243,6 +244,8 @@ public final class DefaultMessageBus implements MessageBus {
         boolean isSelf =
                 env.sender != null && env.sender.equals(backend.getInstanceId());
 
+        if (env.target != null && !env.target.equals(backend.getInstanceId())) return;
+
         if ("req".equals(env.kind) || "evt".equals(env.kind)) {
             boolean allowSelf = selfReceive.getOrDefault(env.action, false);
             if (isSelf && !allowSelf) return;
@@ -312,6 +315,7 @@ public final class DefaultMessageBus implements MessageBus {
                 out.kind = "res";
                 out.action = env.action;
                 out.cid = env.cid;
+                out.target = env.sender;
                 out.payload = resA.serialize(result);
 
                 send(out);
@@ -321,6 +325,7 @@ public final class DefaultMessageBus implements MessageBus {
                 out.kind = "res";
                 out.action = env.action;
                 out.cid = env.cid;
+                out.target = env.sender;
                 out.error = ex.getMessage() != null
                         ? ex.getMessage()
                         : ex.toString();
@@ -346,6 +351,9 @@ public final class DefaultMessageBus implements MessageBus {
         if (env.payload != null) o.add("payload", env.payload);
 
         o.addProperty("__sender", backend.getInstanceId());
+        if (env.target != null && !env.target.isEmpty()) {
+            o.addProperty("__target", env.target);
+        }
         o.addProperty("ts", System.currentTimeMillis());
 
         backend.publish(channel, o);
@@ -373,6 +381,11 @@ public final class DefaultMessageBus implements MessageBus {
             e.sender =
                     o.has("__sender")
                             ? o.get("__sender").getAsString()
+                            : null;
+
+            e.target =
+                    o.has("__target")
+                            ? o.get("__target").getAsString()
                             : null;
 
             e.ts =
