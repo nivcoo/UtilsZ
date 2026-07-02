@@ -1,20 +1,34 @@
 package fr.nivcoo.utilsz.platform.bukkit.item;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBurnEvent;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.block.BlockFadeEvent;
+import org.bukkit.event.block.BlockFromToEvent;
+import org.bukkit.event.block.BlockPhysicsEvent;
+import org.bukkit.event.block.BlockPistonExtendEvent;
+import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.block.LeavesDecayEvent;
+import org.bukkit.event.entity.EntityChangeBlockEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -24,6 +38,7 @@ public final class PluginItemRegistry implements Listener {
     private final JavaPlugin plugin;
     private final Map<String, PluginItem<?>> items = new LinkedHashMap<>();
     private final Map<String, PluginBlock<?>> blocks = new LinkedHashMap<>();
+    private final Map<String, PlaceablePluginItem<?, ?>> placeableItemsByBlock = new LinkedHashMap<>();
     private boolean initialized;
 
     public PluginItemRegistry(JavaPlugin plugin) {
@@ -33,6 +48,9 @@ public final class PluginItemRegistry implements Listener {
     public PluginItemRegistry register(PluginItem<?> item) {
         if (item == null) return this;
         items.put(item.id(), item);
+        if (item instanceof PlaceablePluginItem<?, ?> placeableItem) {
+            placeableItemsByBlock.put(placeableItem.block().id(), placeableItem);
+        }
         return this;
     }
 
@@ -45,6 +63,7 @@ public final class PluginItemRegistry implements Listener {
     public void unregister(String id) {
         items.remove(id);
         blocks.remove(id);
+        placeableItemsByBlock.entrySet().removeIf(entry -> entry.getKey().equals(id) || entry.getValue().id().equals(id));
     }
 
     public void init() {
@@ -82,6 +101,58 @@ public final class PluginItemRegistry implements Listener {
     @EventHandler(ignoreCancelled = true)
     public void onBreak(BlockBreakEvent event) {
         dispatchBreak(event);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onPistonExtend(BlockPistonExtendEvent event) {
+        if (containsPistonProtectedBlock(event.getBlocks())) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onPistonRetract(BlockPistonRetractEvent event) {
+        if (containsPistonProtectedBlock(event.getBlocks())) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onBlockPhysics(BlockPhysicsEvent event) {
+        Block block = event.getBlock();
+        if (block == null || !block.getType().hasGravity()) return;
+        if (shouldPreventPhysicsFall(block, event)) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEntityChangeBlock(EntityChangeBlockEvent event) {
+        if (shouldPreventEntityChange(event.getBlock(), event)) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onBlockFromTo(BlockFromToEvent event) {
+        if (shouldPreventFlowReplace(event.getToBlock(), event)) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onBlockFade(BlockFadeEvent event) {
+        if (shouldPreventFade(event.getBlock(), event)) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onBlockBurn(BlockBurnEvent event) {
+        if (shouldPreventBurn(event.getBlock(), event)) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onLeavesDecay(LeavesDecayEvent event) {
+        if (shouldPreventLeavesDecay(event.getBlock(), event)) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEntityExplode(EntityExplodeEvent event) {
+        dispatchExplosion(event.blockList(), new PluginBlockDestroyContext(null, PluginBlockDestroyCause.EXPLOSION, event));
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onBlockExplode(BlockExplodeEvent event) {
+        dispatchExplosion(event.blockList(), new PluginBlockDestroyContext(null, PluginBlockDestroyCause.EXPLOSION, event));
     }
 
     private void dispatchClick(ItemStack stack, Player player, InventoryClickEvent event) {
@@ -184,5 +255,129 @@ public final class PluginItemRegistry implements Listener {
             return true;
         }
         return false;
+    }
+
+    private boolean containsPistonProtectedBlock(Iterable<Block> movedBlocks) {
+        for (Block movedBlock : movedBlocks) {
+            for (PluginBlock<?> block : blocks.values()) {
+                if (isPistonProtectedOne(block, movedBlock)) return true;
+            }
+        }
+        return false;
+    }
+
+    private <T> boolean isPistonProtectedOne(PluginBlock<T> block, Block movedBlock) {
+        Optional<T> data = block.read(movedBlock);
+        return data.isPresent() && block.shouldPreventPistonMove(movedBlock, data.get());
+    }
+
+    private boolean shouldPreventPhysicsFall(Block target, BlockPhysicsEvent event) {
+        for (PluginBlock<?> block : blocks.values()) {
+            if (shouldPreventPhysicsFallOne(block, target, event)) return true;
+        }
+        return false;
+    }
+
+    private <T> boolean shouldPreventPhysicsFallOne(PluginBlock<T> block, Block target, BlockPhysicsEvent event) {
+        Optional<T> data = block.read(target);
+        return data.isPresent() && block.shouldPreventPhysicsFall(target, data.get(), event);
+    }
+
+    private boolean shouldPreventEntityChange(Block target, EntityChangeBlockEvent event) {
+        for (PluginBlock<?> block : blocks.values()) {
+            if (shouldPreventEntityChangeOne(block, target, event)) return true;
+        }
+        return false;
+    }
+
+    private <T> boolean shouldPreventEntityChangeOne(PluginBlock<T> block, Block target, EntityChangeBlockEvent event) {
+        Optional<T> data = block.read(target);
+        return data.isPresent() && block.shouldPreventEntityChange(target, data.get(), event);
+    }
+
+    private boolean shouldPreventFlowReplace(Block target, BlockFromToEvent event) {
+        for (PluginBlock<?> block : blocks.values()) {
+            if (shouldPreventFlowReplaceOne(block, target, event)) return true;
+        }
+        return false;
+    }
+
+    private <T> boolean shouldPreventFlowReplaceOne(PluginBlock<T> block, Block target, BlockFromToEvent event) {
+        Optional<T> data = block.read(target);
+        return data.isPresent() && block.shouldPreventFlowReplace(target, data.get(), event);
+    }
+
+    private boolean shouldPreventFade(Block target, BlockFadeEvent event) {
+        for (PluginBlock<?> block : blocks.values()) {
+            if (shouldPreventFadeOne(block, target, event)) return true;
+        }
+        return false;
+    }
+
+    private <T> boolean shouldPreventFadeOne(PluginBlock<T> block, Block target, BlockFadeEvent event) {
+        Optional<T> data = block.read(target);
+        return data.isPresent() && block.shouldPreventFade(target, data.get(), event);
+    }
+
+    private boolean shouldPreventBurn(Block target, BlockBurnEvent event) {
+        for (PluginBlock<?> block : blocks.values()) {
+            if (shouldPreventBurnOne(block, target, event)) return true;
+        }
+        return false;
+    }
+
+    private <T> boolean shouldPreventBurnOne(PluginBlock<T> block, Block target, BlockBurnEvent event) {
+        Optional<T> data = block.read(target);
+        return data.isPresent() && block.shouldPreventBurn(target, data.get(), event);
+    }
+
+    private boolean shouldPreventLeavesDecay(Block target, LeavesDecayEvent event) {
+        for (PluginBlock<?> block : blocks.values()) {
+            if (shouldPreventLeavesDecayOne(block, target, event)) return true;
+        }
+        return false;
+    }
+
+    private <T> boolean shouldPreventLeavesDecayOne(PluginBlock<T> block, Block target, LeavesDecayEvent event) {
+        Optional<T> data = block.read(target);
+        return data.isPresent() && block.shouldPreventLeavesDecay(target, data.get(), event);
+    }
+
+    private void dispatchExplosion(List<Block> explodedBlocks, PluginBlockDestroyContext baseContext) {
+        for (Block explodedBlock : List.copyOf(explodedBlocks)) {
+            if (destroyBlock(explodedBlock, baseContext)) explodedBlocks.remove(explodedBlock);
+        }
+    }
+
+    private boolean destroyBlock(Block target, PluginBlockDestroyContext baseContext) {
+        if (target == null) return false;
+        for (PluginBlock<?> block : blocks.values()) {
+            if (destroyBlockOne(block, target, baseContext)) return true;
+        }
+        return false;
+    }
+
+    private <T> boolean destroyBlockOne(PluginBlock<T> block, Block target, PluginBlockDestroyContext baseContext) {
+        Optional<T> data = block.read(target);
+        if (data.isEmpty()) return false;
+        T value = data.get();
+        PluginBlockDestroyContext context = new PluginBlockDestroyContext(target, baseContext.cause(), baseContext.event());
+        if (!block.shouldDestroy(value, context)) return true;
+        block.onDestroy(value, context);
+        if (block.shouldDropItemOnDestroy(value, context)) dropPlaceableItem(block, value, target);
+        if (!target.getType().isAir()) target.setType(Material.AIR, false);
+        return true;
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> void dropPlaceableItem(PluginBlock<T> block, T data, Block target) {
+        PlaceablePluginItem<T, ?> item = (PlaceablePluginItem<T, ?>) placeableItemsByBlock.get(block.id());
+        if (item == null) {
+            return;
+        } else {
+            target.getWorld();
+        }
+        Location location = target.getLocation().add(0.5, 0.5, 0.5);
+        target.getWorld().dropItemNaturally(location, item.create(data));
     }
 }
