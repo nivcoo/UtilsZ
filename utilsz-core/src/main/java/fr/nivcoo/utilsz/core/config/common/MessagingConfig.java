@@ -1,6 +1,7 @@
 package fr.nivcoo.utilsz.core.config.common;
 
 import fr.nivcoo.utilsz.core.config.annotations.Comment;
+import fr.nivcoo.utilsz.core.config.annotations.Optional;
 import fr.nivcoo.utilsz.core.config.annotations.Section;
 import fr.nivcoo.utilsz.core.messaging.DefaultMessageBus;
 import fr.nivcoo.utilsz.core.messaging.MessageBackend;
@@ -106,8 +107,10 @@ public class MessagingConfig {
     @SuppressWarnings("unused")
     public static class Encryption {
         public boolean enabled = false;
+        @Optional
         @Comment("AES-256-GCM. La cle doit etre base64 et rester secrete.")
         public String algorithm = "AES-256-GCM";
+        @Optional
         public String keyId = "default";
         public String key = "";
     }

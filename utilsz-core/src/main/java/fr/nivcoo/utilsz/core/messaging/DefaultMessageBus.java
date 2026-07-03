@@ -432,6 +432,11 @@ public final class DefaultMessageBus implements MessageBus {
                                 ? content.get("error").getAsString()
                                 : null;
             } else {
+                if (crypto.enabled()) {
+                    logger.warn("[MessageBus] Received plaintext message for action {} while encryption is enabled", e.action);
+                    return null;
+                }
+
                 e.payload = wirePayload;
                 e.error =
                         o.has("error") && !o.get("error").isJsonNull()
