@@ -8,6 +8,10 @@ import fr.nivcoo.utilsz.core.messaging.MessageBus;
 import fr.nivcoo.utilsz.core.messaging.NoopMessageBus;
 import fr.nivcoo.utilsz.core.messaging.backend.RabbitMqMessageBackend;
 import fr.nivcoo.utilsz.core.messaging.backend.RedisMessageBackend;
+import fr.nivcoo.utilsz.core.messaging.crypto.AesGcmMessageCrypto;
+import fr.nivcoo.utilsz.core.messaging.crypto.MessageCrypto;
+import fr.nivcoo.utilsz.core.messaging.crypto.MessageCryptoKeys;
+import fr.nivcoo.utilsz.core.messaging.crypto.NoopMessageCrypto;
 import org.slf4j.Logger;
 
 import java.util.function.Consumer;
@@ -20,6 +24,7 @@ public class MessagingConfig {
     @Comment("redis ou rabbit")
     public String driver = "redis";
     public String channel = "plugin";
+    public Encryption encryption = new Encryption();
     public Redis redis = new Redis();
     public Rabbit rabbit = new Rabbit();
 
@@ -40,7 +45,13 @@ public class MessagingConfig {
         if (backend == null) {
             return new NoopMessageBus();
         }
-        return new DefaultMessageBus(backend, channel, mainThreadExecutor, logger);
+
+        MessageCrypto crypto = createCrypto(logger);
+        if (crypto == null) {
+            return new NoopMessageBus();
+        }
+
+        return new DefaultMessageBus(backend, channel, mainThreadExecutor, logger, crypto);
     }
 
     public MessageBackend createBackend(Logger logger) {
@@ -61,6 +72,44 @@ public class MessagingConfig {
                 yield null;
             }
         };
+    }
+
+    public MessageCrypto createCrypto(Logger logger) {
+        if (encryption == null || !encryption.enabled) {
+            return NoopMessageCrypto.INSTANCE;
+        }
+
+        String resolvedAlgorithm = encryption.algorithm == null
+                ? AesGcmMessageCrypto.ALGORITHM
+                : encryption.algorithm.trim();
+        if (!AesGcmMessageCrypto.ALGORITHM.equalsIgnoreCase(resolvedAlgorithm)) {
+            if (logger != null) {
+                logger.warn("Messaging encryption algorithm inconnu: {}", resolvedAlgorithm);
+            }
+            return null;
+        }
+
+        try {
+            return new AesGcmMessageCrypto(
+                    MessageCryptoKeys.decode(encryption.key),
+                    encryption.keyId
+            );
+        } catch (Exception ex) {
+            if (logger != null) {
+                logger.warn("Messaging encryption invalide: {}", ex.getMessage());
+            }
+            return null;
+        }
+    }
+
+    @Section
+    @SuppressWarnings("unused")
+    public static class Encryption {
+        public boolean enabled = false;
+        @Comment("AES-256-GCM. La cle doit etre base64 et rester secrete.")
+        public String algorithm = "AES-256-GCM";
+        public String keyId = "default";
+        public String key = "";
     }
 
     @Section

@@ -1,8 +1,12 @@
 package fr.nivcoo.utilsz.core.messaging;
 
 import com.google.gson.JsonObject;
+import fr.nivcoo.utilsz.core.messaging.crypto.AesGcmMessageCrypto;
+import fr.nivcoo.utilsz.core.messaging.crypto.MessageCrypto;
+import fr.nivcoo.utilsz.core.messaging.crypto.NoopMessageCrypto;
 import org.slf4j.Logger;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
@@ -33,6 +37,7 @@ public final class DefaultMessageBus implements MessageBus {
     private final String channel;
     private final Consumer<Runnable> mainThreadExecutor;
     private final Logger logger;
+    private final MessageCrypto crypto;
 
     private final ConcurrentMap<String, EventEntry<?>> eventHandlers = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, RpcEntry> rpcHandlers = new ConcurrentHashMap<>();
@@ -48,10 +53,20 @@ public final class DefaultMessageBus implements MessageBus {
                              Consumer<Runnable> mainThreadExecutor,
                              Logger logger) {
 
+        this(backend, channel, mainThreadExecutor, logger, NoopMessageCrypto.INSTANCE);
+    }
+
+    public DefaultMessageBus(MessageBackend backend,
+                             String channel,
+                             Consumer<Runnable> mainThreadExecutor,
+                             Logger logger,
+                             MessageCrypto crypto) {
+
         this.backend = backend;
         this.channel = channel;
         this.mainThreadExecutor = mainThreadExecutor;
         this.logger = logger;
+        this.crypto = crypto == null ? NoopMessageCrypto.INSTANCE : crypto;
 
         BusAdapterRegistry.registerBuiltins();
 
@@ -347,19 +362,32 @@ public final class DefaultMessageBus implements MessageBus {
 
         if (env.cid != null) o.addProperty("cid", env.cid);
         if (env.mid != null) o.addProperty("mid", env.mid);
-        if (env.error != null) o.addProperty("error", env.error);
-        if (env.payload != null) o.add("payload", env.payload);
-
         o.addProperty("__sender", backend.getInstanceId());
         if (env.target != null && !env.target.isEmpty()) {
             o.addProperty("__target", env.target);
         }
         o.addProperty("ts", System.currentTimeMillis());
 
+        JsonObject content = new JsonObject();
+        if (env.payload != null) content.add("payload", env.payload);
+        if (env.error != null) content.addProperty("error", env.error);
+
+        if (crypto.enabled()) {
+            try {
+                o.add("payload", crypto.encrypt(content, associatedData(o)));
+            } catch (Exception ex) {
+                logger.warn("[MessageBus] Failed to encrypt message {}: {}", env.action, ex.getMessage());
+                return;
+            }
+        } else {
+            if (env.payload != null) o.add("payload", env.payload);
+            if (env.error != null) o.addProperty("error", env.error);
+        }
+
         backend.publish(channel, o);
     }
 
-    private static Envelope fromWire(JsonObject o) {
+    private Envelope fromWire(JsonObject o) {
         try {
             Envelope e = new Envelope();
 
@@ -367,16 +395,6 @@ public final class DefaultMessageBus implements MessageBus {
             e.action = o.has("action") ? o.get("action").getAsString() : null;
             e.cid = o.has("cid") ? o.get("cid").getAsString() : null;
             e.mid = o.has("mid") ? o.get("mid").getAsString() : null;
-
-            e.payload =
-                    o.has("payload") && o.get("payload").isJsonObject()
-                            ? o.getAsJsonObject("payload")
-                            : new JsonObject();
-
-            e.error =
-                    o.has("error") && !o.get("error").isJsonNull()
-                            ? o.get("error").getAsString()
-                            : null;
 
             e.sender =
                     o.has("__sender")
@@ -393,11 +411,58 @@ public final class DefaultMessageBus implements MessageBus {
                             ? o.get("ts").getAsLong()
                             : 0L;
 
+            JsonObject wirePayload =
+                    o.has("payload") && o.get("payload").isJsonObject()
+                            ? o.getAsJsonObject("payload")
+                            : new JsonObject();
+
+            if (AesGcmMessageCrypto.isEncrypted(wirePayload)) {
+                if (!crypto.enabled()) {
+                    logger.warn("[MessageBus] Received encrypted message for action {} but encryption is disabled", e.action);
+                    return null;
+                }
+
+                JsonObject content = crypto.decrypt(wirePayload, associatedData(o));
+                e.payload =
+                        content.has("payload") && content.get("payload").isJsonObject()
+                                ? content.getAsJsonObject("payload")
+                                : new JsonObject();
+                e.error =
+                        content.has("error") && !content.get("error").isJsonNull()
+                                ? content.get("error").getAsString()
+                                : null;
+            } else {
+                e.payload = wirePayload;
+                e.error =
+                        o.has("error") && !o.get("error").isJsonNull()
+                                ? o.get("error").getAsString()
+                                : null;
+            }
+
             return e;
 
-        } catch (Exception ignore) {
+        } catch (Exception ex) {
+            logger.warn("[MessageBus] Ignored invalid message envelope: {}", ex.getMessage());
             return null;
         }
+    }
+
+    private static byte[] associatedData(JsonObject o) {
+        String data = "v1"
+                + "\nkind=" + stringProp(o, "kind")
+                + "\naction=" + stringProp(o, "action")
+                + "\ncid=" + stringProp(o, "cid")
+                + "\nmid=" + stringProp(o, "mid")
+                + "\nsender=" + stringProp(o, "__sender")
+                + "\ntarget=" + stringProp(o, "__target")
+                + "\nts=" + stringProp(o, "ts");
+        return data.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static String stringProp(JsonObject o, String key) {
+        return o.has(key) && !o.get(key).isJsonNull()
+                ? o.get(key).getAsString()
+                : "";
     }
 
     private boolean isSeen(String id) {
