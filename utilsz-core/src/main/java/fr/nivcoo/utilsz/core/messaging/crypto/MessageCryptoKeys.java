@@ -1,8 +1,13 @@
 package fr.nivcoo.utilsz.core.messaging.crypto;
 
-import java.util.Base64;
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 
 public final class MessageCryptoKeys {
+
+    private static final char[] GENERATED_KEY_CHARS =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".toCharArray();
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     private MessageCryptoKeys() {
     }
@@ -13,10 +18,14 @@ public final class MessageCryptoKeys {
             return new byte[0];
         }
 
-        if (key.startsWith("base64:")) {
-            return Base64.getDecoder().decode(key.substring("base64:".length()));
-        }
+        return key.getBytes(StandardCharsets.UTF_8);
+    }
 
-        return Base64.getDecoder().decode(key);
+    public static String generate() {
+        char[] key = new char[32];
+        for (int i = 0; i < key.length; i++) {
+            key[i] = GENERATED_KEY_CHARS[RANDOM.nextInt(GENERATED_KEY_CHARS.length)];
+        }
+        return new String(key);
     }
 }

@@ -108,11 +108,12 @@ public class MessagingConfig {
     public static class Encryption {
         public boolean enabled = false;
         @Optional
-        @Comment("AES-256-GCM. La cle doit etre base64 et rester secrete.")
+        @Comment("Algorithme de chiffrement. Optionnel: laissez vide pour utiliser AES-256-GCM.")
         public String algorithm = "AES-256-GCM";
         @Optional
         public String keyId = "default";
-        public String key = "";
+        @Comment("Clé brute partagée entre tous les services qui chiffrent ce channel. AES-256-GCM exige exactement 32 octets UTF-8. Supprimez la ligne et une nouvelle clé sera générée au start du serveur.")
+        public String key = MessageCryptoKeys.generate();
     }
 
     @Section
