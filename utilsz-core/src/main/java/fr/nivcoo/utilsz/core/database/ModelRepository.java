@@ -74,6 +74,10 @@ public final class ModelRepository<T> {
         return new ModelQuery<>(database, schema, mapper);
     }
 
+    public ModelQuery<T> find(Connection connection) {
+        return new ModelQuery<>(database, schema, mapper, connection);
+    }
+
     public List<T> all() throws SQLException {
         return find().all();
     }

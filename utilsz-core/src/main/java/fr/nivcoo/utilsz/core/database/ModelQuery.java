@@ -1,5 +1,6 @@
 package fr.nivcoo.utilsz.core.database;
 
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,15 +11,21 @@ public final class ModelQuery<T> {
     private final DatabaseManager database;
     private final ModelSchema<T> schema;
     private final RowMapper<T> mapper;
+    private final Connection connection;
     private final List<String> where = new ArrayList<>();
     private final List<Object> params = new ArrayList<>();
     private String orderBy;
     private int limit;
 
     ModelQuery(DatabaseManager database, ModelSchema<T> schema, RowMapper<T> mapper) {
+        this(database, schema, mapper, null);
+    }
+
+    ModelQuery(DatabaseManager database, ModelSchema<T> schema, RowMapper<T> mapper, Connection connection) {
         this.database = database;
         this.schema = schema;
         this.mapper = mapper;
+        this.connection = connection;
     }
 
     public ModelQuery<T> where(String column, Object value) {
@@ -63,6 +70,7 @@ public final class ModelQuery<T> {
             joiner.add(condition);
         }
         return database.table(schema.name()).select(
+                connection,
                 schema.selectColumns(),
                 mapper,
                 joiner.length() == 0 ? null : joiner.toString(),

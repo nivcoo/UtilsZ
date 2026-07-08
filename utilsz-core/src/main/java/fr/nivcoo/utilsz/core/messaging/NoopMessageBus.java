@@ -6,6 +6,11 @@ import java.util.concurrent.CompletableFuture;
 
 public final class NoopMessageBus implements MessageBus {
     @Override
+    public String instanceId() {
+        return "noop";
+    }
+
+    @Override
     public void start() {
     }
 
@@ -18,11 +23,20 @@ public final class NoopMessageBus implements MessageBus {
     }
 
     @Override
+    public void publishTo(String targetInstanceId, BusMessage evt) {
+    }
+
+    @Override
     public void register(Class<?> clazz) {
     }
 
     @Override
     public CompletableFuture<JsonObject> callRaw(String a, JsonObject p) {
+        return CompletableFuture.failedFuture(new IllegalStateException("Messaging disabled"));
+    }
+
+    @Override
+    public CompletableFuture<JsonObject> callRawTo(String targetInstanceId, String action, JsonObject payload) {
         return CompletableFuture.failedFuture(new IllegalStateException("Messaging disabled"));
     }
 }

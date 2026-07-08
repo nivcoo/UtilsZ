@@ -45,6 +45,11 @@ public final class DatabaseTable {
 
     public <T> List<T> select(String columns, RowMapper<T> mapper, String where, String orderBy,
                               int limit, Object... params) throws SQLException {
+        return select(null, columns, mapper, where, orderBy, limit, params);
+    }
+
+    public <T> List<T> select(Connection connection, String columns, RowMapper<T> mapper, String where, String orderBy,
+                              int limit, Object... params) throws SQLException {
         StringBuilder sql = new StringBuilder("SELECT ")
                 .append(columns == null || columns.isBlank() ? "*" : columns)
                 .append(" FROM ")
@@ -58,6 +63,6 @@ public final class DatabaseTable {
         if (limit > 0) {
             sql.append(" LIMIT ").append(limit);
         }
-        return database.query(sql.toString(), mapper, params);
+        return database.query(connection, sql.toString(), mapper, params);
     }
 }

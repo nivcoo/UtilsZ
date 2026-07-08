@@ -78,6 +78,11 @@ public final class DefaultMessageBus implements MessageBus {
     }
 
     @Override
+    public String instanceId() {
+        return backend.getInstanceId();
+    }
+
+    @Override
     public void start() {
         if (started.compareAndSet(false, true)) {
             backend.start();
@@ -110,6 +115,22 @@ public final class DefaultMessageBus implements MessageBus {
     }
 
     @Override
+    public void publishTo(String targetInstanceId, BusMessage evt) {
+        @SuppressWarnings("unchecked")
+        BusTypeAdapter<Object> ad =
+                (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) evt.getClass());
+
+        Envelope env = new Envelope();
+        env.kind = "evt";
+        env.action = evt.getAction();
+        env.mid = UUID.randomUUID().toString();
+        env.target = targetInstanceId;
+        env.payload = ad.serialize(evt);
+
+        send(env);
+    }
+
+    @Override
     public CompletableFuture<JsonObject> callRaw(String action, JsonObject payload) {
         String cid = UUID.randomUUID().toString();
 
@@ -117,6 +138,24 @@ public final class DefaultMessageBus implements MessageBus {
         env.kind = "req";
         env.action = action;
         env.cid = cid;
+        env.payload = payload;
+
+        CompletableFuture<JsonObject> fut = new CompletableFuture<>();
+        pending.put(cid, fut);
+
+        send(env);
+        return fut;
+    }
+
+    @Override
+    public CompletableFuture<JsonObject> callRawTo(String targetInstanceId, String action, JsonObject payload) {
+        String cid = UUID.randomUUID().toString();
+
+        Envelope env = new Envelope();
+        env.kind = "req";
+        env.action = action;
+        env.cid = cid;
+        env.target = targetInstanceId;
         env.payload = payload;
 
         CompletableFuture<JsonObject> fut = new CompletableFuture<>();
@@ -184,6 +223,46 @@ public final class DefaultMessageBus implements MessageBus {
         return out;
     }
 
+    @SuppressWarnings("unchecked")
+    public <R> CompletableFuture<R> callTo(String targetInstanceId, RpcMessage request) {
+        Class<?> c = request.getClass();
+        BusAction a = c.getAnnotation(BusAction.class);
+
+        if (a == null || a.value().isEmpty())
+            throw new IllegalArgumentException("Missing @BusAction on " + c.getName());
+
+        if (a.response() == Void.class)
+            throw new IllegalArgumentException("This @BusAction is an event, not a RPC");
+
+        BusTypeAdapter<Object> reqA =
+                (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) c);
+
+        BusTypeAdapter<Object> resA =
+                (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) a.response());
+
+        JsonObject payload = reqA.serialize(request);
+        CompletableFuture<JsonObject> raw = callRawTo(targetInstanceId, a.value(), payload);
+
+        boolean onMain = request.runOnMainThread();
+        CompletableFuture<R> out = new CompletableFuture<>();
+
+        raw.whenComplete((json, ex) -> {
+            Runnable r = () -> {
+                if (ex != null) {
+                    out.completeExceptionally(ex);
+                } else {
+                    out.complete((R) a.response().cast(resA.deserialize(json)));
+                }
+            };
+
+            if (onMain) mainThreadExecutor.accept(r);
+            else r.run();
+        });
+
+        return out;
+    }
+
+    @Override
     public <Req, Res> CompletableFuture<Res> call(Req request,
                                                   Class<Res> responseType) {
 
@@ -203,6 +282,44 @@ public final class DefaultMessageBus implements MessageBus {
 
         JsonObject payload = reqA.serialize(request);
         CompletableFuture<JsonObject> raw = callRaw(action.value(), payload);
+
+        boolean onMain = request instanceof RpcMessage ra && ra.runOnMainThread();
+        CompletableFuture<Res> out = new CompletableFuture<>();
+
+        raw.whenComplete((json, ex) -> {
+            Runnable r = () -> {
+                if (ex != null) out.completeExceptionally(ex);
+                else out.complete(responseType.cast(resA.deserialize(json)));
+            };
+
+            if (onMain) mainThreadExecutor.accept(r);
+            else r.run();
+        });
+
+        return out;
+    }
+
+    @Override
+    public <Req, Res> CompletableFuture<Res> callTo(String targetInstanceId,
+                                                    Req request,
+                                                    Class<Res> responseType) {
+
+        Class<?> reqType = request.getClass();
+        BusAction action = reqType.getAnnotation(BusAction.class);
+
+        if (action == null || action.value().isEmpty())
+            throw new IllegalArgumentException("Missing @BusAction on " + reqType.getName());
+
+        @SuppressWarnings("unchecked")
+        BusTypeAdapter<Object> reqA =
+                (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) reqType);
+
+        @SuppressWarnings("unchecked")
+        BusTypeAdapter<Object> resA =
+                (BusTypeAdapter<Object>) BusAdapterRegistry.ensureAdapter((Class) responseType);
+
+        JsonObject payload = reqA.serialize(request);
+        CompletableFuture<JsonObject> raw = callRawTo(targetInstanceId, action.value(), payload);
 
         boolean onMain = request instanceof RpcMessage ra && ra.runOnMainThread();
         CompletableFuture<Res> out = new CompletableFuture<>();
