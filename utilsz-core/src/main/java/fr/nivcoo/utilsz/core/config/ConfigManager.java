@@ -289,16 +289,16 @@ public final class ConfigManager {
             String k = mapKeyToYaml(e.getKey());
             Object v = e.getValue();
             String full = base.isEmpty() ? k : base + "." + k;
+            List<String> c = comments.get(full);
 
-            if (i > 0 && (indent == 0 || v instanceof Map)) sb.append("\n");
+            if (i > 0 && shouldSeparateYamlEntry(v, c)) sb.append("\n");
             i++;
 
-            List<String> c = comments.get(full);
             if (c != null) for (String line : c)
-                sb.append("  ".repeat(indent)).append("# ").append(line).append("\n");
+                sb.repeat("  ", indent).append("# ").append(line).append("\n");
 
             if (v instanceof Map<?, ?> m) {
-                sb.append("  ".repeat(indent)).append(formatMapKey(k)).append(":");
+                sb.repeat("  ", indent).append(formatMapKey(k)).append(":");
                 if (m.isEmpty()) {
                     sb.append(" {}\n");
                 } else {
@@ -309,29 +309,28 @@ public final class ConfigManager {
             }
 
             if (v instanceof List<?> list) {
-                sb.append("  ".repeat(indent)).append(formatMapKey(k)).append(":");
+                sb.repeat("  ", indent).append(formatMapKey(k)).append(":");
                 if (list.isEmpty()) {
                     sb.append(" []\n");
                     continue;
                 }
                 sb.append("\n");
                 for (Object it : list) {
-                    if (it instanceof Map<?, ?> mm) {
-                        Map<?, ?> m = mm;
+                    if (it instanceof Map<?, ?> m) {
                         if (m.isEmpty()) {
-                            sb.append("  ".repeat(indent + 1)).append("- {}\n");
+                            sb.repeat("  ", indent + 1).append("- {}\n");
                         } else {
                             Iterator<? extends Map.Entry<?, ?>> itr = m.entrySet().iterator();
                             Map.Entry<?, ?> first = itr.next();
 
-                            sb.append("  ".repeat(indent + 1))
+                            sb.repeat("  ", indent + 1)
                                     .append("- ")
                                     .append(formatMapKey(mapKeyToYaml(first.getKey()))).append(": ");
                             writeValue(sb, first.getValue(), comments, "", indent + 1);
 
                             while (itr.hasNext()) {
                                 Map.Entry<?, ?> me = itr.next();
-                                sb.append("  ".repeat(indent + 2))
+                                sb.repeat("  ", indent + 2)
                                         .append(formatMapKey(mapKeyToYaml(me.getKey()))).append(": ");
                                 writeValue(sb, me.getValue(), comments, "", indent + 2);
                             }
@@ -339,18 +338,18 @@ public final class ConfigManager {
                         continue;
                     }
 
-                    sb.append("  ".repeat(indent + 1)).append("- ");
+                    sb.repeat("  ", indent + 1).append("- ");
                     writeValue(sb, it, comments, "", indent + 1);
                 }
                 continue;
             }
 
             if (v instanceof String s && s.contains("\n")) {
-                sb.append("  ".repeat(indent)).append(formatMapKey(k)).append(": |\n");
+                sb.repeat("  ", indent).append(formatMapKey(k)).append(": |\n");
                 for (String line : s.split("\n", -1))
-                    sb.append("  ".repeat(indent + 1)).append(line).append("\n");
+                    sb.repeat("  ", indent + 1).append(line).append("\n");
             } else {
-                sb.append("  ".repeat(indent)).append(formatMapKey(k)).append(": ").append(formatScalar(v)).append("\n");
+                sb.repeat("  ", indent).append(formatMapKey(k)).append(": ").append(formatScalar(v)).append("\n");
             }
         }
     }
@@ -367,7 +366,7 @@ public final class ConfigManager {
                 if (s.contains("\n")) {
                     sb.append("|\n");
                     for (String line : s.split("\n", -1))
-                        sb.append("  ".repeat(indent + 1)).append(line).append("\n");
+                        sb.repeat("  ", indent + 1).append(line).append("\n");
                 } else {
                     sb.append(formatScalar(s)).append("\n");
                 }
@@ -389,28 +388,27 @@ public final class ConfigManager {
                 }
                 sb.append("\n");
                 for (Object it : list) {
-                    if (it instanceof Map<?, ?> mm) {
-                        Map<?, ?> sub = mm;
+                    if (it instanceof Map<?, ?> sub) {
                         if (sub.isEmpty()) {
-                            sb.append("  ".repeat(indent + 1)).append("- {}\n");
+                            sb.repeat("  ", indent + 1).append("- {}\n");
                         } else {
                             Iterator<? extends Map.Entry<?, ?>> itr = sub.entrySet().iterator();
                             Map.Entry<?, ?> first = itr.next();
 
-                            sb.append("  ".repeat(indent + 1))
+                            sb.repeat("  ", indent + 1)
                                     .append("- ")
                                     .append(formatMapKey(mapKeyToYaml(first.getKey()))).append(": ");
                             writeValue(sb, first.getValue(), comments, base, indent + 1);
 
                             while (itr.hasNext()) {
                                 Map.Entry<?, ?> me = itr.next();
-                                sb.append("  ".repeat(indent + 2))
+                                sb.repeat("  ", indent + 2)
                                         .append(formatMapKey(mapKeyToYaml(me.getKey()))).append(": ");
                                 writeValue(sb, me.getValue(), comments, base, indent + 2);
                             }
                         }
                     } else {
-                        sb.append("  ".repeat(indent + 1)).append("- ");
+                        sb.repeat("  ", indent + 1).append("- ");
                         writeValue(sb, it, comments, base, indent + 1);
                     }
                 }
@@ -630,6 +628,11 @@ public final class ConfigManager {
         } catch (Exception ignored) {
             return false;
         }
+    }
+
+    private boolean shouldSeparateYamlEntry(Object value, List<String> comments) {
+        if (comments != null && !comments.isEmpty()) return true;
+        return value instanceof Map<?, ?>;
     }
 
     @SuppressWarnings("unchecked")

@@ -143,6 +143,11 @@ public final class CommandManager implements CommandDispatcher {
                 return true;
             }
 
+            if (defaultCommand != null && isNotEmpty(noPermission)) {
+                sender.sendMessage(noPermission);
+                return true;
+            }
+
             Command c = getCommand(globalCommand);
             if (c != null) c.execute(new CommandContext(sender, label, args));
             return true;
