@@ -286,19 +286,17 @@ public final class ConfigManager {
                               Map<String, List<String>> comments, String base, int indent) {
         int i = 0;
         Object previousValue = null;
-        List<String> previousComments = null;
         for (Map.Entry<?, ?> e : map.entrySet()) {
             String k = mapKeyToYaml(e.getKey());
             Object v = e.getValue();
             String full = base.isEmpty() ? k : base + "." + k;
             List<String> c = comments.get(full);
 
-            if (i > 0 && (shouldSeparateYamlEntry(previousValue, previousComments) || shouldSeparateYamlEntry(v, c))) {
+            if (i > 0 && (isYamlSection(previousValue) || shouldSeparateYamlEntry(v, c))) {
                 sb.append("\n");
             }
             i++;
             previousValue = v;
-            previousComments = c;
 
             if (c != null) for (String line : c)
                 sb.repeat("  ", indent).append("# ").append(line).append("\n");
@@ -638,6 +636,10 @@ public final class ConfigManager {
 
     private boolean shouldSeparateYamlEntry(Object value, List<String> comments) {
         if (comments != null && !comments.isEmpty()) return true;
+        return isYamlSection(value);
+    }
+
+    private static boolean isYamlSection(Object value) {
         return value instanceof Map<?, ?>;
     }
 
