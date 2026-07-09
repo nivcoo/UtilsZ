@@ -418,7 +418,9 @@ public final class DefaultMessageBus implements MessageBus {
         BusMessage msg =
                 ee.adapter.deserialize(env.payload != null ? env.payload : new JsonObject());
 
-        ee.handler.handle(msg);
+        Runnable run = () -> ee.handler.handle(msg);
+        if (msg.runOnMainThread()) mainThreadExecutor.accept(run);
+        else run.run();
     }
 
     private void handleRequest(Envelope env) {
