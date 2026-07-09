@@ -11,4 +11,5 @@ public @interface BusAction {
     String value();
     Class<?> response() default Void.class;
     boolean receiveOwnMessages() default false;
+    boolean runOnMainThread() default false;
 }

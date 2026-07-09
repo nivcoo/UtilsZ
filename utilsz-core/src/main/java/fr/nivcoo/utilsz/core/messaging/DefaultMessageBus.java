@@ -107,7 +107,7 @@ public final class DefaultMessageBus implements MessageBus {
 
         Envelope env = new Envelope();
         env.kind = "evt";
-        env.action = evt.getAction();
+        env.action = actionName(evt.getClass());
         env.mid = UUID.randomUUID().toString();
         env.payload = ad.serialize(evt);
 
@@ -122,7 +122,7 @@ public final class DefaultMessageBus implements MessageBus {
 
         Envelope env = new Envelope();
         env.kind = "evt";
-        env.action = evt.getAction();
+        env.action = actionName(evt.getClass());
         env.mid = UUID.randomUUID().toString();
         env.target = targetInstanceId;
         env.payload = ad.serialize(evt);
@@ -204,7 +204,7 @@ public final class DefaultMessageBus implements MessageBus {
         JsonObject payload = reqA.serialize(request);
         CompletableFuture<JsonObject> raw = callRaw(a.value(), payload);
 
-        boolean onMain = request.runOnMainThread();
+        boolean onMain = runOnMainThread(c);
         CompletableFuture<R> out = new CompletableFuture<>();
 
         raw.whenComplete((json, ex) -> {
@@ -243,7 +243,7 @@ public final class DefaultMessageBus implements MessageBus {
         JsonObject payload = reqA.serialize(request);
         CompletableFuture<JsonObject> raw = callRawTo(targetInstanceId, a.value(), payload);
 
-        boolean onMain = request.runOnMainThread();
+        boolean onMain = runOnMainThread(c);
         CompletableFuture<R> out = new CompletableFuture<>();
 
         raw.whenComplete((json, ex) -> {
@@ -283,7 +283,7 @@ public final class DefaultMessageBus implements MessageBus {
         JsonObject payload = reqA.serialize(request);
         CompletableFuture<JsonObject> raw = callRaw(action.value(), payload);
 
-        boolean onMain = request instanceof RpcMessage ra && ra.runOnMainThread();
+        boolean onMain = runOnMainThread(reqType);
         CompletableFuture<Res> out = new CompletableFuture<>();
 
         raw.whenComplete((json, ex) -> {
@@ -321,7 +321,7 @@ public final class DefaultMessageBus implements MessageBus {
         JsonObject payload = reqA.serialize(request);
         CompletableFuture<JsonObject> raw = callRawTo(targetInstanceId, action.value(), payload);
 
-        boolean onMain = request instanceof RpcMessage ra && ra.runOnMainThread();
+        boolean onMain = runOnMainThread(reqType);
         CompletableFuture<Res> out = new CompletableFuture<>();
 
         raw.whenComplete((json, ex) -> {
@@ -419,7 +419,7 @@ public final class DefaultMessageBus implements MessageBus {
                 ee.adapter.deserialize(env.payload != null ? env.payload : new JsonObject());
 
         Runnable run = () -> ee.handler.handle(msg);
-        if (msg.runOnMainThread()) mainThreadExecutor.accept(run);
+        if (runOnMainThread(msg.getClass())) mainThreadExecutor.accept(run);
         else run.run();
     }
 
@@ -430,7 +430,7 @@ public final class DefaultMessageBus implements MessageBus {
         Object req =
                 re.reqAdapter.deserialize(env.payload != null ? env.payload : new JsonObject());
 
-        boolean onMain = req instanceof RpcMessage ra && ra.runOnMainThread();
+        boolean onMain = runOnMainThread(req.getClass());
 
         Runnable run = () -> {
             try {
@@ -587,6 +587,19 @@ public final class DefaultMessageBus implements MessageBus {
         return o.has(key) && !o.get(key).isJsonNull()
                 ? o.get(key).getAsString()
                 : "";
+    }
+
+    private static String actionName(Class<?> type) {
+        BusAction action = type == null ? null : type.getAnnotation(BusAction.class);
+        if (action == null || action.value().isEmpty()) {
+            throw new IllegalArgumentException("Missing @BusAction on " + (type == null ? "null" : type.getName()));
+        }
+        return action.value();
+    }
+
+    private static boolean runOnMainThread(Class<?> type) {
+        BusAction action = type == null ? null : type.getAnnotation(BusAction.class);
+        return action != null && action.runOnMainThread();
     }
 
     private boolean isSeen(String id) {
