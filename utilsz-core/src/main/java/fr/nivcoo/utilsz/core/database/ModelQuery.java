@@ -71,7 +71,7 @@ public final class ModelQuery<T> {
         }
         return database.table(schema.name()).select(
                 connection,
-                schema.selectColumns(),
+                schema,
                 mapper,
                 joiner.length() == 0 ? null : joiner.toString(),
                 orderBy,

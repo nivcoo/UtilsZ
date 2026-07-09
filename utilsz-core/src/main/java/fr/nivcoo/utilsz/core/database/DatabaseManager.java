@@ -112,12 +112,30 @@ public class DatabaseManager {
         }
     }
 
+    <T> List<T> queryModel(Connection connection, String query, ModelSchema<?> schema,
+                           RowMapper<T> mapper, Object... params) throws SQLException {
+        if (connection == null) {
+            try (Connection ownedConnection = getConnection();
+                 PreparedStatement statement = ownedConnection.prepareStatement(query)) {
+                return query(statement, mapper, schema, params);
+            }
+        }
+        try (PreparedStatement statement = connection.prepareStatement(query)) {
+            return query(statement, mapper, schema, params);
+        }
+    }
+
     private <T> List<T> query(PreparedStatement statement, RowMapper<T> mapper, Object... params) throws SQLException {
+        return query(statement, mapper, null, params);
+    }
+
+    private <T> List<T> query(PreparedStatement statement, RowMapper<T> mapper, ModelSchema<?> schema,
+                              Object... params) throws SQLException {
             bind(statement, params);
             try (ResultSet rs = statement.executeQuery()) {
                 List<T> out = new ArrayList<>();
                 while (rs.next()) {
-                    out.add(mapper.map(DatabaseRow.from(rs)));
+                    out.add(mapper.map(DatabaseRow.from(rs, schema)));
                 }
                 return out;
             }

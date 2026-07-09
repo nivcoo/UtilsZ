@@ -10,6 +10,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
+@SuppressWarnings("unused")
 public final class DatabaseRow {
 
     private final Map<String, Object> values;
@@ -19,15 +20,26 @@ public final class DatabaseRow {
     }
 
     public static DatabaseRow from(ResultSet rs) throws SQLException {
+        return from(rs, null);
+    }
+
+    public static DatabaseRow from(ResultSet rs, ModelSchema<?> schema) throws SQLException {
         ResultSetMetaData meta = rs.getMetaData();
         Map<String, Object> values = new LinkedHashMap<>();
         for (int i = 1; i <= meta.getColumnCount(); i++) {
             String label = meta.getColumnLabel(i);
-            Object value = rs.getObject(i);
+            Object value = readValue(rs, i, label, schema);
             values.put(label, value);
             values.put(label.toLowerCase(Locale.ROOT), value);
         }
         return new DatabaseRow(values);
+    }
+
+    private static Object readValue(ResultSet rs, int index, String label, ModelSchema<?> schema) throws SQLException {
+        if (schema != null && schema.columnType(label) == ColumnType.BLOB) {
+            return rs.getBytes(index);
+        }
+        return rs.getObject(index);
     }
 
     public Object get(String column) {

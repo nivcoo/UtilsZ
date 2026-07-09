@@ -10,6 +10,7 @@ import fr.nivcoo.utilsz.core.conversion.Converter;
 import fr.nivcoo.utilsz.core.conversion.ConverterRegistry;
 
 import java.math.BigDecimal;
+import java.sql.Blob;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -30,6 +31,7 @@ public final class DatabaseCodecs {
         register(new SimpleCodec<>(Boolean.class, DatabaseCodecs::toBoolean, value -> value ? 1 : 0));
         register(new SimpleCodec<>(BigDecimal.class, DatabaseCodecs::toBigDecimal, BigDecimal::toPlainString));
         register(new SimpleCodec<>(UUID.class, DatabaseCodecs::toUuid, UUID::toString));
+        register(new SimpleCodec<>(byte[].class, DatabaseCodecs::toBytes, value -> value));
     }
 
     private DatabaseCodecs() {
@@ -186,6 +188,18 @@ public final class DatabaseCodecs {
         if (value instanceof UUID uuid) return uuid;
         String text = String.valueOf(value);
         return text.isBlank() ? null : UUID.fromString(text);
+    }
+
+    private static byte[] toBytes(Object value) {
+        if (value instanceof byte[] bytes) return bytes;
+        if (value instanceof Blob blob) {
+            try {
+                return blob.getBytes(1L, Math.toIntExact(blob.length()));
+            } catch (Exception exception) {
+                throw new IllegalArgumentException("Could not decode SQL Blob", exception);
+            }
+        }
+        throw new IllegalArgumentException("Unsupported blob value type: " + value.getClass().getName());
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})

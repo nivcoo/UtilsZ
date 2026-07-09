@@ -131,6 +131,11 @@ public final class ModelSchema<T> {
         return modelColumn == null ? DatabaseCodecs.encode(value) : DatabaseCodecs.encode(value, modelColumn.valueType());
     }
 
+    ColumnType columnType(String column) {
+        ModelColumn<T> modelColumn = column(column);
+        return modelColumn == null ? null : modelColumn.type();
+    }
+
     Map<String, Object> encodeValues(Map<String, ?> values) {
         Map<String, Object> out = new LinkedHashMap<>();
         for (Map.Entry<String, ?> entry : values.entrySet()) {
