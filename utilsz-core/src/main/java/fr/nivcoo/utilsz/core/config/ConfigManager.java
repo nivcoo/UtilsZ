@@ -345,7 +345,7 @@ public final class ConfigManager {
             }
 
             if (v instanceof String s && s.contains("\n")) {
-                sb.repeat("  ", indent).append(formatMapKey(k)).append(": |\n");
+                sb.repeat("  ", indent).append(formatMapKey(k)).append(": |2\n");
                 for (String line : s.split("\n", -1))
                     sb.repeat("  ", indent + 1).append(line).append("\n");
             } else {
@@ -364,7 +364,7 @@ public final class ConfigManager {
             }
             case String s -> {
                 if (s.contains("\n")) {
-                    sb.append("|\n");
+                    sb.append("|2\n");
                     for (String line : s.split("\n", -1))
                         sb.repeat("  ", indent + 1).append(line).append("\n");
                 } else {
@@ -877,8 +877,8 @@ public final class ConfigManager {
 
         Converter<Object> conv = findConverterForClass(cls);
         if (conv != null) return conv.read(raw, null, contextField);
-        if (cls != null && raw instanceof Map<?, ?> m && isConfigPojo(cls)) return fromMapToPojo(cls, m);
-        if (cls != null && isConfigPojo(cls)) return fallback != null ? fallback : newInstance(cls);
+        if (raw instanceof Map<?, ?> m && isConfigPojo(cls)) return fromMapToPojo(cls, m);
+        if (isConfigPojo(cls)) return fallback != null ? fallback : newInstance(cls);
         return convertSimple(cls != null ? cls : Object.class, raw, contextField);
     }
 
