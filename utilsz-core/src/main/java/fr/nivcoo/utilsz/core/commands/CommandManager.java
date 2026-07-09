@@ -163,7 +163,7 @@ public final class CommandManager implements CommandDispatcher {
 
             if (args.length < sub.getMinArgs() || args.length > sub.getMaxArgs()) {
                 Component msgTpl = provider.incorrectUsage();
-                Component msg = fmtComp(msgTpl, globalCommand + " " + sub.getUsage());
+                Component msg = fmtComp(msgTpl, usage(sub));
                 if (isNotEmpty(msg)) sender.sendMessage(msg);
                 return true;
             }
@@ -186,7 +186,7 @@ public final class CommandManager implements CommandDispatcher {
 
             if (args.length < defaultCommand.getMinArgs() || args.length > defaultCommand.getMaxArgs()) {
                 Component msgTpl = provider.incorrectUsage();
-                Component msg = fmtComp(msgTpl, globalCommand + " " + defaultCommand.getUsage());
+                Component msg = fmtComp(msgTpl, usage(defaultCommand));
                 if (isNotEmpty(msg)) sender.sendMessage(msg);
                 return true;
             }
@@ -235,5 +235,15 @@ public final class CommandManager implements CommandDispatcher {
         if (c == null) return false;
         String plain = PLAIN.serialize(c);
         return !plain.isEmpty();
+    }
+
+    private String usage(Command command) {
+        String usage = command == null ? "" : command.getUsage();
+        if (usage == null || usage.isBlank()) return globalCommand;
+        String trimmed = usage.trim();
+        if (trimmed.equalsIgnoreCase(globalCommand)) return globalCommand;
+        String prefix = globalCommand + " ";
+        if (trimmed.regionMatches(true, 0, prefix, 0, prefix.length())) return trimmed;
+        return prefix + trimmed;
     }
 }
