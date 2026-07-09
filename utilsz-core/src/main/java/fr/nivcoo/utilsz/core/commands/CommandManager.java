@@ -221,6 +221,13 @@ public final class CommandManager implements CommandDispatcher {
                 }
             }
         }
+        if (defaultCommand != null) {
+            if (sender.isConsole() && !defaultCommand.canBeExecutedByConsole()) return list;
+            String perm = defaultCommand.getPermission();
+            if (perm == null || perm.isEmpty() || sender.hasPermission(perm)) {
+                list.addAll(defaultCommand.tabComplete(new CommandContext(sender, label, args)));
+            }
+        }
         return list;
     }
 
