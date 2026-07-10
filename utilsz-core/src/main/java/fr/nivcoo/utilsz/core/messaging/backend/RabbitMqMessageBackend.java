@@ -12,9 +12,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,7 +31,7 @@ public final class RabbitMqMessageBackend implements MessageBackend {
     private final String username;
     private final String password;
 
-    private final Map<String, List<Consumer<JsonObject>>> subscribers = new ConcurrentHashMap<>();
+    private final BackendSubscribers subscribers = new BackendSubscribers();
     private final Map<String, Boolean> subscribedChannels = new ConcurrentHashMap<>();
 
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -77,7 +74,7 @@ public final class RabbitMqMessageBackend implements MessageBackend {
         if (!running.compareAndSet(false, true)) return;
         synchronized (lock) {
             ensureConnection();
-            for (String ch : subscribers.keySet()) {
+            for (String ch : subscribers.channels()) {
                 ensureSubscription(ch);
             }
         }
@@ -107,9 +104,7 @@ public final class RabbitMqMessageBackend implements MessageBackend {
 
     @Override
     public void subscribeRaw(String channelName, Consumer<JsonObject> callback) {
-        subscribers
-                .computeIfAbsent(channelName, k -> Collections.synchronizedList(new ArrayList<>()))
-                .add(callback);
+        subscribers.add(channelName, callback);
 
         if (!running.get()) return;
         synchronized (lock) {
@@ -134,6 +129,7 @@ public final class RabbitMqMessageBackend implements MessageBackend {
                 channel.basicPublish(channelName, "", null, body);
             } catch (IOException e) {
                 report(e);
+                throw new IllegalStateException("Failed to publish RabbitMQ message", e);
             }
         }
     }
@@ -206,21 +202,7 @@ public final class RabbitMqMessageBackend implements MessageBackend {
                     return;
                 }
 
-                List<Consumer<JsonObject>> regs = subscribers.get(channelName);
-                if (regs == null) return;
-
-                List<Consumer<JsonObject>> copy;
-                synchronized (regs) {
-                    copy = new ArrayList<>(regs);
-                }
-
-                for (Consumer<JsonObject> cb : copy) {
-                    try {
-                        cb.accept(obj);
-                    } catch (Throwable t) {
-                        report(t);
-                    }
-                }
+                subscribers.dispatch(channelName, obj, this::report);
             };
 
             channel.basicConsume(queue, true, deliverCallback, consumerTag -> {});

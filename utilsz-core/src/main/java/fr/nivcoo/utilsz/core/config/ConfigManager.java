@@ -321,24 +321,7 @@ public final class ConfigManager {
                 sb.append("\n");
                 for (Object it : list) {
                     if (it instanceof Map<?, ?> m) {
-                        if (m.isEmpty()) {
-                            sb.repeat("  ", indent + 1).append("- {}\n");
-                        } else {
-                            Iterator<? extends Map.Entry<?, ?>> itr = m.entrySet().iterator();
-                            Map.Entry<?, ?> first = itr.next();
-
-                            sb.repeat("  ", indent + 1)
-                                    .append("- ")
-                                    .append(formatMapKey(mapKeyToYaml(first.getKey()))).append(": ");
-                            writeValue(sb, first.getValue(), comments, "", indent + 1);
-
-                            while (itr.hasNext()) {
-                                Map.Entry<?, ?> me = itr.next();
-                                sb.repeat("  ", indent + 2)
-                                        .append(formatMapKey(mapKeyToYaml(me.getKey()))).append(": ");
-                                writeValue(sb, me.getValue(), comments, "", indent + 2);
-                            }
-                        }
+                        writeListMapItem(sb, m, comments, "", indent);
                         continue;
                     }
 
@@ -393,24 +376,7 @@ public final class ConfigManager {
                 sb.append("\n");
                 for (Object it : list) {
                     if (it instanceof Map<?, ?> sub) {
-                        if (sub.isEmpty()) {
-                            sb.repeat("  ", indent + 1).append("- {}\n");
-                        } else {
-                            Iterator<? extends Map.Entry<?, ?>> itr = sub.entrySet().iterator();
-                            Map.Entry<?, ?> first = itr.next();
-
-                            sb.repeat("  ", indent + 1)
-                                    .append("- ")
-                                    .append(formatMapKey(mapKeyToYaml(first.getKey()))).append(": ");
-                            writeValue(sb, first.getValue(), comments, base, indent + 1);
-
-                            while (itr.hasNext()) {
-                                Map.Entry<?, ?> me = itr.next();
-                                sb.repeat("  ", indent + 2)
-                                        .append(formatMapKey(mapKeyToYaml(me.getKey()))).append(": ");
-                                writeValue(sb, me.getValue(), comments, base, indent + 2);
-                            }
-                        }
+                        writeListMapItem(sb, sub, comments, base, indent);
                     } else {
                         sb.repeat("  ", indent + 1).append("- ");
                         writeValue(sb, it, comments, base, indent + 1);
@@ -422,6 +388,29 @@ public final class ConfigManager {
             }
         }
         sb.append(formatScalar(v)).append("\n");
+    }
+
+    private void writeListMapItem(StringBuilder sb, Map<?, ?> map,
+                                  Map<String, List<String>> comments, String base, int indent) {
+        if (map.isEmpty()) {
+            sb.repeat("  ", indent + 1).append("- {}\n");
+            return;
+        }
+
+        Iterator<? extends Map.Entry<?, ?>> iterator = map.entrySet().iterator();
+        Map.Entry<?, ?> first = iterator.next();
+
+        sb.repeat("  ", indent + 1)
+                .append("- ")
+                .append(formatMapKey(mapKeyToYaml(first.getKey()))).append(": ");
+        writeValue(sb, first.getValue(), comments, base, indent + 1);
+
+        while (iterator.hasNext()) {
+            Map.Entry<?, ?> entry = iterator.next();
+            sb.repeat("  ", indent + 2)
+                    .append(formatMapKey(mapKeyToYaml(entry.getKey()))).append(": ");
+            writeValue(sb, entry.getValue(), comments, base, indent + 2);
+        }
     }
 
     private String formatScalar(Object v) {
@@ -756,10 +745,7 @@ public final class ConfigManager {
                         out.add(null);
                         continue;
                     }
-                        Map<String, Object> m = new LinkedHashMap<>();
-                        export(e, "", Map.of(), m, new LinkedHashMap<>());
-                        omitConfigFields(f, m);
-                        out.add(m);
+                    out.add(exportPojo(e, f, true));
                 }
                 return out;
             }
@@ -779,10 +765,7 @@ public final class ConfigManager {
                 } else if (elemType instanceof ParameterizedType) {
                     out.add(convertToYamlValue(elemType, e, f, mode));
                 } else if (shouldExportAsPojo(elemCls, e)) {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    export(e, "", Map.of(), m, new LinkedHashMap<>());
-                    omitConfigFields(f, m);
-                    out.add(m);
+                    out.add(exportPojo(e, f, true));
                 } else {
                     out.add(e);
                 }
@@ -805,10 +788,7 @@ public final class ConfigManager {
                 if (value == null) {
                     out.put(mapKeyToYaml(e.getKey()), null);
                 } else if (el != null && el.value() != Object.class) {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    export(value, "", Map.of(), m, new LinkedHashMap<>());
-                    omitConfigFields(f, m);
-                    out.put(mapKeyToYaml(e.getKey()), m);
+                    out.put(mapKeyToYaml(e.getKey()), exportPojo(value, f, true));
                 } else if (valueCls == Component.class && value instanceof Component c) {
                     out.put(mapKeyToYaml(e.getKey()), serializeComponent(c, mode));
                 } else if (valueConv != null) {
@@ -818,10 +798,7 @@ public final class ConfigManager {
                 } else if (valueType instanceof ParameterizedType) {
                     out.put(mapKeyToYaml(e.getKey()), convertToYamlValue(valueType, value, f, mode));
                 } else if (shouldExportAsPojo(valueCls, value)) {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    export(value, "", Map.of(), m, new LinkedHashMap<>());
-                    omitConfigFields(f, m);
-                    out.put(mapKeyToYaml(e.getKey()), m);
+                    out.put(mapKeyToYaml(e.getKey()), exportPojo(value, f, true));
                 } else {
                     out.put(mapKeyToYaml(e.getKey()), value);
                 }
@@ -830,10 +807,7 @@ public final class ConfigManager {
         }
 
         if (shouldExportAsPojo(f.getType(), v)) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            export(v, "", Map.of(), out, new LinkedHashMap<>());
-            omitConfigFields(f, out);
-            return out;
+            return exportPojo(v, f, true);
         }
 
         return v;
@@ -919,23 +893,9 @@ public final class ConfigManager {
 
         Class<?> exportType = cls != null && cls != Object.class ? cls : value.getClass();
         if (isConfigPojo(exportType)) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            export(value, "", Map.of(), m, new LinkedHashMap<>());
-            return m;
+            return exportPojo(value, contextField, false);
         }
         return value;
-    }
-
-    private static Class<?> listElementClass(Field f) {
-        return rawClass(listElementType(f));
-    }
-
-    private static Class<?> mapKeyClass(Field f) {
-        return rawClass(mapKeyType(f));
-    }
-
-    private static Class<?> mapValueClass(Field f) {
-        return rawClass(mapValueType(f));
     }
 
     private static Type listElementType(Field f) {
@@ -1050,6 +1010,13 @@ public final class ConfigManager {
         if (raw instanceof Map<?, ?> m && hasPublicFields(t)) return fromMapToPojo(t, m);
 
         return raw;
+    }
+
+    private Map<String, Object> exportPojo(Object value, Field contextField, boolean applyOmitFields) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        export(value, "", Map.of(), out, new LinkedHashMap<>());
+        if (applyOmitFields) omitConfigFields(contextField, out);
+        return out;
     }
 
     private Object fromMapToPojo(Class<?> t, Map<?, ?> m) {

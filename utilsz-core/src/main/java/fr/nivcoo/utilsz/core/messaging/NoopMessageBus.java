@@ -5,6 +5,9 @@ import com.google.gson.JsonObject;
 import java.util.concurrent.CompletableFuture;
 
 public final class NoopMessageBus implements MessageBus {
+
+    private static final String DISABLED = "Messaging disabled";
+
     @Override
     public String instanceId() {
         return "noop";
@@ -36,11 +39,25 @@ public final class NoopMessageBus implements MessageBus {
 
     @Override
     public CompletableFuture<JsonObject> callRaw(String a, JsonObject p) {
-        return CompletableFuture.failedFuture(new IllegalStateException("Messaging disabled"));
+        return disabled();
     }
 
     @Override
     public CompletableFuture<JsonObject> callRawTo(String targetInstanceId, String action, JsonObject payload) {
-        return CompletableFuture.failedFuture(new IllegalStateException("Messaging disabled"));
+        return disabled();
+    }
+
+    @Override
+    public <Req, Res> CompletableFuture<Res> call(Req request, Class<Res> responseType) {
+        return disabled();
+    }
+
+    @Override
+    public <Req, Res> CompletableFuture<Res> callTo(String targetInstanceId, Req request, Class<Res> responseType) {
+        return disabled();
+    }
+
+    private static <T> CompletableFuture<T> disabled() {
+        return CompletableFuture.failedFuture(new IllegalStateException(DISABLED));
     }
 }

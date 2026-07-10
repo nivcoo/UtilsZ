@@ -26,6 +26,7 @@ import java.util.UUID;
 
 final class TypedJsonAdapter {
 
+    private static final String TYPE = "__type";
     private static final Gson GSON = new Gson();
 
     private TypedJsonAdapter() {
@@ -68,6 +69,55 @@ final class TypedJsonAdapter {
         }
 
         return deserializeClass(element, raw);
+    }
+
+    static JsonElement serializeRuntime(Object value) {
+        if (value == null) return JsonNull.INSTANCE;
+
+        BusTypeAdapter<Object> adapter = adapterFor(value.getClass());
+        if (adapter != null) {
+            JsonObject json = adapter.serialize(value);
+            json.addProperty(TYPE, value.getClass().getName());
+            return json;
+        }
+
+        return GSON.toJsonTree(value);
+    }
+
+    static Object deserializeRuntime(JsonElement element) {
+        if (element == null || element.isJsonNull()) return null;
+
+        if (element.isJsonObject()) {
+            JsonObject object = element.getAsJsonObject();
+
+            if (object.has(TYPE) && object.get(TYPE).isJsonPrimitive()) {
+                String className = object.get(TYPE).getAsString();
+                try {
+                    Class<?> clazz = Class.forName(className);
+                    BusTypeAdapter<Object> adapter = adapterFor(clazz);
+                    if (adapter != null) return adapter.deserialize(object);
+
+                    object.remove(TYPE);
+                    return GSON.fromJson(object, clazz);
+                } catch (Throwable ignored) {
+                }
+            }
+
+            return GSON.fromJson(object, Object.class);
+        }
+
+        if (element.isJsonPrimitive()) {
+            JsonPrimitive primitive = element.getAsJsonPrimitive();
+            if (primitive.isString()) {
+                String value = primitive.getAsString();
+                UUID uuid = tryParseUuid(value);
+                return uuid != null ? uuid : value;
+            }
+            if (primitive.isBoolean()) return primitive.getAsBoolean();
+            if (primitive.isNumber()) return primitive.getAsNumber();
+        }
+
+        return GSON.fromJson(element, Object.class);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -253,6 +303,15 @@ final class TypedJsonAdapter {
     private static String mapKey(Object key) {
         if (key instanceof Enum<?> enumValue) return enumValue.name();
         return String.valueOf(key);
+    }
+
+    private static UUID tryParseUuid(String value) {
+        if (value == null || value.length() != 36) return null;
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     private static boolean canReflect(Class<?> clazz) {

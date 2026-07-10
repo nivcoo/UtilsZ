@@ -11,15 +11,15 @@ import fr.nivcoo.utilsz.core.messaging.adapter.primitive.LongAdapter;
 import fr.nivcoo.utilsz.core.messaging.adapter.primitive.ShortAdapter;
 import fr.nivcoo.utilsz.core.messaging.adapter.primitive.StringAdapter;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class BusAdapterRegistry {
 
-    private static final Map<Class<?>, BusTypeAdapter<?>> adapters = new HashMap<>();
-    private static boolean initialized = false;
+    private static final Map<Class<?>, BusTypeAdapter<?>> adapters = new ConcurrentHashMap<>();
+    private static volatile boolean initialized = false;
 
     private BusAdapterRegistry() {
     }
@@ -55,7 +55,7 @@ public final class BusAdapterRegistry {
         return (BusTypeAdapter<T>) adapter;
     }
 
-    public static void registerBuiltins() {
+    public static synchronized void registerBuiltins() {
         if (initialized) return;
         initialized = true;
 
@@ -72,48 +72,29 @@ public final class BusAdapterRegistry {
     }
 
     public static void registerPrimitives() {
-        BusTypeAdapter<String> s = new StringAdapter();
-        register(String.class, s);
-
-        BusTypeAdapter<Integer> i = new IntegerAdapter();
-        register(Integer.class, i);
-        register(int.class, i);
-
-        BusTypeAdapter<Double> d = new DoubleAdapter();
-        register(Double.class, d);
-        register(double.class, d);
-
-        BusTypeAdapter<Float> f = new FloatAdapter();
-        register(Float.class, f);
-        register(float.class, f);
-
-        BusTypeAdapter<Boolean> b = new BooleanAdapter();
-        register(Boolean.class, b);
-        register(boolean.class, b);
-
-        BusTypeAdapter<Long> l = new LongAdapter();
-        register(Long.class, l);
-        register(long.class, l);
-
-        BusTypeAdapter<Short> sh = new ShortAdapter();
-        register(Short.class, sh);
-        register(short.class, sh);
-
-        BusTypeAdapter<Byte> by = new ByteAdapter();
-        register(Byte.class, by);
-        register(byte.class, by);
-
-        BusTypeAdapter<Character> ch = new CharAdapter();
-        register(Character.class, ch);
-        register(char.class, ch);
+        register(String.class, new StringAdapter());
+        registerPrimitive(Integer.class, int.class, new IntegerAdapter());
+        registerPrimitive(Double.class, double.class, new DoubleAdapter());
+        registerPrimitive(Float.class, float.class, new FloatAdapter());
+        registerPrimitive(Boolean.class, boolean.class, new BooleanAdapter());
+        registerPrimitive(Long.class, long.class, new LongAdapter());
+        registerPrimitive(Short.class, short.class, new ShortAdapter());
+        registerPrimitive(Byte.class, byte.class, new ByteAdapter());
+        registerPrimitive(Character.class, char.class, new CharAdapter());
     }
 
     @SuppressWarnings("unchecked")
     public static <T> BusTypeAdapter<T> ensureAdapter(Class<T> clazz) {
+        if (!initialized) registerBuiltins();
         BusTypeAdapter<T> a = (BusTypeAdapter<T>) adapters.get(clazz);
         if (a != null) return a;
         a = new GenericReflectiveAdapter<>(clazz);
         register(clazz, a);
         return a;
+    }
+
+    private static <T> void registerPrimitive(Class<T> wrapper, Class<?> primitive, BusTypeAdapter<T> adapter) {
+        register(wrapper, adapter);
+        registerRaw(primitive, adapter);
     }
 }

@@ -9,12 +9,7 @@ import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPubSub;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -23,7 +18,7 @@ public final class RedisMessageBackend implements MessageBackend {
 
     private final JedisPool jedisPool;
 
-    private final Map<String, List<Consumer<JsonObject>>> subscribers = new ConcurrentHashMap<>();
+    private final BackendSubscribers subscribers = new BackendSubscribers();
 
     private final String instanceId = UUID.randomUUID().toString();
     private volatile JedisPubSub pubSub;
@@ -59,7 +54,7 @@ public final class RedisMessageBackend implements MessageBackend {
     public synchronized void start() {
         if (running.get()) return;
 
-        String[] chans = subscribers.keySet().toArray(new String[0]);
+        String[] chans = subscribers.channels().toArray(new String[0]);
         if (chans.length == 0) return;
 
         running.set(true);
@@ -93,9 +88,7 @@ public final class RedisMessageBackend implements MessageBackend {
 
     @Override
     public synchronized void subscribeRaw(String channel, Consumer<JsonObject> callback) {
-        subscribers
-                .computeIfAbsent(channel, k -> Collections.synchronizedList(new ArrayList<>()))
-                .add(callback);
+        subscribers.add(channel, callback);
 
         if (running.get()) restartListener();
         else start();
@@ -107,6 +100,7 @@ public final class RedisMessageBackend implements MessageBackend {
             j.publish(channel, json == null ? "{}" : json.toString());
         } catch (Exception e) {
             report(e);
+            throw new IllegalStateException("Failed to publish Redis message", e);
         }
     }
 
@@ -129,7 +123,7 @@ public final class RedisMessageBackend implements MessageBackend {
             listenerThread = null;
         }
 
-        String[] chans = subscribers.keySet().toArray(new String[0]);
+        String[] chans = subscribers.channels().toArray(new String[0]);
         if (chans.length == 0) return;
 
         running.set(true);
@@ -148,21 +142,7 @@ public final class RedisMessageBackend implements MessageBackend {
                     return;
                 }
 
-                List<Consumer<JsonObject>> regs = subscribers.get(channel);
-                if (regs == null) return;
-
-                List<Consumer<JsonObject>> copy;
-                synchronized (regs) {
-                    copy = new ArrayList<>(regs);
-                }
-
-                for (Consumer<JsonObject> cb : copy) {
-                    try {
-                        cb.accept(obj);
-                    } catch (Throwable t) {
-                        report(t);
-                    }
-                }
+                subscribers.dispatch(channel, obj, RedisMessageBackend.this::report);
             }
         };
 
