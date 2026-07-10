@@ -5,7 +5,7 @@ import java.util.List;
 public interface Command {
     List<String> getAliases();
     String getPermission();
-    String getUsage();
+    default String getUsage() { return ""; }
     default String getUsage(CommandContext ctx) { return getUsage(); }
     String getDescription();
     int getMinArgs();
