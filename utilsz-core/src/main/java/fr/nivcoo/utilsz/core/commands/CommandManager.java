@@ -168,7 +168,7 @@ public final class CommandManager implements CommandDispatcher {
 
             if (args.length < sub.getMinArgs() || args.length > sub.getMaxArgs()) {
                 Component msgTpl = provider.incorrectUsage();
-                Component msg = fmtComp(msgTpl, usage(sub));
+                Component msg = fmtComp(msgTpl, usage(sub, new CommandContext(sender, label, args)));
                 if (isNotEmpty(msg)) sender.sendMessage(msg);
                 return true;
             }
@@ -191,7 +191,7 @@ public final class CommandManager implements CommandDispatcher {
 
             if (args.length < defaultCommand.getMinArgs() || args.length > defaultCommand.getMaxArgs()) {
                 Component msgTpl = provider.incorrectUsage();
-                Component msg = fmtComp(msgTpl, usage(defaultCommand));
+                Component msg = fmtComp(msgTpl, usage(defaultCommand, new CommandContext(sender, label, args)));
                 if (isNotEmpty(msg)) sender.sendMessage(msg);
                 return true;
             }
@@ -242,8 +242,8 @@ public final class CommandManager implements CommandDispatcher {
         return !plain.isEmpty();
     }
 
-    private String usage(Command command) {
-        String usage = command == null ? "" : command.getUsage();
+    private String usage(Command command, CommandContext ctx) {
+        String usage = command == null ? "" : command.getUsage(ctx);
         if (usage == null || usage.isBlank()) return globalCommand;
         String trimmed = usage.trim();
         if (trimmed.equalsIgnoreCase(globalCommand)) return globalCommand;

@@ -8,6 +8,10 @@ import java.util.List;
 
 public interface BukkitCommand extends Command {
 
+    default String getUsage(CommandSender sender) {
+        return getUsage();
+    }
+
     void execute(CommandSender sender, String label, String[] args);
 
     List<String> tabComplete(CommandSender sender, String label, String[] args);
@@ -16,6 +20,12 @@ public interface BukkitCommand extends Command {
     default void execute(CommandContext ctx) {
         BukkitSender sender = ctx.senderAs(BukkitSender.class);
         execute(sender.sender(), ctx.label(), ctx.args());
+    }
+
+    @Override
+    default String getUsage(CommandContext ctx) {
+        BukkitSender sender = ctx.senderAs(BukkitSender.class);
+        return getUsage(sender.sender());
     }
 
     @Override
