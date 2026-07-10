@@ -58,4 +58,5 @@ public final class BukkitModule implements UtilsZModule {
         converters.put(ItemStack.class, ItemStackConv::new);
         return converters;
     }
+
 }

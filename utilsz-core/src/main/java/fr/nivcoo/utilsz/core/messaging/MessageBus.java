@@ -18,6 +18,8 @@ public interface MessageBus {
 
     void register(Class<?> clazz);
 
+    <T extends BusMessage> void register(Class<T> clazz, BusHandler<T> handler);
+
     default CompletableFuture<JsonObject> callRaw(String action, JsonObject payload) {
         throw new UnsupportedOperationException();
     }

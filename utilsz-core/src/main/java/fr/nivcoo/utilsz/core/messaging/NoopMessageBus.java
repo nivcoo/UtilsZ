@@ -31,6 +31,10 @@ public final class NoopMessageBus implements MessageBus {
     }
 
     @Override
+    public <T extends BusMessage> void register(Class<T> clazz, BusHandler<T> handler) {
+    }
+
+    @Override
     public CompletableFuture<JsonObject> callRaw(String a, JsonObject p) {
         return CompletableFuture.failedFuture(new IllegalStateException("Messaging disabled"));
     }

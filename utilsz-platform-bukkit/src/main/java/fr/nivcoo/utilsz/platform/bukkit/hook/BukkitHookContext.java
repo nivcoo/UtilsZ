@@ -1,6 +1,8 @@
 package fr.nivcoo.utilsz.platform.bukkit.hook;
 
 import fr.nivcoo.utilsz.core.hook.HookContext;
+import fr.nivcoo.utilsz.core.scheduler.ScheduledTask;
+import fr.nivcoo.utilsz.platform.bukkit.scheduler.BukkitPluginScheduler;
 import org.bukkit.Bukkit;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -11,14 +13,20 @@ import java.util.List;
 public class BukkitHookContext implements HookContext {
 
     private final JavaPlugin plugin;
-    private final List<Integer> taskIds = new ArrayList<>();
+    private final BukkitPluginScheduler scheduler;
+    private final List<ScheduledTask> tasks = new ArrayList<>();
 
     public BukkitHookContext(JavaPlugin plugin) {
         this.plugin = plugin;
+        this.scheduler = new BukkitPluginScheduler(plugin);
     }
 
     public JavaPlugin plugin() {
         return plugin;
+    }
+
+    public BukkitPluginScheduler scheduler() {
+        return scheduler;
     }
 
     public void registerListener(Listener listener) {
@@ -26,15 +34,14 @@ public class BukkitHookContext implements HookContext {
     }
 
     public void runRepeating(Runnable runnable, long delay, long period) {
-        int taskId = Bukkit.getScheduler().runTaskTimer(plugin, runnable, delay, period).getTaskId();
-        taskIds.add(taskId);
+        tasks.add(scheduler.runRepeating(runnable, delay, period));
     }
 
     public void cancelTasks() {
-        for (int taskId : taskIds) {
-            Bukkit.getScheduler().cancelTask(taskId);
+        for (ScheduledTask task : tasks) {
+            task.cancel();
         }
-        taskIds.clear();
+        tasks.clear();
     }
 
     @Override

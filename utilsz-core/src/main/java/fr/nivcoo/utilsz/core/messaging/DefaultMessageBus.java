@@ -355,16 +355,40 @@ public final class DefaultMessageBus implements MessageBus {
             rpcHandlers.put(a.value(), new RpcEntry(reqA));
 
         } else if (BusMessage.class.isAssignableFrom(clazz)) {
-
             @SuppressWarnings("unchecked")
-            BusTypeAdapter<BusMessage> ad =
-                    (BusTypeAdapter<BusMessage>) BusAdapterRegistry.ensureAdapter((Class) clazz);
-
-            eventHandlers.put(a.value(), new EventEntry<>(ad, BusMessage::execute));
+            Class<? extends BusMessage> eventClass = (Class<? extends BusMessage>) clazz;
+            registerEvent(eventClass, BusMessage::execute);
 
         } else {
             throw new IllegalArgumentException("Class must implement BusMessage or RpcMessage");
         }
+    }
+
+    @Override
+    public <T extends BusMessage> void register(Class<T> clazz, BusHandler<T> handler) {
+        if (handler == null)
+            throw new IllegalArgumentException("Handler cannot be null");
+
+        BusAction a = clazz.getAnnotation(BusAction.class);
+
+        if (a == null || a.value().isEmpty())
+            throw new IllegalArgumentException("Missing @BusAction on " + clazz.getName());
+
+        if (RpcMessage.class.isAssignableFrom(clazz))
+            throw new IllegalArgumentException("Use register(Class<?>) for RPC messages");
+
+        selfReceive.put(a.value(), a.receiveOwnMessages());
+        registerEvent(clazz, handler);
+    }
+
+    private <T extends BusMessage> void registerEvent(Class<T> clazz, BusHandler<T> handler) {
+        BusAction a = clazz.getAnnotation(BusAction.class);
+
+        @SuppressWarnings("unchecked")
+        BusTypeAdapter<T> ad =
+                (BusTypeAdapter<T>) BusAdapterRegistry.ensureAdapter((Class) clazz);
+
+        eventHandlers.put(a.value(), new EventEntry<>(ad, handler));
     }
 
     private void onIncoming(JsonObject wire) {
