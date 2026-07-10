@@ -1,7 +1,6 @@
 package fr.nivcoo.utilsz.core.messaging.adapter;
 
 import com.google.gson.*;
-import fr.nivcoo.utilsz.core.messaging.BusAdapterRegistry;
 import fr.nivcoo.utilsz.core.messaging.BusTypeAdapter;
 
 import java.util.HashMap;
@@ -45,7 +44,7 @@ public class MapAdapter implements BusTypeAdapter<Map> {
     private static JsonElement encode(Object v) {
         if (v == null) return JsonNull.INSTANCE;
 
-        BusTypeAdapter<Object> ad = BusAdapterRegistry.getAdapter(v.getClass());
+        BusTypeAdapter<Object> ad = TypedJsonAdapter.adapterFor(v.getClass());
 
         if (ad != null) {
             JsonObject o = ad.serialize(v);
@@ -67,7 +66,7 @@ public class MapAdapter implements BusTypeAdapter<Map> {
                 try {
                     Class<?> clazz = Class.forName(cn);
 
-                    BusTypeAdapter<Object> ad = BusAdapterRegistry.getAdapter(clazz);
+                    BusTypeAdapter<Object> ad = TypedJsonAdapter.adapterFor(clazz);
 
                     if (ad != null) return ad.deserialize(obj);
 

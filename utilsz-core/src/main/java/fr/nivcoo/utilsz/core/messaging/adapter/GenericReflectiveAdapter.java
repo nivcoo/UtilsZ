@@ -3,11 +3,12 @@ package fr.nivcoo.utilsz.core.messaging.adapter;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
-import fr.nivcoo.utilsz.core.messaging.BusAdapterRegistry;
 import fr.nivcoo.utilsz.core.messaging.BusTypeAdapter;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
 
 public class GenericReflectiveAdapter<T> implements BusTypeAdapter<T> {
 
@@ -17,7 +18,9 @@ public class GenericReflectiveAdapter<T> implements BusTypeAdapter<T> {
 
     public GenericReflectiveAdapter(Class<T> type) {
         this.type = type;
-        this.fields = type.getDeclaredFields();
+        this.fields = Arrays.stream(type.getDeclaredFields())
+                .filter(field -> !Modifier.isStatic(field.getModifiers()))
+                .toArray(Field[]::new);
 
         try {
             this.constructor = type.getDeclaredConstructor(getFieldTypes(fields));
@@ -38,11 +41,7 @@ public class GenericReflectiveAdapter<T> implements BusTypeAdapter<T> {
                     json.add(field.getName(), JsonNull.INSTANCE);
                     continue;
                 }
-                BusTypeAdapter<Object> adapter = getAdapter(field.getType());
-                if (adapter == null)
-                    throw new RuntimeException("No adapter for field " + field.getName() + " in " + type.getSimpleName()
-                            + " of type " + field.getType().getSimpleName());
-                json.add(field.getName(), adapter.serialize(fieldValue));
+                json.add(field.getName(), TypedJsonAdapter.serialize(fieldValue, field.getGenericType()));
             }
         } catch (Exception e) {
             throw new RuntimeException("Error serializing " + type.getName(), e);
@@ -64,20 +63,12 @@ public class GenericReflectiveAdapter<T> implements BusTypeAdapter<T> {
                     continue;
                 }
 
-                BusTypeAdapter<Object> adapter = getAdapter(field.getType());
-                if (adapter == null)
-                    throw new RuntimeException("No adapter for field " + name + " in " + type.getSimpleName());
-
-                args[i] = adapter.deserialize(el.getAsJsonObject());
+                args[i] = TypedJsonAdapter.deserialize(el, field.getGenericType());
             }
             return constructor.newInstance(args);
         } catch (Exception e) {
             throw new RuntimeException("Error deserializing " + type.getName(), e);
         }
-    }
-
-    private BusTypeAdapter<Object> getAdapter(Class<?> fieldType) {
-        return BusAdapterRegistry.getAdapter(fieldType);
     }
 
     private static Class<?>[] getFieldTypes(Field[] fields) {
