@@ -7,12 +7,17 @@ import fr.nivcoo.utilsz.core.messaging.crypto.NoopMessageCrypto;
 import org.slf4j.Logger;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -32,20 +37,37 @@ public final class DefaultMessageBus implements MessageBus {
 
     private record EventEntry<T extends BusMessage>(BusTypeAdapter<T> adapter, BusHandler<T> handler) {}
     private record RpcEntry(BusTypeAdapter<Object> reqAdapter) {}
+    private record RequestKey(String sender, String correlationId) {}
+
+    private static final class RequestExecution {
+        private final CompletableFuture<Envelope> response = new CompletableFuture<>();
+        private volatile long completedAt;
+
+        private void complete(Envelope envelope) {
+            if (response.complete(envelope)) {
+                completedAt = System.currentTimeMillis();
+            }
+        }
+    }
 
     private final MessageBackend backend;
     private final String channel;
     private final Consumer<Runnable> mainThreadExecutor;
     private final Logger logger;
     private final MessageCrypto crypto;
+    private final Duration defaultRpcTimeout;
+    private final ScheduledThreadPoolExecutor rpcTimeouts;
 
     private final ConcurrentMap<String, EventEntry<?>> eventHandlers = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, RpcEntry> rpcHandlers = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, CompletableFuture<JsonObject>> pending = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Long> seen = new ConcurrentHashMap<>();
+    private final ConcurrentMap<RequestKey, RequestExecution> requestExecutions = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Boolean> selfReceive = new ConcurrentHashMap<>();
 
     private final AtomicBoolean started = new AtomicBoolean(false);
+    private final AtomicBoolean subscribed = new AtomicBoolean(false);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
     private volatile long lastGcAt = 0L;
 
     public DefaultMessageBus(MessageBackend backend,
@@ -53,7 +75,7 @@ public final class DefaultMessageBus implements MessageBus {
                              Consumer<Runnable> mainThreadExecutor,
                              Logger logger) {
 
-        this(backend, channel, mainThreadExecutor, logger, NoopMessageCrypto.INSTANCE);
+        this(backend, channel, mainThreadExecutor, logger, NoopMessageCrypto.INSTANCE, DEFAULT_RPC_TIMEOUT);
     }
 
     public DefaultMessageBus(MessageBackend backend,
@@ -62,19 +84,29 @@ public final class DefaultMessageBus implements MessageBus {
                              Logger logger,
                              MessageCrypto crypto) {
 
+        this(backend, channel, mainThreadExecutor, logger, crypto, DEFAULT_RPC_TIMEOUT);
+    }
+
+    public DefaultMessageBus(MessageBackend backend,
+                             String channel,
+                             Consumer<Runnable> mainThreadExecutor,
+                             Logger logger,
+                             MessageCrypto crypto,
+                             Duration defaultRpcTimeout) {
+
         this.backend = backend;
         this.channel = channel;
         this.mainThreadExecutor = mainThreadExecutor;
         this.logger = logger;
         this.crypto = crypto == null ? NoopMessageCrypto.INSTANCE : crypto;
+        this.defaultRpcTimeout = requireTimeout(defaultRpcTimeout);
+        this.rpcTimeouts = createTimeoutExecutor();
 
         BusAdapterRegistry.registerBuiltins();
 
         backend.onError(t ->
                 logger.warn("[MessageBus] Backend error: {}", t.getMessage())
         );
-
-        backend.subscribeRaw(channel, this::onIncoming);
     }
 
     @Override
@@ -83,19 +115,38 @@ public final class DefaultMessageBus implements MessageBus {
     }
 
     @Override
-    public void start() {
-        if (started.compareAndSet(false, true)) {
+    public synchronized void start() {
+        if (closed.get()) {
+            throw new IllegalStateException("Message bus is closed");
+        }
+        if (started.get()) return;
+
+        if (!subscribed.get()) {
+            backend.subscribeRaw(channel, this::onIncoming);
+            subscribed.set(true);
+        }
+
+        started.set(true);
+        try {
             backend.start();
+        } catch (RuntimeException | Error error) {
+            started.set(false);
+            throw error;
         }
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
+        if (!closed.compareAndSet(false, true)) return;
+
+        started.set(false);
         pending.forEach((cid, fut) ->
                 fut.completeExceptionally(new CancellationException("Bus closed"))
         );
         pending.clear();
-        started.set(false);
+        requestExecutions.forEach((key, execution) -> execution.complete(null));
+        requestExecutions.clear();
+        rpcTimeouts.shutdownNow();
         backend.close();
     }
 
@@ -111,11 +162,27 @@ public final class DefaultMessageBus implements MessageBus {
 
     @Override
     public CompletableFuture<JsonObject> callRaw(String action, JsonObject payload) {
-        return callRawTo(null, action, payload);
+        return callRawTo(null, action, payload, defaultRpcTimeout);
+    }
+
+    @Override
+    public CompletableFuture<JsonObject> callRaw(String action, JsonObject payload, Duration timeout) {
+        return callRawTo(null, action, payload, timeout);
     }
 
     @Override
     public CompletableFuture<JsonObject> callRawTo(String targetInstanceId, String action, JsonObject payload) {
+        return callRawTo(targetInstanceId, action, payload, defaultRpcTimeout);
+    }
+
+    @Override
+    public CompletableFuture<JsonObject> callRawTo(String targetInstanceId, String action, JsonObject payload,
+                                                    Duration timeout) {
+        Duration resolvedTimeout = requireTimeout(timeout);
+        if (!isRunning()) {
+            return failedFuture(new IllegalStateException("Message bus is not started"));
+        }
+
         String cid = UUID.randomUUID().toString();
 
         Envelope env = new Envelope();
@@ -128,9 +195,29 @@ public final class DefaultMessageBus implements MessageBus {
         CompletableFuture<JsonObject> fut = new CompletableFuture<>();
         pending.put(cid, fut);
 
+        ScheduledFuture<?> timeoutTask;
+        try {
+            timeoutTask = rpcTimeouts.schedule(() -> {
+                if (pending.remove(cid, fut)) {
+                    fut.completeExceptionally(new TimeoutException(
+                            "RPC " + action + " timed out after " + resolvedTimeout.toMillis() + " ms"));
+                }
+            }, resolvedTimeout.toNanos(), TimeUnit.NANOSECONDS);
+        } catch (RuntimeException error) {
+            pending.remove(cid, fut);
+            fut.completeExceptionally(error);
+            return fut;
+        }
+
+        fut.whenComplete((ignored, error) -> {
+            pending.remove(cid, fut);
+            timeoutTask.cancel(false);
+        });
+
         if (!send(env)) {
-            pending.remove(cid);
-            fut.completeExceptionally(new IllegalStateException("Failed to send message " + action));
+            if (pending.remove(cid, fut)) {
+                fut.completeExceptionally(new IllegalStateException("Failed to send message " + action));
+            }
         }
 
         return fut;
@@ -141,17 +228,36 @@ public final class DefaultMessageBus implements MessageBus {
                                                   Class<Req> reqType,
                                                   Class<Res> resType) {
 
-        return callTyped(null, action, req, reqType, resType, false);
+        return call(action, req, reqType, resType, defaultRpcTimeout);
+    }
+
+    public <Req, Res> CompletableFuture<Res> call(String action,
+                                                  Req req,
+                                                  Class<Req> reqType,
+                                                  Class<Res> resType,
+                                                  Duration timeout) {
+
+        return callTyped(null, action, req, reqType, resType, false, timeout);
     }
 
     @SuppressWarnings("unchecked")
     public <R> CompletableFuture<R> call(RpcMessage request) {
-        return (CompletableFuture<R>) callRpcTo(null, request);
+        return (CompletableFuture<R>) callRpcTo(null, request, defaultRpcTimeout);
+    }
+
+    @SuppressWarnings("unchecked")
+    public <R> CompletableFuture<R> call(RpcMessage request, Duration timeout) {
+        return (CompletableFuture<R>) callRpcTo(null, request, timeout);
     }
 
     @SuppressWarnings("unchecked")
     public <R> CompletableFuture<R> callTo(String targetInstanceId, RpcMessage request) {
-        return (CompletableFuture<R>) callRpcTo(targetInstanceId, request);
+        return (CompletableFuture<R>) callRpcTo(targetInstanceId, request, defaultRpcTimeout);
+    }
+
+    @SuppressWarnings("unchecked")
+    public <R> CompletableFuture<R> callTo(String targetInstanceId, RpcMessage request, Duration timeout) {
+        return (CompletableFuture<R>) callRpcTo(targetInstanceId, request, timeout);
     }
 
     @Override
@@ -160,7 +266,15 @@ public final class DefaultMessageBus implements MessageBus {
 
         Class<?> reqType = request.getClass();
         BusAction action = requiredAction(reqType);
-        return callTyped(null, action.value(), request, reqType, responseType, runOnMainThread(reqType));
+        return callTyped(null, action.value(), request, reqType, responseType,
+                runOnMainThread(reqType), defaultRpcTimeout);
+    }
+
+    @Override
+    public <Req, Res> CompletableFuture<Res> call(Req request, Class<Res> responseType, Duration timeout) {
+        Class<?> reqType = request.getClass();
+        BusAction action = requiredAction(reqType);
+        return callTyped(null, action.value(), request, reqType, responseType, runOnMainThread(reqType), timeout);
     }
 
     @Override
@@ -170,10 +284,24 @@ public final class DefaultMessageBus implements MessageBus {
 
         Class<?> reqType = request.getClass();
         BusAction action = requiredAction(reqType);
-        return callTyped(targetInstanceId, action.value(), request, reqType, responseType, runOnMainThread(reqType));
+        return callTyped(targetInstanceId, action.value(), request, reqType, responseType,
+                runOnMainThread(reqType), defaultRpcTimeout);
+    }
+
+    @Override
+    public <Req, Res> CompletableFuture<Res> callTo(String targetInstanceId, Req request,
+                                                    Class<Res> responseType, Duration timeout) {
+        Class<?> reqType = request.getClass();
+        BusAction action = requiredAction(reqType);
+        return callTyped(targetInstanceId, action.value(), request, reqType, responseType,
+                runOnMainThread(reqType), timeout);
     }
 
     private void publishEvent(String targetInstanceId, BusMessage event) {
+        if (!isRunning()) {
+            throw new IllegalStateException("Message bus is not started");
+        }
+
         Class<?> eventType = event.getClass();
 
         Envelope env = new Envelope();
@@ -186,7 +314,7 @@ public final class DefaultMessageBus implements MessageBus {
         send(env);
     }
 
-    private <R> CompletableFuture<R> callRpcTo(String targetInstanceId, RpcMessage request) {
+    private <R> CompletableFuture<R> callRpcTo(String targetInstanceId, RpcMessage request, Duration timeout) {
         Class<?> requestType = request.getClass();
         BusAction action = requiredAction(requestType);
 
@@ -196,7 +324,8 @@ public final class DefaultMessageBus implements MessageBus {
         @SuppressWarnings("unchecked")
         Class<R> responseType = (Class<R>) action.response();
 
-        return callTyped(targetInstanceId, action.value(), request, requestType, responseType, runOnMainThread(requestType));
+        return callTyped(targetInstanceId, action.value(), request, requestType, responseType,
+                runOnMainThread(requestType), timeout);
     }
 
     private <Res> CompletableFuture<Res> callTyped(String targetInstanceId,
@@ -204,12 +333,13 @@ public final class DefaultMessageBus implements MessageBus {
                                                    Object request,
                                                    Class<?> requestType,
                                                    Class<Res> responseType,
-                                                   boolean completeOnMainThread) {
+                                                   boolean completeOnMainThread,
+                                                   Duration timeout) {
 
         JsonObject payload = adapter(requestType).serialize(request);
         CompletableFuture<JsonObject> raw = targetInstanceId == null
-                ? callRaw(action, payload)
-                : callRawTo(targetInstanceId, action, payload);
+                ? callRaw(action, payload, timeout)
+                : callRawTo(targetInstanceId, action, payload, timeout);
 
         return deserializeResponse(raw, responseType, adapter(responseType), completeOnMainThread);
     }
@@ -235,8 +365,17 @@ public final class DefaultMessageBus implements MessageBus {
                 }
             };
 
-            if (completeOnMainThread) mainThreadExecutor.accept(run);
-            else run.run();
+            if (completeOnMainThread) {
+                try {
+                    mainThreadExecutor.accept(run);
+                } catch (Throwable executorError) {
+                    out.completeExceptionally(executorError);
+                }
+            } else run.run();
+        });
+
+        out.whenComplete((ignored, error) -> {
+            if (out.isCancelled()) raw.cancel(false);
         });
 
         return out;
@@ -287,6 +426,7 @@ public final class DefaultMessageBus implements MessageBus {
     }
 
     private void onIncoming(JsonObject wire) {
+        if (!isRunning()) return;
         maybeGcSeen();
 
         Envelope env = fromWire(wire);
@@ -357,23 +497,43 @@ public final class DefaultMessageBus implements MessageBus {
         RpcEntry re = rpcHandlers.get(env.action);
         if (re == null || env.cid == null) return;
 
+        RequestExecution execution = new RequestExecution();
+        if (env.sender != null && !env.sender.isBlank()) {
+            RequestKey key = new RequestKey(env.sender, env.cid);
+            RequestExecution existing = requestExecutions.putIfAbsent(key, execution);
+            if (existing != null) {
+                existing.response.thenAccept(response -> {
+                    if (response != null) send(response);
+                });
+                return;
+            }
+        }
+
         Object req;
         try {
             req = re.reqAdapter.deserialize(env.payload != null ? env.payload : new JsonObject());
-        } catch (Exception ex) {
-            sendErrorResponse(env, ex);
+        } catch (Throwable error) {
+            completeRequest(execution, errorResponse(env, error));
             return;
         }
 
         boolean onMain = runOnMainThread(req.getClass());
 
         Runnable run = () -> {
+            if (!isRunning()) {
+                execution.complete(null);
+                return;
+            }
+
             try {
                 if (!(req instanceof RpcMessage ra))
                     throw new IllegalStateException("Endpoint must implement RpcMessage");
 
                 Object result = ra.handle();
-                if (result == null) return;
+                if (result == null) {
+                    execution.complete(null);
+                    return;
+                }
 
                 Envelope out = new Envelope();
                 out.kind = "res";
@@ -382,18 +542,26 @@ public final class DefaultMessageBus implements MessageBus {
                 out.target = env.sender;
                 out.payload = adapter(result.getClass()).serialize(result);
 
-                send(out);
-
-            } catch (Exception ex) {
-                sendErrorResponse(env, ex);
+                completeRequest(execution, out);
+            } catch (Throwable error) {
+                completeRequest(execution, errorResponse(env, error));
             }
         };
 
-        if (onMain) mainThreadExecutor.accept(run);
-        else run.run();
+        try {
+            if (onMain) mainThreadExecutor.accept(run);
+            else run.run();
+        } catch (Throwable error) {
+            completeRequest(execution, errorResponse(env, error));
+        }
     }
 
-    private void sendErrorResponse(Envelope request, Exception error) {
+    private void completeRequest(RequestExecution execution, Envelope response) {
+        if (response != null) send(response);
+        execution.complete(response);
+    }
+
+    private Envelope errorResponse(Envelope request, Throwable error) {
         Envelope out = new Envelope();
         out.kind = "res";
         out.action = request.action;
@@ -401,11 +569,12 @@ public final class DefaultMessageBus implements MessageBus {
         out.target = request.sender;
         out.error = message(error);
         out.payload = new JsonObject();
-
-        send(out);
+        return out;
     }
 
     private boolean send(Envelope env) {
+        if (!isRunning()) return false;
+
         JsonObject o = new JsonObject();
 
         o.addProperty("action", env.action);
@@ -553,6 +722,32 @@ public final class DefaultMessageBus implements MessageBus {
         return throwable.getMessage() != null ? throwable.getMessage() : throwable.toString();
     }
 
+    private static Duration requireTimeout(Duration timeout) {
+        if (timeout == null || timeout.isZero() || timeout.isNegative()) {
+            throw new IllegalArgumentException("RPC timeout must be positive");
+        }
+        return timeout;
+    }
+
+    private static ScheduledThreadPoolExecutor createTimeoutExecutor() {
+        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, runnable -> {
+            Thread thread = new Thread(runnable, "UtilsZ-MessageBus-RpcTimeout");
+            thread.setDaemon(true);
+            return thread;
+        });
+        executor.setRemoveOnCancelPolicy(true);
+        executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        return executor;
+    }
+
+    private static <T> CompletableFuture<T> failedFuture(Throwable error) {
+        return CompletableFuture.failedFuture(error);
+    }
+
+    private boolean isRunning() {
+        return started.get() && !closed.get();
+    }
+
     private boolean isSeen(String id) {
         long now = System.currentTimeMillis();
         Long prev = seen.putIfAbsent(id, now);
@@ -577,6 +772,13 @@ public final class DefaultMessageBus implements MessageBus {
         for (Map.Entry<String, Long> e : seen.entrySet()) {
             if (e.getValue() < cutoff) {
                 seen.remove(e.getKey(), e.getValue());
+            }
+        }
+
+        for (Map.Entry<RequestKey, RequestExecution> e : requestExecutions.entrySet()) {
+            long completedAt = e.getValue().completedAt;
+            if (completedAt > 0L && completedAt < cutoff) {
+                requestExecutions.remove(e.getKey(), e.getValue());
             }
         }
 

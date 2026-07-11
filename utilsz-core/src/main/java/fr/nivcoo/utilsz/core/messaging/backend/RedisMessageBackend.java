@@ -91,11 +91,13 @@ public final class RedisMessageBackend implements MessageBackend {
         subscribers.add(channel, callback);
 
         if (running.get()) restartListener();
-        else start();
     }
 
     @Override
     public void publish(String channel, JsonObject json) {
+        if (!running.get()) {
+            throw new IllegalStateException("Redis message backend is not started");
+        }
         try (Jedis j = jedisPool.getResource()) {
             j.publish(channel, json == null ? "{}" : json.toString());
         } catch (Exception e) {

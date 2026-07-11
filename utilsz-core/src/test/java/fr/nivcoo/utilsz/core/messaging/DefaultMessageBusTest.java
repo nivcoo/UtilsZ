@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.helpers.NOPLogger;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +19,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -32,11 +34,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DefaultMessageBusTest {
 
+    private static final AtomicInteger RPC_HANDLES = new AtomicInteger();
     private final List<DefaultMessageBus> buses = new ArrayList<>();
 
     @BeforeEach
     void resetBackend() {
         InMemoryMessageBackend.reset();
+        RPC_HANDLES.set(0);
     }
 
     @AfterEach
@@ -181,6 +185,72 @@ class DefaultMessageBusTest {
     }
 
     @Test
+    void rpcTimeoutCompletesAndIgnoresLateResponses() {
+        DefaultMessageBus caller = bus("caller", channel(), Runnable::run);
+
+        CompletableFuture<JsonObject> future =
+                caller.callRaw("missing", new JsonObject(), Duration.ofMillis(25));
+        ExecutionException error = assertThrows(
+                ExecutionException.class,
+                () -> future.get(1, TimeUnit.SECONDS)
+        );
+
+        assertInstanceOf(TimeoutException.class, error.getCause());
+    }
+
+    @Test
+    void duplicateRpcRequestReplaysResponseWithoutRunningHandlerTwice() throws Exception {
+        String channel = channel();
+        InMemoryMessageBackend callerBackend = new InMemoryMessageBackend("caller");
+        InMemoryMessageBackend responderBackend = new InMemoryMessageBackend("responder");
+        DefaultMessageBus caller = bus(callerBackend, channel, Runnable::run);
+        DefaultMessageBus responder = bus(responderBackend, channel, Runnable::run);
+        responder.register(CountingRequest.class);
+
+        EchoResponse response = caller.call(
+                new CountingRequest("hello"),
+                EchoResponse.class,
+                Duration.ofSeconds(1)
+        ).get(1, TimeUnit.SECONDS);
+        int responsesBeforeReplay = responderBackend.publishCount();
+
+        callerBackend.replayLast(channel);
+
+        assertEquals("HELLO", response.value());
+        assertEquals(1, RPC_HANDLES.get());
+        assertEquals(responsesBeforeReplay + 1, responderBackend.publishCount());
+    }
+
+    @Test
+    void constructorDoesNotSubscribeOrStartBackend() {
+        LifecycleBackend backend = new LifecycleBackend("lifecycle");
+        DefaultMessageBus bus = new DefaultMessageBus(
+                backend,
+                channel(),
+                Runnable::run,
+                NOPLogger.NOP_LOGGER
+        );
+        buses.add(bus);
+        bus.register(PresenceEvent.class);
+
+        assertEquals(0, backend.subscribeCount.get());
+        assertEquals(0, backend.startCount.get());
+        assertTrue(bus.callRaw("not-started", new JsonObject()).isCompletedExceptionally());
+
+        bus.start();
+        bus.start();
+
+        assertEquals(1, backend.subscribeCount.get());
+        assertEquals(1, backend.startCount.get());
+
+        bus.close();
+        bus.close();
+
+        assertEquals(1, backend.closeCount.get());
+        assertThrows(IllegalStateException.class, bus::start);
+    }
+
+    @Test
     void encryptedBusKeepsPayloadOpaqueOnWireAndStillDelivers() {
         String channel = channel();
         byte[] key = "12345678901234567890123456789012".getBytes(StandardCharsets.UTF_8);
@@ -235,6 +305,7 @@ class DefaultMessageBusTest {
                 NOPLogger.NOP_LOGGER
         );
         buses.add(caller);
+        caller.start();
 
         CompletableFuture<JsonObject> future = caller.callRaw("broken", new JsonObject());
 
@@ -257,6 +328,7 @@ class DefaultMessageBusTest {
                 ? new DefaultMessageBus(backend, channel, mainThreadExecutor, NOPLogger.NOP_LOGGER)
                 : new DefaultMessageBus(backend, channel, mainThreadExecutor, NOPLogger.NOP_LOGGER, crypto);
         buses.add(bus);
+        bus.start();
         return bus;
     }
 
@@ -301,6 +373,15 @@ class DefaultMessageBusTest {
     }
 
     private record EchoResponse(String value, Presence presence) {
+    }
+
+    @BusAction(value = "counting-request", response = EchoResponse.class)
+    private record CountingRequest(String value) implements RpcMessage {
+        @Override
+        public Object handle() {
+            RPC_HANDLES.incrementAndGet();
+            return new EchoResponse(value.toUpperCase(), null);
+        }
     }
 
     @BusAction(value = "failing-request", response = EchoResponse.class)
@@ -355,6 +436,45 @@ class DefaultMessageBusTest {
         @Override
         public void publish(String channel, JsonObject json) {
             throw new IllegalStateException("backend failed");
+        }
+
+        @Override
+        public void onError(Consumer<Throwable> handler) {
+        }
+    }
+
+    private static final class LifecycleBackend implements MessageBackend {
+        private final String instanceId;
+        private final AtomicInteger startCount = new AtomicInteger();
+        private final AtomicInteger closeCount = new AtomicInteger();
+        private final AtomicInteger subscribeCount = new AtomicInteger();
+
+        private LifecycleBackend(String instanceId) {
+            this.instanceId = instanceId;
+        }
+
+        @Override
+        public String getInstanceId() {
+            return instanceId;
+        }
+
+        @Override
+        public void start() {
+            startCount.incrementAndGet();
+        }
+
+        @Override
+        public void close() {
+            closeCount.incrementAndGet();
+        }
+
+        @Override
+        public void subscribeRaw(String channel, Consumer<JsonObject> callback) {
+            subscribeCount.incrementAndGet();
+        }
+
+        @Override
+        public void publish(String channel, JsonObject json) {
         }
 
         @Override

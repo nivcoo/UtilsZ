@@ -44,6 +44,35 @@ public class DatabaseManager {
         return provider.isConnected();
     }
 
+    public long currentTimeMillis() throws SQLException {
+        try (Connection connection = getConnection()) {
+            return currentTimeMillis(connection);
+        }
+    }
+
+    public long currentTimeMillis(Connection connection) throws SQLException {
+        if (connection == null) return currentTimeMillis();
+
+        try (PreparedStatement statement = connection.prepareStatement(currentTimeMillisQuery(type));
+             ResultSet result = statement.executeQuery()) {
+            if (!result.next()) {
+                throw new SQLException("Database did not return its current time");
+            }
+            long currentTimeMillis = result.getLong(1);
+            if (result.wasNull()) {
+                throw new SQLException("Database returned a null current time");
+            }
+            return currentTimeMillis;
+        }
+    }
+
+    static String currentTimeMillisQuery(DatabaseType type) {
+        return switch (Objects.requireNonNull(type, "type")) {
+            case SQLITE -> "SELECT CAST(ROUND((julianday('now') - 2440587.5) * 86400000) AS INTEGER)";
+            case MYSQL, MARIADB -> "SELECT CAST(UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000 AS SIGNED)";
+        };
+    }
+
     public void executeUpdate(String query) throws SQLException {
         provider.executeUpdate(query);
     }

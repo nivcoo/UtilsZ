@@ -2,6 +2,8 @@ package fr.nivcoo.utilsz.platform.bukkit.commands;
 
 import fr.nivcoo.utilsz.core.commands.CommandDispatcher;
 import fr.nivcoo.utilsz.core.commands.CommandRegistrar;
+import io.papermc.paper.command.brigadier.BasicCommand;
+import io.papermc.paper.command.brigadier.CommandSourceStack;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
@@ -15,8 +17,17 @@ public record BukkitCommandRegistrar(JavaPlugin plugin) implements CommandRegist
 
     @Override
     public void registerRoot(String rootLabel, CommandDispatcher dispatcher) {
-        PluginCommand pc = plugin.getCommand(rootLabel);
-        if (pc == null) throw new IllegalStateException("Command not found in plugin.yml: " + rootLabel);
+        PluginCommand pc;
+        try {
+            pc = plugin.getCommand(rootLabel);
+        } catch (UnsupportedOperationException ignored) {
+            pc = null;
+        }
+
+        if (pc == null) {
+            registerDynamic(rootLabel, dispatcher);
+            return;
+        }
 
         TabExecutor exec = new TabExecutor() {
             @Override
@@ -32,5 +43,19 @@ public record BukkitCommandRegistrar(JavaPlugin plugin) implements CommandRegist
 
         pc.setExecutor(exec);
         pc.setTabCompleter(exec);
+    }
+
+    private void registerDynamic(String rootLabel, CommandDispatcher dispatcher) {
+        plugin.registerCommand(rootLabel, new BasicCommand() {
+            @Override
+            public void execute(CommandSourceStack commandSourceStack, String[] args) {
+                dispatcher.dispatch(new BukkitSender(commandSourceStack.getSender()), rootLabel, args);
+            }
+
+            @Override
+            public List<String> suggest(CommandSourceStack commandSourceStack, String[] args) {
+                return dispatcher.tabComplete(new BukkitSender(commandSourceStack.getSender()), rootLabel, args);
+            }
+        });
     }
 }

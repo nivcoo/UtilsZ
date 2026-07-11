@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 final class InMemoryMessageBackend implements MessageBackend {
@@ -15,6 +16,7 @@ final class InMemoryMessageBackend implements MessageBackend {
     private final String instanceId;
     private Consumer<Throwable> errorHandler = Throwable::printStackTrace;
     private volatile JsonObject lastPublished;
+    private final AtomicInteger publishCount = new AtomicInteger();
 
     InMemoryMessageBackend(String instanceId) {
         this.instanceId = instanceId;
@@ -44,6 +46,7 @@ final class InMemoryMessageBackend implements MessageBackend {
 
     @Override
     public void publish(String channel, JsonObject json) {
+        publishCount.incrementAndGet();
         lastPublished = json == null ? new JsonObject() : json.deepCopy();
         for (Consumer<JsonObject> subscriber : SUBSCRIBERS.getOrDefault(channel, List.of())) {
             try {
@@ -61,6 +64,10 @@ final class InMemoryMessageBackend implements MessageBackend {
 
     JsonObject lastPublished() {
         return lastPublished;
+    }
+
+    int publishCount() {
+        return publishCount.get();
     }
 
     void replayLast(String channel) {
