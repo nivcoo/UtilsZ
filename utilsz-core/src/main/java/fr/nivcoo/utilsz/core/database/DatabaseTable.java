@@ -62,7 +62,7 @@ public final class DatabaseTable {
         StringBuilder sql = new StringBuilder("SELECT ")
                 .append(columns == null || columns.isBlank() ? "*" : columns)
                 .append(" FROM ")
-                .append(name);
+                .append(DatabaseManager.quote(name));
         if (where != null && !where.isBlank()) {
             sql.append(" WHERE ").append(where);
         }

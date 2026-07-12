@@ -114,7 +114,7 @@ public final class ModelSchema<T> {
     String selectColumns() {
         StringJoiner joiner = new StringJoiner(", ");
         for (ModelColumn<T> column : columns) {
-            joiner.add(column.name());
+            joiner.add(DatabaseManager.quote(column.name()));
         }
         return joiner.toString();
     }
@@ -123,7 +123,7 @@ public final class ModelSchema<T> {
         if (idColumn == null || idColumn.isBlank()) {
             throw new IllegalStateException("Table " + name + " does not define an id column.");
         }
-        return idColumn + " = ?";
+        return DatabaseManager.quote(idColumn) + " = ?";
     }
 
     Object encodeValue(String column, Object value) {

@@ -29,19 +29,19 @@ public final class ModelQuery<T> {
     }
 
     public ModelQuery<T> where(String column, Object value) {
-        where.add(column + " = ?");
+        where.add(DatabaseManager.quote(column) + " = ?");
         params.add(schema.encodeValue(column, value));
         return this;
     }
 
     public ModelQuery<T> whereLessOrEqual(String column, Object value) {
-        where.add(column + " <= ?");
+        where.add(DatabaseManager.quote(column) + " <= ?");
         params.add(schema.encodeValue(column, value));
         return this;
     }
 
     public ModelQuery<T> whereGreaterOrEqual(String column, Object value) {
-        where.add(column + " >= ?");
+        where.add(DatabaseManager.quote(column) + " >= ?");
         params.add(schema.encodeValue(column, value));
         return this;
     }

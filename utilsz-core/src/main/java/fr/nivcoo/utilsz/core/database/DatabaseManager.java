@@ -306,7 +306,7 @@ public class DatabaseManager {
         }
     }
 
-    private String quote(String identifier) {
+    static String quote(String identifier) {
         if (identifier == null || identifier.isBlank()) {
             throw new IllegalArgumentException("Identifier cannot be blank.");
         }
