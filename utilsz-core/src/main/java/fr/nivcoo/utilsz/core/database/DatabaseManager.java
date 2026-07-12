@@ -5,17 +5,21 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.StringJoiner;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.TimeUnit;
 
 public class DatabaseManager {
 
     private final DatabaseProvider provider;
     private final DatabaseType type;
+    private volatile int operationTimeoutSeconds;
 
     public DatabaseManager(DatabaseType type, String host, int port, String database,
                            String username, String password, String sqlitePath) {
@@ -29,7 +33,23 @@ public class DatabaseManager {
     }
 
     public Connection getConnection() throws SQLException {
-        return provider.getConnection();
+        Connection connection = provider.getConnection();
+        int timeout = operationTimeoutSeconds;
+        if (timeout > 0) {
+            try {
+                connection.setNetworkTimeout(
+                        ForkJoinPool.commonPool(), Math.toIntExact(TimeUnit.SECONDS.toMillis(timeout)));
+            } catch (SQLFeatureNotSupportedException ignored) {
+            }
+        }
+        return connection;
+    }
+
+    public void setOperationTimeoutSeconds(int seconds) {
+        if (seconds < 0 || TimeUnit.SECONDS.toMillis(seconds) > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("Operation timeout is outside the supported range.");
+        }
+        operationTimeoutSeconds = seconds;
     }
 
     public void closeConnection() {
@@ -53,7 +73,7 @@ public class DatabaseManager {
     public long currentTimeMillis(Connection connection) throws SQLException {
         if (connection == null) return currentTimeMillis();
 
-        try (PreparedStatement statement = connection.prepareStatement(currentTimeMillisQuery(type));
+        try (PreparedStatement statement = prepare(connection, currentTimeMillisQuery(type));
              ResultSet result = statement.executeQuery()) {
             if (!result.next()) {
                 throw new SQLException("Database did not return its current time");
@@ -95,7 +115,7 @@ public class DatabaseManager {
 
     public int execute(String query, Object... params) throws SQLException {
         try (Connection connection = getConnection();
-             PreparedStatement statement = connection.prepareStatement(query)) {
+             PreparedStatement statement = prepare(connection, query)) {
             bind(statement, params);
             return statement.executeUpdate();
         }
@@ -121,7 +141,7 @@ public class DatabaseManager {
 
     public int execute(Connection connection, String query, Object... params) throws SQLException {
         if (connection == null) return execute(query, params);
-        try (PreparedStatement statement = connection.prepareStatement(query)) {
+        try (PreparedStatement statement = prepare(connection, query)) {
             bind(statement, params);
             return statement.executeUpdate();
         }
@@ -129,14 +149,14 @@ public class DatabaseManager {
 
     public <T> List<T> query(String query, RowMapper<T> mapper, Object... params) throws SQLException {
         try (Connection connection = getConnection();
-             PreparedStatement statement = connection.prepareStatement(query)) {
+             PreparedStatement statement = prepare(connection, query)) {
             return query(statement, mapper, params);
         }
     }
 
     public <T> List<T> query(Connection connection, String query, RowMapper<T> mapper, Object... params) throws SQLException {
         if (connection == null) return query(query, mapper, params);
-        try (PreparedStatement statement = connection.prepareStatement(query)) {
+        try (PreparedStatement statement = prepare(connection, query)) {
             return query(statement, mapper, params);
         }
     }
@@ -145,11 +165,11 @@ public class DatabaseManager {
                            RowMapper<T> mapper, Object... params) throws SQLException {
         if (connection == null) {
             try (Connection ownedConnection = getConnection();
-                 PreparedStatement statement = ownedConnection.prepareStatement(query)) {
+                 PreparedStatement statement = prepare(ownedConnection, query)) {
                 return query(statement, mapper, schema, params);
             }
         }
-        try (PreparedStatement statement = connection.prepareStatement(query)) {
+        try (PreparedStatement statement = prepare(connection, query)) {
             return query(statement, mapper, schema, params);
         }
     }
@@ -312,6 +332,13 @@ public class DatabaseManager {
         }
         String clean = identifier.replace("`", "");
         return "`" + clean + "`";
+    }
+
+    private PreparedStatement prepare(Connection connection, String query) throws SQLException {
+        PreparedStatement statement = connection.prepareStatement(query);
+        int timeout = operationTimeoutSeconds;
+        if (timeout > 0) statement.setQueryTimeout(timeout);
+        return statement;
     }
 
     @FunctionalInterface
