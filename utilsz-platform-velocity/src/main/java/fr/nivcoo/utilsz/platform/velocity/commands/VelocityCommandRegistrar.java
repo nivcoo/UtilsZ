@@ -8,6 +8,7 @@ import fr.nivcoo.utilsz.core.commands.CommandRegistrar;
 
 import java.util.List;
 
+@SuppressWarnings("unused")
 public final class VelocityCommandRegistrar implements CommandRegistrar {
 
     private final ProxyServer proxy;
@@ -18,6 +19,11 @@ public final class VelocityCommandRegistrar implements CommandRegistrar {
 
     @Override
     public void registerRoot(String rootLabel, CommandDispatcher dispatcher) {
+        registerRoot(rootLabel, List.of(), dispatcher);
+    }
+
+    @Override
+    public void registerRoot(String rootLabel, List<String> rootAliases, CommandDispatcher dispatcher) {
         SimpleCommand simple = new SimpleCommand() {
             @Override
             public void execute(Invocation invocation) {
@@ -43,10 +49,9 @@ public final class VelocityCommandRegistrar implements CommandRegistrar {
             }
         };
 
-        CommandMeta meta = proxy.getCommandManager()
-                .metaBuilder(rootLabel)
-                .build();
+        CommandMeta.Builder meta = proxy.getCommandManager().metaBuilder(rootLabel);
+        if (!rootAliases.isEmpty()) meta.aliases(rootAliases.toArray(String[]::new));
 
-        proxy.getCommandManager().register(meta, simple);
+        proxy.getCommandManager().register(meta.build(), simple);
     }
 }

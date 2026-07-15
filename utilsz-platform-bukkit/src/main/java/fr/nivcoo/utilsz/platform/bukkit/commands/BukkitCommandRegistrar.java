@@ -13,10 +13,16 @@ import org.jspecify.annotations.NonNull;
 
 import java.util.List;
 
+@SuppressWarnings("unused")
 public record BukkitCommandRegistrar(JavaPlugin plugin) implements CommandRegistrar {
 
     @Override
     public void registerRoot(String rootLabel, CommandDispatcher dispatcher) {
+        registerRoot(rootLabel, List.of(), dispatcher);
+    }
+
+    @Override
+    public void registerRoot(String rootLabel, List<String> rootAliases, CommandDispatcher dispatcher) {
         PluginCommand pc;
         try {
             pc = plugin.getCommand(rootLabel);
@@ -25,9 +31,10 @@ public record BukkitCommandRegistrar(JavaPlugin plugin) implements CommandRegist
         }
 
         if (pc == null) {
-            registerDynamic(rootLabel, dispatcher);
+            registerDynamic(rootLabel, rootAliases, dispatcher);
             return;
         }
+        requireDeclaredAliases(rootLabel, rootAliases, pc);
 
         TabExecutor exec = new TabExecutor() {
             @Override
@@ -45,8 +52,25 @@ public record BukkitCommandRegistrar(JavaPlugin plugin) implements CommandRegist
         pc.setTabCompleter(exec);
     }
 
-    private void registerDynamic(String rootLabel, CommandDispatcher dispatcher) {
-        plugin.registerCommand(rootLabel, new BasicCommand() {
+    private static void requireDeclaredAliases(
+            String rootLabel,
+            List<String> rootAliases,
+            PluginCommand command
+    ) {
+        for (String alias : rootAliases) {
+            boolean declared = command.getAliases().stream()
+                    .anyMatch(candidate -> candidate.equalsIgnoreCase(alias));
+            if (!declared) {
+                throw new IllegalStateException(
+                        "Root alias '" + alias + "' for command '" + rootLabel
+                                + "' must be declared in plugin.yml"
+                );
+            }
+        }
+    }
+
+    private void registerDynamic(String rootLabel, List<String> rootAliases, CommandDispatcher dispatcher) {
+        plugin.registerCommand(rootLabel, rootAliases, new BasicCommand() {
             @Override
             public void execute(CommandSourceStack commandSourceStack, String[] args) {
                 dispatcher.dispatch(new BukkitSender(commandSourceStack.getSender()), rootLabel, args);

@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
+@SuppressWarnings("unused")
 public final class CommandManager implements CommandDispatcher {
 
     private static final PlainTextComponentSerializer PLAIN = PlainTextComponentSerializer.plainText();
@@ -28,7 +29,17 @@ public final class CommandManager implements CommandDispatcher {
             String globalCommand,
             String commandPermission
     ) {
-        this(registrar, provider, globalCommand, commandPermission, true, null, null);
+        this(registrar, provider, globalCommand, List.of(), commandPermission, true, null, null);
+    }
+
+    public CommandManager(
+            CommandRegistrar registrar,
+            CommandsConfigProvider provider,
+            String globalCommand,
+            List<String> rootAliases,
+            String commandPermission
+    ) {
+        this(registrar, provider, globalCommand, rootAliases, commandPermission, true, null, null);
     }
 
     public CommandManager(
@@ -38,7 +49,18 @@ public final class CommandManager implements CommandDispatcher {
             String commandPermission,
             boolean sendHelp
     ) {
-        this(registrar, provider, globalCommand, commandPermission, sendHelp, null, null);
+        this(registrar, provider, globalCommand, List.of(), commandPermission, sendHelp, null, null);
+    }
+
+    public CommandManager(
+            CommandRegistrar registrar,
+            CommandsConfigProvider provider,
+            String globalCommand,
+            List<String> rootAliases,
+            String commandPermission,
+            boolean sendHelp
+    ) {
+        this(registrar, provider, globalCommand, rootAliases, commandPermission, sendHelp, null, null);
     }
 
     public CommandManager(
@@ -48,7 +70,18 @@ public final class CommandManager implements CommandDispatcher {
             String commandPermission,
             Command defaultCommand
     ) {
-        this(registrar, provider, globalCommand, commandPermission, false, null, defaultCommand);
+        this(registrar, provider, globalCommand, List.of(), commandPermission, false, null, defaultCommand);
+    }
+
+    public CommandManager(
+            CommandRegistrar registrar,
+            CommandsConfigProvider provider,
+            String globalCommand,
+            List<String> rootAliases,
+            String commandPermission,
+            Command defaultCommand
+    ) {
+        this(registrar, provider, globalCommand, rootAliases, commandPermission, false, null, defaultCommand);
     }
 
     public CommandManager(
@@ -58,13 +91,25 @@ public final class CommandManager implements CommandDispatcher {
             String commandPermission,
             Consumer<Sender> onEmptyArgsHandler
     ) {
-        this(registrar, provider, globalCommand, commandPermission, false, onEmptyArgsHandler, null);
+        this(registrar, provider, globalCommand, List.of(), commandPermission, false, onEmptyArgsHandler, null);
+    }
+
+    public CommandManager(
+            CommandRegistrar registrar,
+            CommandsConfigProvider provider,
+            String globalCommand,
+            List<String> rootAliases,
+            String commandPermission,
+            Consumer<Sender> onEmptyArgsHandler
+    ) {
+        this(registrar, provider, globalCommand, rootAliases, commandPermission, false, onEmptyArgsHandler, null);
     }
 
     private CommandManager(
             CommandRegistrar registrar,
             CommandsConfigProvider provider,
             String globalCommand,
+            List<String> rootAliases,
             String commandPermission,
             boolean sendHelp,
             Consumer<Sender> onEmptyArgsHandler,
@@ -77,7 +122,7 @@ public final class CommandManager implements CommandDispatcher {
         this.onEmptyArgsHandler = onEmptyArgsHandler;
         this.defaultCommand = defaultCommand;
 
-        registrar.registerRoot(globalCommand, this);
+        registrar.registerRoot(globalCommand, List.copyOf(rootAliases), this);
     }
 
     public void addCommand(Command c) { commands.add(c); }
