@@ -251,7 +251,7 @@ public final class CommandManager implements CommandDispatcher {
 
     @Override
     public List<String> tabComplete(Sender sender, String label, String[] args) {
-        if (args.length > 0) {
+        if (args.length > 1) {
             Command c = getCommand(args[0]);
             if (c != null) {
                 String perm = c.getPermission();
@@ -267,7 +267,7 @@ public final class CommandManager implements CommandDispatcher {
             String perm = sc.getPermission();
             if (perm == null || perm.isEmpty() || sender.hasPermission(perm)) {
                 for (String al : sc.getAliases()) {
-                    if (al.toLowerCase().contains(prefix)) list.add(al);
+                    if (al.toLowerCase().startsWith(prefix)) list.add(al);
                 }
             }
         }
