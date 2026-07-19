@@ -11,7 +11,10 @@ public final class ConfigGuiPattern {
 
     @Optional
     public Integer rows = null;
+    @Optional
     public Map<String, ConfigGuiItem> items = new LinkedHashMap<>();
+    @Optional
     public Map<String, ConfigGuiItem> customItems = new LinkedHashMap<>();
+    @Optional
     public Map<String, List<Integer>> regions = new LinkedHashMap<>();
 }

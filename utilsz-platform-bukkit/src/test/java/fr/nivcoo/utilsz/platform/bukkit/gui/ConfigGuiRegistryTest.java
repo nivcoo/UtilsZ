@@ -166,6 +166,55 @@ class ConfigGuiRegistryTest {
         assertThrows(IllegalArgumentException.class, incompatibleRows::reload);
     }
 
+    @Test
+    void requiredRegionSizeIsValidatedBeforeSnapshotActivation() throws Exception {
+        ConfigGuiRegistry registry = registry()
+                .registerMenu("example", () -> menu(Material.DIAMOND, List.of()), menu -> menu
+                        .requireRegionSize("content", 1));
+        registry.reload();
+        ResolvedConfigGuiMenu before = registry.resolve("example");
+        Path menuFile = tempDir.resolve("gui/menus/example.yml");
+        Files.writeString(menuFile, "regions:\n  content: []\n", StandardCharsets.UTF_8);
+
+        assertThrows(IllegalArgumentException.class, registry::reload);
+        assertSame(before, registry.resolve("example"));
+        assertEquals(1L, registry.revision());
+    }
+
+    @Test
+    void matchedRegionSizesAreValidated() {
+        ConfigGuiRegistry registry = registry()
+                .registerMenu("example", () -> {
+                    ConfigGuiMenu menu = menu(Material.DIAMOND, List.of());
+                    menu.regions.put("secondary", List.of(3, 4));
+                    return menu;
+                }, menu -> menu.requireSameRegionSize("content", "secondary"));
+
+        assertThrows(IllegalArgumentException.class, registry::reload);
+    }
+
+    @Test
+    void emptyOptionalMenuAndPatternSectionsAreNotWritten() throws Exception {
+        ConfigGuiRegistry registry = registry()
+                .registerPattern("empty", ConfigGuiPattern::new)
+                .registerMenu("empty", () -> {
+                    ConfigGuiMenu menu = new ConfigGuiMenu();
+                    menu.title = Component.text("Empty");
+                    menu.rows = 3;
+                    return menu;
+                });
+
+        registry.reload();
+        String menu = Files.readString(tempDir.resolve("gui/menus/empty.yml"), StandardCharsets.UTF_8);
+        String pattern = Files.readString(tempDir.resolve("gui/patterns/empty.yml"), StandardCharsets.UTF_8);
+
+        assertFalse(menu.contains("patterns:"));
+        assertFalse(menu.contains("items:"));
+        assertFalse(menu.contains("custom_items:"));
+        assertFalse(menu.contains("regions:"));
+        assertTrue(pattern.isBlank());
+    }
+
     private ConfigGuiRegistry registry() {
         return new ConfigGuiRegistry(new ConfigManager(tempDir.toFile()), null);
     }

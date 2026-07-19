@@ -17,6 +17,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 
@@ -31,6 +32,7 @@ public final class ConfigGuiRegistry {
     private final String inventoryKeyPrefix = "utilsz:configured-gui:" + UUID.randomUUID() + ':';
     private final Map<String, Supplier<? extends ConfigGuiMenu>> menuDefaults = new LinkedHashMap<>();
     private final Map<String, Supplier<? extends ConfigGuiPattern>> patternDefaults = new LinkedHashMap<>();
+    private final Map<String, ConfigGuiMenuRegistration> menuRegistrations = new LinkedHashMap<>();
     private final Map<String, ConfiguredGui> handles = new ConcurrentHashMap<>();
     private final AtomicReference<State> state = new AtomicReference<>(new State(0L, Map.of()));
 
@@ -40,7 +42,25 @@ public final class ConfigGuiRegistry {
     }
 
     public synchronized ConfigGuiRegistry registerMenu(String id, Supplier<? extends ConfigGuiMenu> defaults) {
-        register(menuDefaults, id, defaults, "menu");
+        return registerMenu(id, defaults, registration -> { });
+    }
+
+    public synchronized ConfigGuiRegistry registerMenu(
+            String id,
+            Supplier<? extends ConfigGuiMenu> defaults,
+            Consumer<ConfigGuiMenuRegistration> configuration
+    ) {
+        String menu = normalizePathId(id, "menu");
+        if (configuration == null) throw new IllegalArgumentException("Menu configuration cannot be null");
+        register(menuDefaults, menu, defaults, "menu");
+        ConfigGuiMenuRegistration registration = new ConfigGuiMenuRegistration(menu);
+        try {
+            configuration.accept(registration);
+        } catch (RuntimeException exception) {
+            menuDefaults.remove(menu);
+            throw exception;
+        }
+        menuRegistrations.put(menu, registration);
         return this;
     }
 
@@ -59,6 +79,7 @@ public final class ConfigGuiRegistry {
         for (Map.Entry<String, ConfigGuiMenu> entry : menus.entrySet()) {
             resolved.put(entry.getKey(), resolve(entry.getKey(), entry.getValue(), patterns, revision));
         }
+        validateMenuRegistrations(resolved);
         state.set(new State(revision, immutableMap(resolved)));
     }
 
@@ -230,6 +251,14 @@ public final class ConfigGuiRegistry {
         }
     }
 
+    private void validateMenuRegistrations(Map<String, ResolvedConfigGuiMenu> menus) {
+        for (Map.Entry<String, ConfigGuiMenuRegistration> entry : menuRegistrations.entrySet()) {
+            ResolvedConfigGuiMenu menu = menus.get(entry.getKey());
+            if (menu == null) throw new IllegalArgumentException("Missing registered menu '" + entry.getKey() + "'");
+            entry.getValue().validate(menu);
+        }
+    }
+
     private static void validateSlotList(List<Integer> slots, int rows, String location) {
         Set<Integer> unique = new HashSet<>();
         int size = rows * 9;
@@ -290,7 +319,7 @@ public final class ConfigGuiRegistry {
         return normalized;
     }
 
-    private static String normalizeItemId(String value, String location) {
+    static String normalizeItemId(String value, String location) {
         if (value == null) throw new IllegalArgumentException("Null id in " + location);
         String normalized = value.trim().toLowerCase(Locale.ROOT);
         if (normalized.isBlank() || !normalized.matches("[a-z0-9][a-z0-9._-]*")) {
@@ -305,4 +334,5 @@ public final class ConfigGuiRegistry {
 
     private record State(long revision, Map<String, ResolvedConfigGuiMenu> menus) {
     }
+
 }
