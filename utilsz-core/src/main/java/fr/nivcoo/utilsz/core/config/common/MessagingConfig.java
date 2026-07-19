@@ -15,6 +15,7 @@ import fr.nivcoo.utilsz.core.messaging.crypto.MessageCryptoKeys;
 import fr.nivcoo.utilsz.core.messaging.crypto.NoopMessageCrypto;
 import org.slf4j.Logger;
 
+import java.util.Locale;
 import java.util.function.Consumer;
 
 @Section
@@ -37,6 +38,61 @@ public class MessagingConfig {
         this.channel = channel;
     }
 
+    public RuntimeSettings runtimeSettings() {
+        if (!enabled) {
+            return new RuntimeSettings(false, null, null, null, null);
+        }
+
+        String resolvedDriver = resolvedDriver();
+        return new RuntimeSettings(
+                true,
+                resolvedDriver,
+                channel,
+                encryptionSettings(),
+                endpointSettings(resolvedDriver)
+        );
+    }
+
+    private String resolvedDriver() {
+        String value = driver == null ? "redis" : driver.toLowerCase(Locale.ROOT);
+        return value.equals("rabbitmq") ? "rabbit" : value;
+    }
+
+    private EndpointSettings endpointSettings(String resolvedDriver) {
+        return switch (resolvedDriver) {
+            case "redis" -> new EndpointSettings(
+                    redis.host,
+                    redis.port,
+                    null,
+                    redis.username,
+                    redis.password
+            );
+            case "rabbit" -> new EndpointSettings(
+                    rabbit.host,
+                    rabbit.port,
+                    rabbit.virtualHost,
+                    rabbit.username,
+                    rabbit.password
+            );
+            default -> null;
+        };
+    }
+
+    private EncryptionSettings encryptionSettings() {
+        if (encryption == null || !encryption.enabled) {
+            return new EncryptionSettings(false, null, null, null);
+        }
+        String algorithm = encryption.algorithm == null
+                ? AesGcmMessageCrypto.ALGORITHM
+                : encryption.algorithm.trim().toUpperCase(Locale.ROOT);
+        return new EncryptionSettings(
+                true,
+                algorithm,
+                encryption.keyId,
+                encryption.key
+        );
+    }
+
     public MessageBus createBus(Consumer<Runnable> mainThreadExecutor, Logger logger) {
         if (!enabled) {
             return new NoopMessageBus();
@@ -56,15 +112,21 @@ public class MessagingConfig {
     }
 
     public MessageBackend createBackend(Logger logger) {
-        String resolvedDriver = driver == null ? "redis" : driver.toLowerCase();
+        String resolvedDriver = resolvedDriver();
+        EndpointSettings endpoint = endpointSettings(resolvedDriver);
         return switch (resolvedDriver) {
-            case "redis" -> new RedisMessageBackend(redis.host, redis.port, redis.username, redis.password);
+            case "redis" -> new RedisMessageBackend(
+                    endpoint.host(),
+                    endpoint.port(),
+                    endpoint.username(),
+                    endpoint.password()
+            );
             case "rabbit", "rabbitmq" -> new RabbitMqMessageBackend(
-                    rabbit.host,
-                    rabbit.port,
-                    rabbit.virtualHost,
-                    rabbit.username,
-                    rabbit.password
+                    endpoint.host(),
+                    endpoint.port(),
+                    endpoint.virtualHost(),
+                    endpoint.username(),
+                    endpoint.password()
             );
             default -> {
                 if (logger != null) {
@@ -76,13 +138,12 @@ public class MessagingConfig {
     }
 
     public MessageCrypto createCrypto(Logger logger) {
-        if (encryption == null || !encryption.enabled) {
+        EncryptionSettings settings = encryptionSettings();
+        if (!settings.enabled()) {
             return NoopMessageCrypto.INSTANCE;
         }
 
-        String resolvedAlgorithm = encryption.algorithm == null
-                ? AesGcmMessageCrypto.ALGORITHM
-                : encryption.algorithm.trim();
+        String resolvedAlgorithm = settings.algorithm();
         if (!AesGcmMessageCrypto.ALGORITHM.equalsIgnoreCase(resolvedAlgorithm)) {
             if (logger != null) {
                 logger.warn("Messaging encryption algorithm inconnu: {}", resolvedAlgorithm);
@@ -92,8 +153,8 @@ public class MessagingConfig {
 
         try {
             return new AesGcmMessageCrypto(
-                    MessageCryptoKeys.decode(encryption.key),
-                    encryption.keyId
+                    MessageCryptoKeys.decode(settings.key()),
+                    settings.keyId()
             );
         } catch (Exception ex) {
             if (logger != null) {
@@ -133,5 +194,31 @@ public class MessagingConfig {
         public String virtualHost = "/";
         public String username = "guest";
         public String password = "";
+    }
+
+    public record RuntimeSettings(
+            boolean enabled,
+            String driver,
+            String channel,
+            EncryptionSettings encryption,
+            EndpointSettings endpoint
+    ) {
+    }
+
+    public record EncryptionSettings(
+            boolean enabled,
+            String algorithm,
+            String keyId,
+            String key
+    ) {
+    }
+
+    public record EndpointSettings(
+            String host,
+            int port,
+            String virtualHost,
+            String username,
+            String password
+    ) {
     }
 }
