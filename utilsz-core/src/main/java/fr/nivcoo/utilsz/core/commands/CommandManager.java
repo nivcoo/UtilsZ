@@ -6,6 +6,7 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -19,6 +20,7 @@ public final class CommandManager implements CommandDispatcher {
     private final ArrayList<Command> commands = new ArrayList<>();
     private final ArrayList<NestedCommand> nestedCommands = new ArrayList<>();
     private final ArrayList<RegisteredSection> sections = new ArrayList<>();
+    private final IdentityHashMap<Command, List<String>> commandAliases = new IdentityHashMap<>();
     private final CommandsConfigProvider provider;
 
     private final String globalCommand;
@@ -131,9 +133,10 @@ public final class CommandManager implements CommandDispatcher {
     }
 
     public void addCommand(Command command) {
-        requireAliases(command);
+        List<String> aliases = requireAliases(command);
         requireUniqueCommand(command);
-        requireAvailableAliases(List.of(), command.getAliases());
+        requireAvailableAliases(List.of(), aliases);
+        commandAliases.put(command, aliases);
         commands.add(command);
     }
 
@@ -151,18 +154,21 @@ public final class CommandManager implements CommandDispatcher {
         RegisteredSection existing = findSection(immutablePath);
         if (existing == null) {
             requireAvailableSectionAliases(parentPath, sectionAliases);
-            sections.add(new RegisteredSection(resolveSections(parentPath), immutablePath, sectionAliases));
+            existing = new RegisteredSection(resolveSections(parentPath), immutablePath, sectionAliases);
+            sections.add(existing);
         } else if (!sameAliases(existing.aliases(), sectionAliases)) {
             throw new IllegalArgumentException("Command section is already registered with different aliases");
         }
-        return new CommandSection(this, immutablePath);
+        return new CommandSection(this, existing.path);
     }
 
     void addCommand(List<String> parentPath, Command command) {
-        requireAliases(command);
+        List<String> aliases = requireAliases(command);
         requireUniqueCommand(command);
-        requireAvailableAliases(parentPath, command.getAliases());
-        nestedCommands.add(new NestedCommand(resolveSections(parentPath), command));
+        requireAvailableAliases(parentPath, aliases);
+        List<RegisteredSection> parentSections = resolveSections(parentPath);
+        commandAliases.put(command, aliases);
+        nestedCommands.add(new NestedCommand(parentSections, command, aliases));
     }
 
     void setSectionPermission(List<String> path, String permission) {
@@ -173,7 +179,7 @@ public final class CommandManager implements CommandDispatcher {
         requireSection(path).consoleAllowed = allowed;
     }
 
-    public ArrayList<Command> getCommands() { return commands; }
+    public List<Command> getCommands() { return List.copyOf(commands); }
 
     public void setDefaultCommand(Command command) {
         if (command != null && findRegistration(command) != null) {
@@ -184,7 +190,7 @@ public final class CommandManager implements CommandDispatcher {
 
     public Command getCommand(String arg) {
         for (Command c : commands) {
-            if (matchesAlias(c, arg)) return c;
+            if (matchesAlias(aliasesOf(c), arg)) return c;
         }
         return null;
     }
@@ -241,8 +247,11 @@ public final class CommandManager implements CommandDispatcher {
 
         if (args.length == 0) {
             if (onEmptyArgsHandler != null) { onEmptyArgsHandler.accept(sender); return true; }
+            boolean rootAllowed = commandPermission == null
+                    || commandPermission.isBlank()
+                    || sender.hasPermission(commandPermission);
 
-            if (defaultCommand != null && sender.hasPermission(commandPermission)) {
+            if (defaultCommand != null && rootAllowed) {
                 if (sender.isConsole() && !defaultCommand.canBeExecutedByConsole()) {
                     sendPlayerOnly(sender);
                     return true;
@@ -252,11 +261,18 @@ public final class CommandManager implements CommandDispatcher {
                     if (isNotEmpty(noPermission)) sender.sendMessage(noPermission);
                     return true;
                 }
-                defaultCommand.execute(new CommandContext(sender, label, args));
+                CommandContext context = new CommandContext(sender, label, args);
+                if (args.length < defaultCommand.getMinArgs() || args.length > defaultCommand.getMaxArgs()) {
+                    Component message = fmtComp(
+                            provider.incorrectUsage(), rootUsage(defaultCommand.getUsage(context)));
+                    if (isNotEmpty(message)) sender.sendMessage(message);
+                    return true;
+                }
+                defaultCommand.execute(context);
                 return true;
             }
 
-            if (sendHelp && sender.hasPermission(commandPermission)) {
+            if (sendHelp && rootAllowed) {
                 help(sender);
                 return true;
             }
@@ -272,7 +288,7 @@ public final class CommandManager implements CommandDispatcher {
             }
 
             Command c = getCommand(globalCommand);
-            if (c != null) c.execute(new CommandContext(sender, label, args));
+            if (c != null) return dispatch(sender, label, new String[]{globalCommand});
             return true;
         }
 
@@ -420,10 +436,12 @@ public final class CommandManager implements CommandDispatcher {
         LinkedHashSet<String> suggestions = new LinkedHashSet<>();
 
         for (Command command : commands) {
-            collectSuggestions(suggestions, sender, new CommandMatch(List.of(), command), args, cursor, prefix);
+            collectSuggestions(suggestions, sender,
+                    new CommandMatch(List.of(), command, aliasesOf(command)), args, cursor, prefix);
         }
         for (NestedCommand nested : nestedCommands) {
-            collectSuggestions(suggestions, sender, new CommandMatch(nested.parentSections(), nested.command()),
+            collectSuggestions(suggestions, sender,
+                    new CommandMatch(nested.parentSections(), nested.command(), nested.aliases()),
                     args, cursor, prefix);
         }
         return new ArrayList<>(suggestions);
@@ -450,11 +468,12 @@ public final class CommandManager implements CommandDispatcher {
         if (args.length == 0) return null;
         CommandMatch best = null;
         for (Command command : commands) {
-            CommandMatch candidate = new CommandMatch(List.of(), command);
+            CommandMatch candidate = new CommandMatch(List.of(), command, aliasesOf(command));
             if (best == null && candidate.matches(args)) best = candidate;
         }
         for (NestedCommand nested : nestedCommands) {
-            CommandMatch candidate = new CommandMatch(nested.parentSections(), nested.command());
+            CommandMatch candidate = new CommandMatch(
+                    nested.parentSections(), nested.command(), nested.aliases());
             if (candidate.matches(args) && (best == null || candidate.routeLength() > best.routeLength())) {
                 best = candidate;
             }
@@ -464,10 +483,14 @@ public final class CommandManager implements CommandDispatcher {
 
     private CommandMatch findRegistration(Command command) {
         for (Command registered : commands) {
-            if (registered == command) return new CommandMatch(List.of(), registered);
+            if (registered == command) {
+                return new CommandMatch(List.of(), registered, aliasesOf(registered));
+            }
         }
         for (NestedCommand nested : nestedCommands) {
-            if (nested.command() == command) return new CommandMatch(nested.parentSections(), nested.command());
+            if (nested.command() == command) {
+                return new CommandMatch(nested.parentSections(), nested.command(), nested.aliases());
+            }
         }
         return null;
     }
@@ -511,11 +534,12 @@ public final class CommandManager implements CommandDispatcher {
     private String sectionUsage(RegisteredSection section, Sender sender) {
         LinkedHashSet<String> children = new LinkedHashSet<>();
         for (Command command : commands) {
-            collectSectionChild(children, section.path, new CommandMatch(List.of(), command), sender);
+            collectSectionChild(children, section.path,
+                    new CommandMatch(List.of(), command, aliasesOf(command)), sender);
         }
         for (NestedCommand nested : nestedCommands) {
             collectSectionChild(children, section.path,
-                    new CommandMatch(nested.parentSections(), nested.command()), sender);
+                    new CommandMatch(nested.parentSections(), nested.command(), nested.aliases()), sender);
         }
         String base = globalCommand + " " + String.join(" ", section.path);
         if (children.isEmpty()) return base;
@@ -539,9 +563,9 @@ public final class CommandManager implements CommandDispatcher {
         return permission == null || permission.isEmpty() || sender.hasPermission(permission);
     }
 
-    private static boolean matchesAlias(Command command, String value) {
+    private static boolean matchesAlias(List<String> aliases, String value) {
         if (value == null) return false;
-        for (String alias : command.getAliases()) {
+        for (String alias : aliases) {
             if (alias.equalsIgnoreCase(value)) return true;
         }
         return false;
@@ -563,7 +587,7 @@ public final class CommandManager implements CommandDispatcher {
         return true;
     }
 
-    private static void requireAliases(Command command) {
+    private static List<String> requireAliases(Command command) {
         if (command == null) throw new NullPointerException("command");
         List<String> aliases = command.getAliases();
         if (aliases == null || aliases.isEmpty() || aliases.stream().anyMatch(alias -> alias == null || alias.isBlank())) {
@@ -573,6 +597,7 @@ public final class CommandManager implements CommandDispatcher {
             throw new IllegalArgumentException("Command aliases cannot contain whitespace");
         }
         requireDistinctAliases(aliases, "Command aliases must be unique");
+        return List.copyOf(aliases);
     }
 
     private void requireUniqueCommand(Command command) {
@@ -586,14 +611,14 @@ public final class CommandManager implements CommandDispatcher {
     private void requireAvailableAliases(List<String> parentPath, List<String> aliases) {
         if (parentPath.isEmpty()) {
             for (Command command : commands) {
-                if (aliasesOverlap(command.getAliases(), aliases)) {
+                if (aliasesOverlap(aliasesOf(command), aliases)) {
                     throw new IllegalArgumentException("A command alias is already registered at this level");
                 }
             }
         } else {
             for (NestedCommand nested : nestedCommands) {
                 if (samePath(canonicalPath(nested.parentSections()), parentPath)
-                        && aliasesOverlap(nested.command().getAliases(), aliases)) {
+                        && aliasesOverlap(nested.aliases(), aliases)) {
                     throw new IllegalArgumentException("A command alias is already registered at this level");
                 }
             }
@@ -631,14 +656,14 @@ public final class CommandManager implements CommandDispatcher {
 
         if (parentPath.isEmpty()) {
             for (Command command : commands) {
-                validateExecutableSectionAliases(command.getAliases(), aliases);
+                validateExecutableSectionAliases(aliasesOf(command), aliases);
             }
             return;
         }
 
         for (NestedCommand nested : nestedCommands) {
             if (samePath(canonicalPath(nested.parentSections()), parentPath)) {
-                validateExecutableSectionAliases(nested.command().getAliases(), aliases);
+                validateExecutableSectionAliases(nested.aliases(), aliases);
             }
         }
     }
@@ -701,6 +726,12 @@ public final class CommandManager implements CommandDispatcher {
         return sections.stream().map(RegisteredSection::primaryAlias).toList();
     }
 
+    private List<String> aliasesOf(Command command) {
+        List<String> aliases = commandAliases.get(command);
+        if (aliases == null) throw new IllegalArgumentException("Command is not registered in this manager");
+        return aliases;
+    }
+
     private static boolean startsWithRoute(String value, String route) {
         if (value.equalsIgnoreCase(route)) return true;
         int length = route.length();
@@ -709,16 +740,24 @@ public final class CommandManager implements CommandDispatcher {
                 && Character.isWhitespace(value.charAt(length));
     }
 
-    private record NestedCommand(List<RegisteredSection> parentSections, Command command) {
+    private record NestedCommand(
+            List<RegisteredSection> parentSections,
+            Command command,
+            List<String> aliases
+    ) {
     }
 
-    private record CommandMatch(List<RegisteredSection> parentSections, Command command) {
+    private record CommandMatch(
+            List<RegisteredSection> parentSections,
+            Command command,
+            List<String> aliases
+    ) {
         private int routeLength() {
             return parentSections.size() + 1;
         }
 
         private String primaryAlias() {
-            return command.getAliases().getFirst();
+            return aliases.getFirst();
         }
 
         private String canonicalRoute() {
@@ -742,17 +781,17 @@ public final class CommandManager implements CommandDispatcher {
             for (int i = 0; i < parentSections.size(); i++) {
                 if (!parentSections.get(i).matches(args[i])) return false;
             }
-            return matchesAlias(command, args[parentSections.size()]);
+            return matchesAlias(aliases, args[parentSections.size()]);
         }
 
         private boolean matchesSegment(int index, String value) {
             if (index < parentSections.size()) return parentSections.get(index).matches(value);
-            return index == parentSections.size() && matchesAlias(command, value);
+            return index == parentSections.size() && matchesAlias(aliases, value);
         }
 
         private List<String> aliasesAt(int index) {
             if (index < parentSections.size()) return parentSections.get(index).aliases();
-            if (index == parentSections.size()) return command.getAliases();
+            if (index == parentSections.size()) return aliases;
             return List.of();
         }
 

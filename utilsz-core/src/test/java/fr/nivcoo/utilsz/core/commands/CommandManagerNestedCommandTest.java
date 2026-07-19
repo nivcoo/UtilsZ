@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CommandManagerNestedCommandTest {
 
@@ -255,6 +256,35 @@ class CommandManagerNestedCommandTest {
     }
 
     @Test
+    void snapshotsAliasesAndDoesNotExposeTheRegistrationList() {
+        CommandManager manager = manager();
+        ArrayList<String> aliases = new ArrayList<>(List.of("reload", "rl"));
+        boolean[] called = {false};
+        manager.addCommand(command(aliases, "", "", 1, 1,
+                ctx -> called[0] = true, ctx -> List.of()));
+
+        aliases.clear();
+        aliases.add("changed");
+        manager.dispatch(new TestSender(), "auction", new String[]{"reload"});
+
+        assertTrue(called[0]);
+        assertThrows(UnsupportedOperationException.class,
+                () -> manager.getCommands().add(command(
+                        List.of("other"), "", "", 1, 1,
+                        ctx -> { }, ctx -> List.of())));
+    }
+
+    @Test
+    void returnsTheRegisteredCanonicalSectionPath() {
+        CommandManager manager = manager();
+        manager.addSection("admin", "a");
+
+        CommandSection section = manager.addSection("ADMIN", "A");
+
+        assertEquals("admin", section.getPath());
+    }
+
+    @Test
     void sectionsGenerateTheirUsageAndFallBackToTheDeepestBranch() {
         CommandManager manager = manager();
         CommandSection admin = manager.addSection("admin").permission("admin.section");
@@ -359,6 +389,57 @@ class CommandManagerNestedCommandTest {
 
         assertEquals(List.of("denied"), player.messages());
         assertEquals(List.of("players only"), console.messages());
+    }
+
+    @Test
+    void checksTheDefaultCommandUsageOnEmptyArguments() {
+        Command defaultCommand = command(List.of(""), "", "<value>", 1, 1,
+                ctx -> { }, ctx -> List.of());
+        CommandManager manager = new CommandManager(
+                (rootLabel, dispatcher) -> { }, MESSAGES,
+                "auction", "auction.root", defaultCommand);
+        TestSender sender = new TestSender("auction.root");
+
+        manager.dispatch(sender, "auction", new String[0]);
+
+        assertEquals(List.of("Usage: auction <value>"), sender.messages());
+    }
+
+    @Test
+    void doesNotLeakOrDuplicateDefaultSuggestions() {
+        Command defaultCommand = command(List.of(""), "", "", 0, Integer.MAX_VALUE,
+                ctx -> { }, ctx -> List.of("sell", "root-value"));
+        CommandManager manager = new CommandManager(
+                (rootLabel, dispatcher) -> { }, MESSAGES,
+                "auction", "", defaultCommand);
+        manager.addCommand(command(List.of("sell"), "", "", 1, 1,
+                ctx -> { }, ctx -> List.of()));
+        manager.addSection("admin");
+        TestSender sender = new TestSender();
+
+        assertEquals(List.of("sell", "root-value"),
+                manager.tabComplete(sender, "auction", new String[]{""}));
+        assertEquals(List.of(),
+                manager.tabComplete(sender, "auction", new String[]{"admin", "unknown"}));
+    }
+
+    @Test
+    void validatesTheLegacyEmptyRootFallback() {
+        boolean[] called = {false};
+        CommandManager manager = new CommandManager(
+                (rootLabel, dispatcher) -> { }, MESSAGES,
+                "auction", "auction.root", false);
+        manager.addCommand(command(List.of("auction"), "auction.run", "<value>", 2, 2,
+                ctx -> called[0] = true, ctx -> List.of()));
+        TestSender denied = new TestSender("auction.root");
+        TestSender invalidUsage = new TestSender("auction.root", "auction.run");
+
+        manager.dispatch(denied, "auction", new String[0]);
+        manager.dispatch(invalidUsage, "auction", new String[0]);
+
+        assertFalse(called[0]);
+        assertEquals(List.of("denied"), denied.messages());
+        assertEquals(List.of("Usage: auction auction <value>"), invalidUsage.messages());
     }
 
     private static CommandManager manager() {
