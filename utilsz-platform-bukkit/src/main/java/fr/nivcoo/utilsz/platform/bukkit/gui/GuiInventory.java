@@ -12,6 +12,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 @SuppressWarnings("unused")
@@ -25,6 +26,7 @@ public final class GuiInventory implements InventoryHolder {
     private final Player player;
     private final GuiProvider provider;
     private final int rows;
+    private final AtomicBoolean refreshRequested = new AtomicBoolean();
 
     private final List<Integer> excludeCases;
     private final ClickableItem[] items;
@@ -186,6 +188,14 @@ public final class GuiInventory implements InventoryHolder {
 
     public void open() {
         player.openInventory(bukkitInventory);
+    }
+
+    public void refresh() {
+        refreshRequested.set(true);
+    }
+
+    boolean consumeRefreshRequest() {
+        return refreshRequested.getAndSet(false);
     }
 
     public void handleClick(InventoryClickEvent e) {

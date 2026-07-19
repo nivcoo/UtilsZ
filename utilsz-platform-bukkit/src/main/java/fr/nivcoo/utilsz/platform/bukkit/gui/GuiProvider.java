@@ -14,6 +14,8 @@ public interface GuiProvider {
     void init(GuiInventory inv);
     void update(GuiInventory inv);
 
+    default void refresh(GuiInventory inv) { update(inv); }
+
     default int updatePeriodTicks() { return 1; }
     default boolean needsUpdate(GuiInventory inv) { return true; }
 

@@ -57,7 +57,9 @@ public final class GuiInventoryManager implements Listener {
 
                 GuiProvider p = inv.getProvider();
                 int period = Math.max(1, p.updatePeriodTicks());
-                if (tick % period == 0 && p.needsUpdate(inv)) {
+                if (inv.consumeRefreshRequest()) {
+                    p.refresh(inv);
+                } else if (tick % period == 0 && p.needsUpdate(inv)) {
                     p.update(inv);
                 }
             }
