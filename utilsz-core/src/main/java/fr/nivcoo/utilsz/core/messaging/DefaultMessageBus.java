@@ -311,7 +311,9 @@ public final class DefaultMessageBus implements MessageBus {
         env.target = targetInstanceId;
         env.payload = adapter(eventType).serialize(event);
 
-        send(env);
+        if (!send(env)) {
+            throw new IllegalStateException("Failed to publish message " + env.action);
+        }
     }
 
     private <R> CompletableFuture<R> callRpcTo(String targetInstanceId, RpcMessage request, Duration timeout) {
@@ -385,19 +387,35 @@ public final class DefaultMessageBus implements MessageBus {
     public void register(Class<?> clazz) {
         BusAction a = requiredAction(clazz);
 
-        selfReceive.put(a.value(), a.receiveOwnMessages());
-
         if (RpcMessage.class.isAssignableFrom(clazz) && a.response() != Void.class) {
-
+            selfReceive.put(a.value(), a.receiveOwnMessages());
             rpcHandlers.put(a.value(), new RpcEntry(adapter(clazz)));
 
         } else if (BusMessage.class.isAssignableFrom(clazz)) {
             @SuppressWarnings("unchecked")
             Class<? extends BusMessage> eventClass = (Class<? extends BusMessage>) clazz;
+            requireExecuteOverride(eventClass);
+            selfReceive.put(a.value(), a.receiveOwnMessages());
             registerEvent(eventClass, BusMessage::execute);
 
         } else {
             throw new IllegalArgumentException("Class must implement BusMessage or RpcMessage");
+        }
+    }
+
+    private static void requireExecuteOverride(Class<? extends BusMessage> clazz) {
+        try {
+            if (clazz.getMethod("execute").getDeclaringClass() == BusMessage.class) {
+                throw new IllegalArgumentException(
+                        "Bus message " + clazz.getName() + " does not override execute(); "
+                                + "register it with register(Class, BusHandler)"
+                );
+            }
+        } catch (NoSuchMethodException exception) {
+            throw new IllegalArgumentException(
+                    "Bus message has no public execute() method: " + clazz.getName(),
+                    exception
+            );
         }
     }
 

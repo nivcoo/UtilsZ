@@ -11,6 +11,7 @@ import fr.nivcoo.utilsz.core.config.annotations.WithConverter;
 import fr.nivcoo.utilsz.core.config.text.TextMode;
 import fr.nivcoo.utilsz.core.conversion.Converter;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -161,6 +162,18 @@ class ConfigManagerTest {
         assertEquals("Hello Nivcoo", PlainTextComponentSerializer.plainText().serialize(plain));
     }
 
+    @Test
+    void autoComponentsKeepExactHexColorsAcrossGeneratedYamlReloads() throws Exception {
+        ConfigManager manager = manager();
+        AutoHexConfig generated = manager.load("hex.yml", AutoHexConfig.class);
+        AutoHexConfig reloaded = manager.load("hex.yml", AutoHexConfig.class);
+        String yaml = Files.readString(tempDir.resolve("hex.yml"), StandardCharsets.UTF_8);
+
+        assertEquals(TextColor.color(0x12ABEF), generated.label.color());
+        assertEquals(TextColor.color(0x12ABEF), reloaded.label.color());
+        assertTrue(yaml.toLowerCase(Locale.ROOT).contains("&#12abef"));
+    }
+
     private ConfigManager manager() {
         return new ConfigManager(tempDir.toFile());
     }
@@ -256,5 +269,9 @@ class ConfigManagerTest {
 
     public static final class SimpleNamedConfig {
         public String name = "default";
+    }
+
+    public static final class AutoHexConfig {
+        public Component label = Component.text("Exact", TextColor.color(0x12ABEF));
     }
 }

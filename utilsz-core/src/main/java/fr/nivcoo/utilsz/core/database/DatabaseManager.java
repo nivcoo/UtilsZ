@@ -299,7 +299,16 @@ public class DatabaseManager {
         for (String column : columns) {
             joiner.add(quote(column));
         }
-        executeUpdate("CREATE INDEX " + quote(index) + " ON " + quote(table) + "(" + joiner + ")");
+        try {
+            executeUpdate("CREATE INDEX " + quote(index) + " ON " + quote(table) + "(" + joiner + ")");
+        } catch (SQLException creationFailure) {
+            try {
+                if (indexExists(table, index)) return;
+            } catch (SQLException verificationFailure) {
+                creationFailure.addSuppressed(verificationFailure);
+            }
+            throw creationFailure;
+        }
     }
 
     public boolean indexExists(String table, String index) throws SQLException {

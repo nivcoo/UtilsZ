@@ -30,8 +30,10 @@ import java.util.regex.Pattern;
 
 public final class ConfigManager {
     private static final MiniMessage MM = MiniMessage.miniMessage();
-    private static final LegacyComponentSerializer LEGACY_AMP = LegacyComponentSerializer.legacyAmpersand();
-    private static final LegacyComponentSerializer LEGACY_SEC = LegacyComponentSerializer.legacySection();
+    private static final LegacyComponentSerializer LEGACY_AMP = LegacyComponentSerializer.builder()
+            .character('&').hexColors().useUnusualXRepeatedCharacterHexFormat().build();
+    private static final LegacyComponentSerializer LEGACY_SEC = LegacyComponentSerializer.builder()
+            .character('§').hexColors().useUnusualXRepeatedCharacterHexFormat().build();
     private static final Pattern HEX_AMP = Pattern.compile("&#([A-Fa-f0-9]{6,8})");
     private static final Pattern MINI_HEX = Pattern.compile("<#[0-9a-fA-F]{6,8}>");
     private static final Pattern MINI_TAG = Pattern.compile(

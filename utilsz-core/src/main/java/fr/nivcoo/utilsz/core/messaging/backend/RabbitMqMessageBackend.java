@@ -30,6 +30,7 @@ public final class RabbitMqMessageBackend implements MessageBackend {
     private final String virtualHost;
     private final String username;
     private final String password;
+    private final ConnectionProvider connectionProvider;
 
     private final BackendSubscribers subscribers = new BackendSubscribers();
     private final Map<String, Boolean> subscribedChannels = new ConcurrentHashMap<>();
@@ -47,11 +48,23 @@ public final class RabbitMqMessageBackend implements MessageBackend {
                                   String virtualHost,
                                   String username,
                                   String password) {
+        this(host, port, virtualHost, username, password, null);
+    }
+
+    RabbitMqMessageBackend(String host,
+                           int port,
+                           String virtualHost,
+                           String username,
+                           String password,
+                           ConnectionProvider connectionProvider) {
         this.host = host;
         this.port = port;
         this.virtualHost = virtualHost;
         this.username = username;
         this.password = password;
+        this.connectionProvider = connectionProvider == null
+                ? () -> getConnectionFactory().newConnection(CONNECTION_NAME)
+                : connectionProvider;
     }
 
     @Override
@@ -72,11 +85,13 @@ public final class RabbitMqMessageBackend implements MessageBackend {
     @Override
     public void start() {
         if (!running.compareAndSet(false, true)) return;
-        synchronized (lock) {
-            ensureConnection();
-            for (String ch : subscribers.channels()) {
-                ensureSubscription(ch);
+        try {
+            synchronized (lock) {
+                ensureConnection();
             }
+        } catch (RuntimeException | Error failure) {
+            running.set(false);
+            throw failure;
         }
     }
 
@@ -116,9 +131,13 @@ public final class RabbitMqMessageBackend implements MessageBackend {
     @Override
     public void publish(String channelName, JsonObject json) {
         synchronized (lock) {
-            if (!running.get()) return;
+            if (!running.get()) {
+                throw new IllegalStateException("RabbitMQ message backend is not started");
+            }
             ensureConnection();
-            if (channel == null) return;
+            if (channel == null || !channel.isOpen()) {
+                throw new IllegalStateException("RabbitMQ message backend is unavailable");
+            }
             try {
                 channel.exchangeDeclare(channelName, BuiltinExchangeType.FANOUT, true);
 
@@ -127,7 +146,14 @@ public final class RabbitMqMessageBackend implements MessageBackend {
                         : json.toString().getBytes(StandardCharsets.UTF_8);
 
                 channel.basicPublish(channelName, "", null, body);
-            } catch (IOException e) {
+                channel.waitForConfirmsOrDie(5_000L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                invalidateConnection();
+                report(e);
+                throw new IllegalStateException("RabbitMQ publication was interrupted", e);
+            } catch (IOException | TimeoutException e) {
+                invalidateConnection();
                 report(e);
                 throw new IllegalStateException("Failed to publish RabbitMQ message", e);
             }
@@ -136,26 +162,37 @@ public final class RabbitMqMessageBackend implements MessageBackend {
 
     private void ensureConnection() {
         if (connection != null && connection.isOpen() && channel != null && channel.isOpen()) return;
-
+        invalidateConnection();
         try {
-            if (connection != null) {
-                try {
-                    connection.close();
-                } catch (IOException ignored) {
-                }
-            }
-        } catch (Exception ignored) {
-        }
-
-        try {
-            ConnectionFactory factory = getConnectionFactory();
-            connection = factory.newConnection(CONNECTION_NAME);
+            connection = connectionProvider.connect();
             channel = connection.createChannel();
+            channel.confirmSelect();
+            for (String subscribedChannel : subscribers.channels()) {
+                ensureSubscription(subscribedChannel);
+            }
         } catch (Exception e) {
+            invalidateConnection();
             report(e);
-            connection = null;
-            channel = null;
+            throw new IllegalStateException("Unable to connect and subscribe to RabbitMQ", e);
         }
+    }
+
+    private void invalidateConnection() {
+        if (channel != null) {
+            try {
+                channel.close();
+            } catch (IOException | TimeoutException ignored) {
+            }
+        }
+        if (connection != null) {
+            try {
+                connection.close();
+            } catch (IOException ignored) {
+            }
+        }
+        channel = null;
+        connection = null;
+        subscribedChannels.clear();
     }
 
     private @NotNull ConnectionFactory getConnectionFactory() {
@@ -210,6 +247,12 @@ public final class RabbitMqMessageBackend implements MessageBackend {
 
         } catch (IOException e) {
             report(e);
+            throw new IllegalStateException("Failed to subscribe to RabbitMQ channel " + channelName, e);
         }
+    }
+
+    @FunctionalInterface
+    interface ConnectionProvider {
+        Connection connect() throws Exception;
     }
 }

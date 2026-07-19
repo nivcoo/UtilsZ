@@ -35,12 +35,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DefaultMessageBusTest {
 
     private static final AtomicInteger RPC_HANDLES = new AtomicInteger();
+    private static final AtomicInteger CLASSIC_EVENT_HANDLES = new AtomicInteger();
     private final List<DefaultMessageBus> buses = new ArrayList<>();
 
     @BeforeEach
     void resetBackend() {
         InMemoryMessageBackend.reset();
         RPC_HANDLES.set(0);
+        CLASSIC_EVENT_HANDLES.set(0);
     }
 
     @AfterEach
@@ -68,6 +70,46 @@ class DefaultMessageBusTest {
         assertInstanceOf(Presence.class, received.get().presences().getFirst());
         assertEquals(presence, received.get().presences().getFirst());
         assertEquals(presence, received.get().byServer().get("local"));
+    }
+
+    @Test
+    void classRegistrationExecutesClassicMessageOverride() {
+        String channel = channel();
+        DefaultMessageBus sender = bus("sender", channel, Runnable::run);
+        DefaultMessageBus receiver = bus("receiver", channel, Runnable::run);
+
+        receiver.register(ClassicEvent.class);
+
+        sender.publish(new ClassicEvent("handled"));
+
+        assertEquals(1, CLASSIC_EVENT_HANDLES.get());
+    }
+
+    @Test
+    void handlerRegistrationAcceptsMessageWithoutExecuteOverride() {
+        String channel = channel();
+        DefaultMessageBus sender = bus("sender", channel, Runnable::run);
+        DefaultMessageBus receiver = bus("receiver", channel, Runnable::run);
+        AtomicReference<String> handled = new AtomicReference<>();
+
+        receiver.register(HandlerOnlyEvent.class, event -> handled.set(event.value()));
+
+        sender.publish(new HandlerOnlyEvent("injected"));
+
+        assertEquals("injected", handled.get());
+    }
+
+    @Test
+    void classRegistrationRejectsMessageWithoutExecuteOverride() {
+        DefaultMessageBus receiver = bus("receiver", channel(), Runnable::run);
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> receiver.register(HandlerOnlyEvent.class)
+        );
+
+        assertTrue(error.getMessage().contains(HandlerOnlyEvent.class.getName()));
+        assertTrue(error.getMessage().contains("register(Class, BusHandler)"));
     }
 
     @Test
@@ -312,6 +354,21 @@ class DefaultMessageBusTest {
         assertTrue(future.isCompletedExceptionally());
     }
 
+    @Test
+    void backendPublishFailureIsPropagatedForEvents() {
+        DefaultMessageBus sender = new DefaultMessageBus(
+                new ThrowingBackend("sender"),
+                channel(),
+                Runnable::run,
+                NOPLogger.NOP_LOGGER
+        );
+        buses.add(sender);
+        sender.start();
+
+        assertThrows(IllegalStateException.class,
+                () -> sender.publish(new PresenceEvent(List.of(presence("Nivcoo")), Map.of())));
+    }
+
     private DefaultMessageBus bus(String instanceId, String channel, Consumer<Runnable> mainThreadExecutor) {
         return bus(new InMemoryMessageBackend(instanceId), channel, mainThreadExecutor);
     }
@@ -341,6 +398,18 @@ class DefaultMessageBusTest {
     }
 
     private record Presence(UUID uuid, String username, String cluster, long updatedAt) {
+    }
+
+    @BusAction("classic-event")
+    private record ClassicEvent(String value) implements BusMessage {
+        @Override
+        public void execute() {
+            CLASSIC_EVENT_HANDLES.incrementAndGet();
+        }
+    }
+
+    @BusAction("handler-only-event")
+    private record HandlerOnlyEvent(String value) implements BusMessage {
     }
 
     @BusAction("presence-event")

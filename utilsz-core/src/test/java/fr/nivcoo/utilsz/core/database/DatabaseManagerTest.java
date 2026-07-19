@@ -4,9 +4,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.sql.SQLException;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DatabaseManagerTest {
@@ -84,6 +87,30 @@ class DatabaseManagerTest {
         }
     }
 
+    @Test
+    void concurrentIndexCreationAcceptsAnIndexCreatedByAnotherInstance() throws Exception {
+        RacingIndexManager database = new RacingIndexManager(
+                tempDirectory.resolve("index-race.db"), true);
+        try {
+            database.createIndexIfAbsent("listings", "idx_state", java.util.List.of("state"));
+            assertEquals(2, database.checks.get());
+        } finally {
+            database.closeConnection();
+        }
+    }
+
+    @Test
+    void indexCreationFailureIsPreservedWhenTheIndexStillDoesNotExist() {
+        RacingIndexManager database = new RacingIndexManager(
+                tempDirectory.resolve("index-failure.db"), false);
+        try {
+            assertThrows(SQLException.class, () -> database.createIndexIfAbsent(
+                    "listings", "idx_state", java.util.List.of("state")));
+        } finally {
+            database.closeConnection();
+        }
+    }
+
     private record ReservedIdentifiers(long select, String trigger, int limit) {
         private static final DatabaseModel<ReservedIdentifiers> MODEL = new DatabaseModel<>() {
             @Override
@@ -103,5 +130,25 @@ class DatabaseManagerTest {
                 );
             }
         };
+    }
+
+    private static final class RacingIndexManager extends DatabaseManager {
+        private final AtomicInteger checks = new AtomicInteger();
+        private final boolean appearsAfterFailure;
+
+        private RacingIndexManager(Path path, boolean appearsAfterFailure) {
+            super(DatabaseType.SQLITE, null, 0, null, null, null, path.toString());
+            this.appearsAfterFailure = appearsAfterFailure;
+        }
+
+        @Override
+        public boolean indexExists(String table, String index) {
+            return checks.incrementAndGet() > 1 && appearsAfterFailure;
+        }
+
+        @Override
+        public void executeUpdate(String query) throws SQLException {
+            throw new SQLException("concurrent index creation");
+        }
     }
 }
