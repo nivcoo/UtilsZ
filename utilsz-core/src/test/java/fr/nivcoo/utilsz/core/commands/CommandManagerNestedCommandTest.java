@@ -211,6 +211,38 @@ class CommandManagerNestedCommandTest {
     }
 
     @Test
+    void rejectsDifferentAliasesForAnExecutableSectionNode() {
+        CommandManager sectionFirst = manager();
+        CommandSection sectionFirstAdmin = sectionFirst.addSection("admin");
+        sectionFirstAdmin.addSection("logs", "l");
+
+        assertThrows(IllegalArgumentException.class, () -> sectionFirstAdmin.addCommand(command(
+                List.of("list", "l"), "", "", 1, 1,
+                ctx -> { }, ctx -> List.of())));
+
+        CommandManager commandFirst = manager();
+        CommandSection commandFirstAdmin = commandFirst.addSection("admin");
+        commandFirstAdmin.addCommand(command(List.of("logs"), "", "", 1, 1,
+                ctx -> { }, ctx -> List.of()));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> commandFirstAdmin.addSection("logs", "l"));
+    }
+
+    @Test
+    void completesAnExecutableNodeAndItsChildrenTogether() {
+        CommandManager manager = manager();
+        manager.addCommand(command(List.of("admin"), "", "", 1, Integer.MAX_VALUE,
+                ctx -> { }, ctx -> List.of("argument")));
+        manager.addSection("admin").addCommand(command(
+                List.of("reload"), "", "", 1, 1,
+                ctx -> { }, ctx -> List.of()));
+
+        assertEquals(List.of("reload", "argument"),
+                manager.tabComplete(new TestSender(), "auction", new String[]{"admin", ""}));
+    }
+
+    @Test
     void rejectsRegisteringTheSameCommandInstanceTwice() {
         CommandManager manager = manager();
         CommandSection admin = manager.addSection("admin");

@@ -347,22 +347,22 @@ public final class CommandManager implements CommandDispatcher {
 
     @Override
     public List<String> tabComplete(Sender sender, String label, String[] args) {
-        List<String> routeSuggestions = routeSuggestions(sender, args);
-        if (!routeSuggestions.isEmpty()) {
-            if (args.length <= 1) appendDefaultSuggestions(routeSuggestions, sender, label, args);
-            return routeSuggestions;
-        }
-
+        LinkedHashSet<String> suggestions = new LinkedHashSet<>(routeSuggestions(sender, args));
         CommandMatch match = findCommand(args);
-        if (match != null) {
+        if (match != null && args.length > match.routeLength()) {
             Command command = match.command();
-            if (!canUse(sender, command)) return List.of();
-            return command.tabComplete(new CommandContext(sender, label, match.localArgs(args)));
+            if (canUse(sender, command)) {
+                suggestions.addAll(command.tabComplete(
+                        new CommandContext(sender, label, match.localArgs(args))));
+            }
         }
 
-        List<String> list = new ArrayList<>();
-        appendDefaultSuggestions(list, sender, label, args);
-        return list;
+        if (args.length <= 1) {
+            ArrayList<String> defaults = new ArrayList<>();
+            appendDefaultSuggestions(defaults, sender, label, args);
+            suggestions.addAll(defaults);
+        }
+        return new ArrayList<>(suggestions);
     }
 
     private void appendDefaultSuggestions(List<String> suggestions, Sender sender, String label, String[] args) {
@@ -590,13 +590,21 @@ public final class CommandManager implements CommandDispatcher {
                     throw new IllegalArgumentException("A command alias is already registered at this level");
                 }
             }
-            return;
+        } else {
+            for (NestedCommand nested : nestedCommands) {
+                if (samePath(canonicalPath(nested.parentSections()), parentPath)
+                        && aliasesOverlap(nested.command().getAliases(), aliases)) {
+                    throw new IllegalArgumentException("A command alias is already registered at this level");
+                }
+            }
         }
 
-        for (NestedCommand nested : nestedCommands) {
-            if (samePath(canonicalPath(nested.parentSections()), parentPath)
-                    && aliasesOverlap(nested.command().getAliases(), aliases)) {
-                throw new IllegalArgumentException("A command alias is already registered at this level");
+        for (RegisteredSection section : sections) {
+            List<String> sectionParent = section.path.subList(0, section.path.size() - 1);
+            if (!samePath(sectionParent, parentPath) || !aliasesOverlap(section.aliases(), aliases)) continue;
+            if (!sameAliases(section.aliases(), aliases)) {
+                throw new IllegalArgumentException(
+                        "An executable command and its section must declare the same aliases");
             }
         }
     }
@@ -619,6 +627,30 @@ public final class CommandManager implements CommandDispatcher {
             if (samePath(sectionParent, parentPath) && aliasesOverlap(section.aliases(), aliases)) {
                 throw new IllegalArgumentException("A command section alias is already registered at this level");
             }
+        }
+
+        if (parentPath.isEmpty()) {
+            for (Command command : commands) {
+                validateExecutableSectionAliases(command.getAliases(), aliases);
+            }
+            return;
+        }
+
+        for (NestedCommand nested : nestedCommands) {
+            if (samePath(canonicalPath(nested.parentSections()), parentPath)) {
+                validateExecutableSectionAliases(nested.command().getAliases(), aliases);
+            }
+        }
+    }
+
+    private static void validateExecutableSectionAliases(
+            List<String> commandAliases,
+            List<String> sectionAliases
+    ) {
+        if (!aliasesOverlap(commandAliases, sectionAliases)) return;
+        if (!sameAliases(commandAliases, sectionAliases)) {
+            throw new IllegalArgumentException(
+                    "An executable command and its section must declare the same aliases");
         }
     }
 
