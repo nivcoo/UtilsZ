@@ -14,6 +14,7 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
+import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
@@ -229,6 +230,14 @@ public final class ConfigManager {
     }
 
     private void validate(Object bean, String prefix) {
+        Set<Object> traversed = Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<Object> validated = Collections.newSetFromMap(new IdentityHashMap<>());
+        validateBean(bean, prefix, traversed, validated);
+    }
+
+    private void validateBean(Object bean, String prefix, Set<Object> traversed, Set<Object> validated) {
+        if (!traversed.add(bean)) return;
+
         for (Field f : orderedConfigFields(bean.getClass(), true)) {
             if (isStatic(f)) continue;
             String path = keyPath(f, prefix);
@@ -236,7 +245,7 @@ public final class ConfigManager {
                 Object v = f.get(bean);
 
                 if (isSectionField(f) && v != null) {
-                    validate(v, path);
+                    validateBean(v, path, traversed, validated);
                     continue;
                 }
 
@@ -263,7 +272,7 @@ public final class ConfigManager {
                         throw new IllegalArgumentException("Field " + path + " out of range [" + r.min() + "," + r.max() + "]: " + d);
                 }
 
-                if (v instanceof Validatable vd) vd.validate();
+                validateValue(v, traversed, validated);
 
             } catch (RuntimeException re) {
                 throw re;
@@ -271,6 +280,40 @@ public final class ConfigManager {
                 throw new RuntimeException("Validate failed for " + path + ": " + e.getMessage(), e);
             }
         }
+
+        validateOnce(bean, validated);
+    }
+
+    private void validateValue(Object value, Set<Object> traversed, Set<Object> validated) {
+        if (value == null) return;
+
+        if (value instanceof Map<?, ?> map) {
+            if (!traversed.add(value)) return;
+            for (Object element : map.values()) validateValue(element, traversed, validated);
+            validateOnce(value, validated);
+            return;
+        }
+
+        if (value instanceof Iterable<?> iterable) {
+            if (!traversed.add(value)) return;
+            for (Object element : iterable) validateValue(element, traversed, validated);
+            validateOnce(value, validated);
+            return;
+        }
+
+        if (value.getClass().isArray()) {
+            if (!traversed.add(value)) return;
+            int length = Array.getLength(value);
+            for (int i = 0; i < length; i++) validateValue(Array.get(value, i), traversed, validated);
+            validateOnce(value, validated);
+            return;
+        }
+
+        validateOnce(value, validated);
+    }
+
+    private static void validateOnce(Object value, Set<Object> validated) {
+        if (value instanceof Validatable validatable && validated.add(value)) validatable.validate();
     }
 
     private String writeYamlWithComments(Map<String, Object> map, Map<String, List<String>> comments, String header) {

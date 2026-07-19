@@ -9,6 +9,7 @@ import fr.nivcoo.utilsz.core.config.annotations.Section;
 import fr.nivcoo.utilsz.core.config.annotations.TextFormat;
 import fr.nivcoo.utilsz.core.config.annotations.WithConverter;
 import fr.nivcoo.utilsz.core.config.text.TextMode;
+import fr.nivcoo.utilsz.core.config.validation.Validatable;
 import fr.nivcoo.utilsz.core.conversion.Converter;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextColor;
@@ -124,6 +125,32 @@ class ConfigManagerTest {
 
         assertTrue(required.getMessage().contains("@Required"));
         assertTrue(range.getMessage().contains("out of range"));
+    }
+
+    @Test
+    void validatableRunsExactlyOnceAcrossTheConfigurationGraph() {
+        ValidationGraphConfig config = manager().load("validation-graph.yml", ValidationGraphConfig.class);
+
+        assertEquals(1, config.validationCount());
+        assertEquals(1, config.section.validationCount());
+        assertEquals(1, config.direct.validationCount());
+        assertEquals(1, config.list.getFirst().validationCount());
+        assertEquals(1, config.iterableValue.validationCount());
+        assertEquals(1, config.map.get("map").validationCount());
+        assertEquals(1, config.array[0].validationCount());
+        assertEquals(1, config.shared.validationCount());
+    }
+
+    @Test
+    void invalidValidatableConfigurationDoesNotRewriteTheFile() throws Exception {
+        Path file = tempDir.resolve("invalid.yml");
+        String original = "valid: false\nunknown: \"preserved\"\n";
+        Files.writeString(file, original, StandardCharsets.UTF_8);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> manager().load("invalid.yml", InvalidValidatableConfig.class));
+
+        assertEquals(original, Files.readString(file, StandardCharsets.UTF_8));
     }
 
     @Test
@@ -260,6 +287,72 @@ class ConfigManagerTest {
     public static final class RangeConfig {
         @Range(min = 1, max = 5)
         public int amount = 10;
+    }
+
+    @SaveOnLoad(false)
+    public static final class ValidationGraphConfig implements Validatable {
+        @Section
+        public ValidationSection section = new ValidationSection();
+        public ValidationValue direct = new ValidationValue();
+        public List<ValidationValue> list = List.of(new ValidationValue());
+        public Iterable<ValidationValue> iterable = List.of();
+        public ValidationValue iterableValue = new ValidationValue();
+        public Map<String, ValidationValue> map = Map.of("map", new ValidationValue());
+        public ValidationValue[] array = {new ValidationValue()};
+        public ValidationValue shared = new ValidationValue();
+        private int validationCount;
+
+        public ValidationGraphConfig() {
+            iterable = List.of(iterableValue, shared);
+            list = List.of(list.getFirst(), shared);
+            map = Map.of("map", map.get("map"), "shared", shared);
+            array = new ValidationValue[]{array[0], shared};
+        }
+
+        @Override
+        public void validate() {
+            validationCount++;
+        }
+
+        int validationCount() {
+            return validationCount;
+        }
+    }
+
+    public static final class ValidationSection implements Validatable {
+        public boolean enabled = true;
+        private int validationCount;
+
+        @Override
+        public void validate() {
+            validationCount++;
+        }
+
+        int validationCount() {
+            return validationCount;
+        }
+    }
+
+    public static final class ValidationValue implements Validatable {
+        private int validationCount;
+
+        @Override
+        public void validate() {
+            validationCount++;
+        }
+
+        int validationCount() {
+            return validationCount;
+        }
+    }
+
+    public static final class InvalidValidatableConfig implements Validatable {
+        public boolean valid = true;
+
+        @Override
+        public void validate() {
+            if (!valid) throw new IllegalArgumentException("Configuration is invalid");
+        }
     }
 
     @SaveOnLoad(false)
