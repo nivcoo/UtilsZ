@@ -272,7 +272,7 @@ public final class ConfigManager {
                         throw new IllegalArgumentException("Field " + path + " out of range [" + r.min() + "," + r.max() + "]: " + d);
                 }
 
-                validateValue(v, traversed, validated);
+                validateValue(v, path, traversed, validated);
 
             } catch (RuntimeException re) {
                 throw re;
@@ -284,19 +284,24 @@ public final class ConfigManager {
         validateOnce(bean, validated);
     }
 
-    private void validateValue(Object value, Set<Object> traversed, Set<Object> validated) {
+    private void validateValue(Object value, String path, Set<Object> traversed, Set<Object> validated) {
         if (value == null) return;
 
         if (value instanceof Map<?, ?> map) {
             if (!traversed.add(value)) return;
-            for (Object element : map.values()) validateValue(element, traversed, validated);
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                validateValue(entry.getValue(), path + "[" + mapKeyToYaml(entry.getKey()) + "]", traversed, validated);
+            }
             validateOnce(value, validated);
             return;
         }
 
         if (value instanceof Iterable<?> iterable) {
             if (!traversed.add(value)) return;
-            for (Object element : iterable) validateValue(element, traversed, validated);
+            int index = 0;
+            for (Object element : iterable) {
+                validateValue(element, path + "[" + index++ + "]", traversed, validated);
+            }
             validateOnce(value, validated);
             return;
         }
@@ -304,8 +309,15 @@ public final class ConfigManager {
         if (value.getClass().isArray()) {
             if (!traversed.add(value)) return;
             int length = Array.getLength(value);
-            for (int i = 0; i < length; i++) validateValue(Array.get(value, i), traversed, validated);
+            for (int i = 0; i < length; i++) {
+                validateValue(Array.get(value, i), path + "[" + i + "]", traversed, validated);
+            }
             validateOnce(value, validated);
+            return;
+        }
+
+        if (isConfigPojo(value.getClass())) {
+            validateBean(value, path, traversed, validated);
             return;
         }
 

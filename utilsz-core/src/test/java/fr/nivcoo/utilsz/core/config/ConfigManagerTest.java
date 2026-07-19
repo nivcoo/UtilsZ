@@ -135,10 +135,31 @@ class ConfigManagerTest {
         assertEquals(1, config.section.validationCount());
         assertEquals(1, config.direct.validationCount());
         assertEquals(1, config.list.getFirst().validationCount());
+        assertEquals(1, config.list.getFirst().section.validationCount());
         assertEquals(1, config.iterableValue.validationCount());
         assertEquals(1, config.map.get("map").validationCount());
+        assertEquals(1, config.map.get("map").section.validationCount());
         assertEquals(1, config.array[0].validationCount());
+        assertEquals(1, config.array[0].section.validationCount());
         assertEquals(1, config.shared.validationCount());
+        assertEquals(1, config.shared.section.validationCount());
+    }
+
+    @Test
+    void validatesAnnotationsInsidePojoContainerElements() {
+        IllegalArgumentException list = assertThrows(IllegalArgumentException.class,
+                () -> manager().load("invalid-list-element.yml", InvalidListElementConfig.class));
+        IllegalArgumentException map = assertThrows(IllegalArgumentException.class,
+                () -> manager().load("invalid-map-element.yml", InvalidMapElementConfig.class));
+        IllegalArgumentException array = assertThrows(IllegalArgumentException.class,
+                () -> manager().load("invalid-array-element.yml", InvalidArrayElementConfig.class));
+
+        assertTrue(list.getMessage().contains("entries[0].name"));
+        assertTrue(list.getMessage().contains("@Required"));
+        assertTrue(map.getMessage().contains("entries[premium].amount"));
+        assertTrue(map.getMessage().contains("out of range"));
+        assertTrue(array.getMessage().contains("entries[0].amount"));
+        assertTrue(array.getMessage().contains("out of range"));
     }
 
     @Test
@@ -334,6 +355,8 @@ class ConfigManagerTest {
     }
 
     public static final class ValidationValue implements Validatable {
+        @Section
+        public ValidationSection section = new ValidationSection();
         private int validationCount;
 
         @Override
@@ -344,6 +367,31 @@ class ConfigManagerTest {
         int validationCount() {
             return validationCount;
         }
+    }
+
+    @SaveOnLoad(false)
+    public static final class InvalidListElementConfig {
+        public List<RequiredElement> entries = List.of(new RequiredElement());
+    }
+
+    public static final class RequiredElement {
+        @Required
+        public String name = "";
+    }
+
+    @SaveOnLoad(false)
+    public static final class InvalidMapElementConfig {
+        public Map<String, RangeElement> entries = Map.of("premium", new RangeElement());
+    }
+
+    @SaveOnLoad(false)
+    public static final class InvalidArrayElementConfig {
+        public RangeElement[] entries = {new RangeElement()};
+    }
+
+    public static final class RangeElement {
+        @Range(min = 1, max = 5)
+        public int amount = 10;
     }
 
     public static final class InvalidValidatableConfig implements Validatable {
