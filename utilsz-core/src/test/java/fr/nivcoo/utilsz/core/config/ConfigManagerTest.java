@@ -31,6 +31,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -251,6 +252,49 @@ class ConfigManagerTest {
         assertNull(loaded.label);
         assertEquals(List.of(), defaults.values);
         assertNull(defaults.label);
+    }
+
+    @Test
+    void suppliedConvertedValuesAreCopied() {
+        ConvertedDefaultsConfig defaults = new ConvertedDefaultsConfig();
+
+        ConvertedDefaultsConfig loaded = manager().load("converted-defaults.yml", ConvertedDefaultsConfig.class,
+                () -> defaults);
+        loaded.value.text = "changed";
+
+        assertNotSame(defaults.value, loaded.value);
+        assertEquals("default", defaults.value.text);
+        assertEquals("changed", loaded.value.text);
+    }
+
+    @Test
+    void suppliedConvertedCollectionElementsUseTheirDeclaredType() {
+        ConvertedCollectionDefaultsConfig defaults = new ConvertedCollectionDefaultsConfig();
+
+        ConvertedCollectionDefaultsConfig loaded = manager().load(
+                "converted-collection-defaults.yml",
+                ConvertedCollectionDefaultsConfig.class,
+                () -> defaults
+        );
+        MutableValue loadedValue = (MutableValue) loaded.values.getFirst();
+        loadedValue.text = "changed";
+
+        assertNotSame(defaults.values.getFirst(), loadedValue);
+        assertEquals("default", defaults.values.getFirst().text());
+        assertEquals("changed", loadedValue.text);
+    }
+
+    @Test
+    void explicitEmptyOptionalCollectionSurvivesReload() throws Exception {
+        Path path = tempDir.resolve("optional-empty.yml");
+        Files.writeString(path, "values: []\n", StandardCharsets.UTF_8);
+
+        OptionalDefaultsConfig first = manager().load("optional-empty.yml", OptionalDefaultsConfig.class);
+        OptionalDefaultsConfig second = manager().load("optional-empty.yml", OptionalDefaultsConfig.class);
+
+        assertEquals(List.of(), first.values);
+        assertEquals(List.of(), second.values);
+        assertTrue(Files.readString(path, StandardCharsets.UTF_8).contains("values: []"));
     }
 
     @Test
@@ -533,6 +577,58 @@ class ConfigManagerTest {
         public List<Integer> values = List.of(1);
         @Optional
         public String label = "constructor";
+    }
+
+    public static final class ConvertedDefaultsConfig {
+        @Optional
+        @WithConverter(MutableValueConverter.class)
+        public MutableValue value = new MutableValue("default");
+    }
+
+    public static final class ConvertedCollectionDefaultsConfig {
+        public List<MutableValueView> values = List.of(new MutableValue("default"));
+    }
+
+    @WithConverter(MutableValueViewConverter.class)
+    public interface MutableValueView {
+        String text();
+    }
+
+    public static final class MutableValue implements MutableValueView {
+        private String text;
+
+        public MutableValue(String text) {
+            this.text = text;
+        }
+
+        @Override
+        public String text() {
+            return text;
+        }
+    }
+
+    public static final class MutableValueConverter implements Converter<MutableValue> {
+        @Override
+        public MutableValue read(Object raw, MutableValue fallback, Field field) {
+            return raw == null ? fallback : new MutableValue(String.valueOf(raw));
+        }
+
+        @Override
+        public Object write(MutableValue value, Field field) {
+            return value == null ? null : value.text;
+        }
+    }
+
+    public static final class MutableValueViewConverter implements Converter<MutableValueView> {
+        @Override
+        public MutableValueView read(Object raw, MutableValueView fallback, Field field) {
+            return raw == null ? fallback : new MutableValue(String.valueOf(raw));
+        }
+
+        @Override
+        public Object write(MutableValueView value, Field field) {
+            return value == null ? null : value.text();
+        }
     }
 
     public static final class DefaultItem {

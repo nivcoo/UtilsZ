@@ -102,6 +102,27 @@ class ConfigGuiRegistryTest {
     }
 
     @Test
+    void explicitlyConfiguredSlotAndSlotsAreNormalizedOnFirstSave() throws Exception {
+        Path menuFile = tempDir.resolve("gui/menus/example.yml");
+        Files.createDirectories(menuFile.getParent());
+        Files.writeString(menuFile, """
+                items:
+                  shared:
+                    slot: 2
+                    slots: [45, 46]
+                """, StandardCharsets.UTF_8);
+        ConfigGuiRegistry registry = registry()
+                .registerMenu("example", () -> menu(Material.DIAMOND, List.of()));
+
+        registry.reload();
+        String saved = Files.readString(menuFile, StandardCharsets.UTF_8);
+
+        assertNull(registry.resolve("example").items().get("shared").slot);
+        assertFalse(saved.contains("slot:"));
+        assertTrue(saved.contains("slots:"));
+    }
+
+    @Test
     void customItemsDoNotRenderInExcludedSlots() {
         ConfigGuiItem fill = new ConfigGuiItem();
         fill.slots = List.of(0, 1, 2);

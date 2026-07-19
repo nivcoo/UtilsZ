@@ -361,10 +361,10 @@ public final class ConfigManager {
                     }
                 } else {
                     Object v = f.get(bean);
-                    Object yamlVal = convertToYamlPreserving(f, v, getByPath(existing, path));
-                    if (optional
-                            && getByPath(existing, path) == null
-                            && (isEmptyYamlNode(yamlVal) || isDefaultFieldValue(f, v))) {
+                    Object existingRaw = getByPath(existing, path);
+                    Object yamlVal = convertToYamlPreserving(f, v, existingRaw);
+                    if (optional && (yamlVal == null || existingRaw == null
+                            && (isEmptyYamlNode(yamlVal) || isDefaultFieldValue(f, v)))) {
                         continue;
                     }
                     putByPath(out, path, yamlVal);
@@ -1383,10 +1383,15 @@ public final class ConfigManager {
     }
 
     private static <T> T copyConfigInstance(T source, Class<T> type) {
-        return type.cast(copyConfigValue(source, new IdentityHashMap<>()));
+        return type.cast(copyConfigValue(source, source.getClass(), null, new IdentityHashMap<>()));
     }
 
-    private static Object copyConfigValue(Object value, IdentityHashMap<Object, Object> copies) {
+    private static Object copyConfigValue(
+            Object value,
+            Type declaredType,
+            Field contextField,
+            IdentityHashMap<Object, Object> copies
+    ) {
         if (value == null || value instanceof String || value instanceof Number || value instanceof Boolean
                 || value instanceof Character || value instanceof Enum<?> || value instanceof UUID
                 || value instanceof Duration || value instanceof Component) {
@@ -1394,32 +1399,48 @@ public final class ConfigManager {
         }
         Object known = copies.get(value);
         if (known != null) return known;
+        Class<?> declaredClass = rawClass(declaredType);
+        Converter<Object> converter = findConverterForClass(declaredClass);
+        if (converter == null && (declaredClass == null || declaredClass != value.getClass())) {
+            converter = findConverterForClass(value.getClass());
+        }
+        if (converter != null) {
+            Object copy = converter.read(converter.write(value, contextField), null, contextField);
+            copies.put(value, copy);
+            return copy;
+        }
         if (value.getClass().isArray()) {
             int length = Array.getLength(value);
             Object copy = Array.newInstance(value.getClass().getComponentType(), length);
             copies.put(value, copy);
+            Type componentType = value.getClass().getComponentType();
             for (int i = 0; i < length; i++) {
-                Array.set(copy, i, copyConfigValue(Array.get(value, i), copies));
+                Array.set(copy, i, copyConfigValue(Array.get(value, i), componentType, contextField, copies));
             }
             return copy;
         }
         if (value instanceof List<?> list) {
             List<Object> copy = new ArrayList<>(list.size());
             copies.put(value, copy);
-            for (Object element : list) copy.add(copyConfigValue(element, copies));
+            Type elementType = collectionElementType(declaredType);
+            for (Object element : list) copy.add(copyConfigValue(element, elementType, contextField, copies));
             return copy;
         }
         if (value instanceof Set<?> set) {
             Set<Object> copy = new LinkedHashSet<>();
             copies.put(value, copy);
-            for (Object element : set) copy.add(copyConfigValue(element, copies));
+            Type elementType = collectionElementType(declaredType);
+            for (Object element : set) copy.add(copyConfigValue(element, elementType, contextField, copies));
             return copy;
         }
         if (value instanceof Map<?, ?> map) {
             Map<Object, Object> copy = new LinkedHashMap<>();
             copies.put(value, copy);
+            Type keyType = mapTypeArgument(declaredType, 0);
+            Type valueType = mapTypeArgument(declaredType, 1);
             for (Map.Entry<?, ?> entry : map.entrySet()) {
-                copy.put(copyConfigValue(entry.getKey(), copies), copyConfigValue(entry.getValue(), copies));
+                copy.put(copyConfigValue(entry.getKey(), keyType, contextField, copies),
+                        copyConfigValue(entry.getValue(), valueType, contextField, copies));
             }
             return copy;
         }
@@ -1429,7 +1450,14 @@ public final class ConfigManager {
             for (Field field : orderedConfigFields(value.getClass(), true)) {
                 if (isStatic(field)) continue;
                 try {
-                    field.set(copy, copyConfigValue(field.get(value), copies));
+                    Object fieldValue = field.get(value);
+                    Converter<Object> fieldConverter = findConverter(field);
+                    Object fieldCopy = fieldConverter == null
+                            ? copyConfigValue(fieldValue, field.getGenericType(), field, copies)
+                            : fieldValue == null ? null
+                            : fieldConverter.read(fieldConverter.write(fieldValue, field), null, field);
+                    if (fieldValue != null && fieldCopy != null) copies.put(fieldValue, fieldCopy);
+                    field.set(copy, fieldCopy);
                 } catch (IllegalAccessException e) {
                     throw new RuntimeException("Unable to copy config field: " + field.getName(), e);
                 }
@@ -1437,6 +1465,22 @@ public final class ConfigManager {
             return copy;
         }
         return value;
+    }
+
+    private static Type collectionElementType(Type type) {
+        if (type instanceof ParameterizedType parameterized) {
+            Type[] arguments = parameterized.getActualTypeArguments();
+            if (arguments.length == 1) return arguments[0];
+        }
+        return Object.class;
+    }
+
+    private static Type mapTypeArgument(Type type, int index) {
+        if (type instanceof ParameterizedType parameterized) {
+            Type[] arguments = parameterized.getActualTypeArguments();
+            if (arguments.length == 2) return arguments[index];
+        }
+        return Object.class;
     }
 
     public static Component parseDynamic(String s) {
