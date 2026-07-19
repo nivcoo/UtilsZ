@@ -133,12 +133,10 @@ public final class GuiInventoryManager implements Listener {
             }
         }
 
+        if (!isTop) return;
         Inventory clicked = e.getClickedInventory();
         if (clicked == null) return;
         if (!inv.getBukkitInventory().equals(clicked)) return;
-
-        if (!isTop && !e.isShiftClick()) return;
-
         inv.handleClick(e);
     }
 
