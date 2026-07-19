@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import fr.nivcoo.utilsz.core.messaging.crypto.AesGcmMessageCrypto;
 import fr.nivcoo.utilsz.core.messaging.crypto.MessageCrypto;
 import fr.nivcoo.utilsz.core.messaging.crypto.NoopMessageCrypto;
+import fr.nivcoo.utilsz.core.module.UtilsZModules;
 import org.slf4j.Logger;
 
 import java.nio.charset.StandardCharsets;
@@ -102,6 +103,7 @@ public final class DefaultMessageBus implements MessageBus {
         this.defaultRpcTimeout = requireTimeout(defaultRpcTimeout);
         this.rpcTimeouts = createTimeoutExecutor();
 
+        UtilsZModules.load();
         BusAdapterRegistry.registerBuiltins();
 
         backend.onError(t ->

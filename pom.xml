@@ -5,14 +5,13 @@
 
     <groupId>fr.nivcoo</groupId>
     <artifactId>utilsz-parent</artifactId>
-    <version>1.3.152</version>
+    <version>1.3.153</version>
     <packaging>pom</packaging>
 
     <modules>
         <module>utilsz-core</module>
         <module>utilsz-platform-bukkit</module>
         <module>utilsz-platform-velocity</module>
-        <module>utilsz-runtime</module>
         <module>utilsz-all</module>
     </modules>
 

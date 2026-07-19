@@ -3,20 +3,30 @@ package fr.nivcoo.utilsz.platform.bukkit.messaging.adapter;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
+import fr.nivcoo.utilsz.core.messaging.BusAction;
 import fr.nivcoo.utilsz.core.messaging.BusAdapterRegistry;
+import fr.nivcoo.utilsz.core.messaging.BusMessage;
 import fr.nivcoo.utilsz.core.messaging.BusTypeAdapter;
+import fr.nivcoo.utilsz.core.messaging.DefaultMessageBus;
+import fr.nivcoo.utilsz.core.messaging.MessageBackend;
 import fr.nivcoo.utilsz.platform.bukkit.messaging.BukkitMessagingAdapters;
 import org.bukkit.inventory.ItemStack;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
+import org.slf4j.helpers.NOPLogger;
 
 import java.util.Base64;
 import java.util.List;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class BukkitItemStackAdapterTest {
 
     @Test
@@ -61,11 +71,48 @@ class BukkitItemStackAdapterTest {
     }
 
     @Test
-    void bukkitRegistrationProvidesTheItemStackAdapter() {
-        BukkitMessagingAdapters.register();
+    @Order(1)
+    void messageBusConstructionLoadsBukkitAdapterWithoutManualRegistration() {
+        DefaultMessageBus bus = new DefaultMessageBus(
+                new NoopBackend(),
+                "test",
+                Runnable::run,
+                NOPLogger.NOP_LOGGER
+        );
 
-        assertInstanceOf(BukkitItemStackAdapter.class,
-                BusAdapterRegistry.getAdapter(ItemStack.class));
+        try {
+            assertInstanceOf(BukkitItemStackAdapter.class,
+                    BusAdapterRegistry.getAdapter(ItemStack.class));
+        } finally {
+            bus.close();
+        }
+    }
+
+    @Test
+    @Order(2)
+    void messageBusUsesAutomaticallyLoadedBukkitAdapterForPayloads() {
+        NoopBackend backend = new NoopBackend();
+        DefaultMessageBus bus = new DefaultMessageBus(
+                backend,
+                "test",
+                Runnable::run,
+                NOPLogger.NOP_LOGGER
+        );
+        byte[] payload = new byte[]{1, 2, 3, 4};
+
+        try {
+            bus.start();
+            bus.publish(new ItemEvent(new SerializedItemStack(payload)));
+
+            String encoded = backend.published()
+                    .getAsJsonObject("payload")
+                    .getAsJsonObject("item")
+                    .get("value")
+                    .getAsString();
+            assertArrayEquals(payload, Base64.getDecoder().decode(encoded));
+        } finally {
+            bus.close();
+        }
     }
 
     @Test
@@ -102,6 +149,49 @@ class BukkitItemStackAdapterTest {
     }
 
     private record ItemPayload(ItemStack item, List<ItemStack> items) {
+    }
+
+    @BusAction("item-event")
+    private record ItemEvent(ItemStack item) implements BusMessage {
+
+        @Override
+        public void execute() {
+        }
+    }
+
+    private static final class NoopBackend implements MessageBackend {
+
+        private JsonObject published;
+
+        @Override
+        public String getInstanceId() {
+            return "test";
+        }
+
+        @Override
+        public void start() {
+        }
+
+        @Override
+        public void close() {
+        }
+
+        @Override
+        public void subscribeRaw(String channel, Consumer<JsonObject> callback) {
+        }
+
+        @Override
+        public void publish(String channel, JsonObject json) {
+            published = json.deepCopy();
+        }
+
+        @Override
+        public void onError(Consumer<Throwable> handler) {
+        }
+
+        private JsonObject published() {
+            return published;
+        }
     }
 
     private static final class SerializedItemStack extends ItemStack {
