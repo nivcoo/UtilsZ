@@ -2,13 +2,14 @@ package fr.nivcoo.utilsz.platform.bukkit.gui;
 
 import fr.nivcoo.utilsz.core.config.annotations.Comment;
 import fr.nivcoo.utilsz.core.config.annotations.Optional;
+import fr.nivcoo.utilsz.core.config.validation.Validatable;
 import fr.nivcoo.utilsz.platform.bukkit.item.ConfigItem;
 import org.bukkit.Material;
 
 import java.util.List;
 
 @SuppressWarnings("unused")
-public class ConfigGuiItem extends ConfigItem {
+public class ConfigGuiItem extends ConfigItem implements Validatable {
 
     public int amount = 1;
     @Optional
@@ -26,5 +27,10 @@ public class ConfigGuiItem extends ConfigItem {
     public ConfigGuiItem(Material material, int amount, String name, List<String> lore) {
         super(material, name, lore);
         this.amount = amount;
+    }
+
+    @Override
+    public void validate() {
+        if (slots != null && !slots.isEmpty()) slot = null;
     }
 }

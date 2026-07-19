@@ -12,6 +12,7 @@ import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Logger;
@@ -84,7 +85,7 @@ public final class ConfigItemFactory {
         copy.skullOwner = def.skullOwner;
         copy.name = def.name;
         copy.lore = def.lore == null ? List.of() : List.copyOf(def.lore);
-        copy.enchants = def.enchants;
+        copy.enchants = def.enchants == null ? null : new LinkedHashMap<>(def.enchants);
         copy.flags = def.flags == null ? List.of() : List.copyOf(def.flags);
         copy.glow = def.glow;
         copy.customModelData = def.customModelData;

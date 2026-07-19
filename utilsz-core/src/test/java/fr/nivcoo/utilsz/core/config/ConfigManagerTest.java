@@ -31,6 +31,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -197,6 +198,110 @@ class ConfigManagerTest {
         List<SimpleNamedConfig> configs = manager().loadAll("configs", SimpleNamedConfig.class);
 
         assertEquals(List.of("one", "two"), configs.stream().map(config -> config.name).sorted().toList());
+    }
+
+    @Test
+    void suppliedDefaultsAreDeepMergedWithExistingYaml() throws Exception {
+        Files.writeString(tempDir.resolve("menu.yml"), """
+                items:
+                  previous:
+                    label: "custom previous"
+                  custom:
+                    label: "custom item"
+                    enabled: false
+                """, StandardCharsets.UTF_8);
+
+        DefaultsConfig config = manager().load("menu.yml", DefaultsConfig.class, DefaultsConfig::defaults);
+        String yaml = Files.readString(tempDir.resolve("menu.yml"), StandardCharsets.UTF_8);
+
+        assertEquals(List.of("previous", "next", "custom"), config.items.keySet().stream().toList());
+        assertEquals("custom previous", config.items.get("previous").label);
+        assertEquals(List.of(4), config.items.get("previous").slots);
+        assertEquals("next", config.items.get("next").label);
+        assertFalse(config.items.get("custom").enabled);
+        assertTrue(yaml.contains("next:"));
+        assertTrue(yaml.contains("custom item"));
+    }
+
+    @Test
+    void suppliedDefaultsAreNotMutatedDuringLoad() throws Exception {
+        DefaultsConfig defaults = DefaultsConfig.defaults();
+        Files.writeString(tempDir.resolve("menu.yml"), """
+                items:
+                  previous:
+                    label: "configured"
+                """, StandardCharsets.UTF_8);
+
+        DefaultsConfig loaded = manager().load("menu.yml", DefaultsConfig.class, () -> defaults);
+
+        assertEquals("configured", loaded.items.get("previous").label);
+        assertEquals("previous", defaults.items.get("previous").label);
+    }
+
+    @Test
+    void suppliedOptionalEmptyValuesOverrideConstructorDefaults() {
+        OptionalDefaultsConfig defaults = new OptionalDefaultsConfig();
+        defaults.values = List.of();
+        defaults.label = null;
+
+        OptionalDefaultsConfig loaded = manager().load("optional-defaults.yml", OptionalDefaultsConfig.class,
+                () -> defaults);
+
+        assertEquals(List.of(), loaded.values);
+        assertNull(loaded.label);
+        assertEquals(List.of(), defaults.values);
+        assertNull(defaults.label);
+    }
+
+    @Test
+    void namedLoadingIsRecursiveAndDeterministic() throws Exception {
+        Path dir = tempDir.resolve("gui/patterns");
+        Files.createDirectories(dir.resolve("admin"));
+        Files.writeString(dir.resolve("root.yml"), "name: \"root\"\n", StandardCharsets.UTF_8);
+        Files.writeString(dir.resolve("admin/pagination.yaml"), "name: \"pagination\"\n", StandardCharsets.UTF_8);
+        Files.writeString(dir.resolve("ignored.txt"), "name: \"ignored\"\n", StandardCharsets.UTF_8);
+
+        List<NamedConfig<SimpleNamedConfig>> configs = manager()
+                .loadAllNamed("gui/patterns", SimpleNamedConfig.class, true);
+
+        assertEquals(List.of("admin/pagination", "root"), configs.stream().map(NamedConfig::id).toList());
+        assertEquals(List.of("pagination", "root"), configs.stream().map(value -> value.value().name).toList());
+        assertEquals(List.of("gui/patterns/admin/pagination.yaml", "gui/patterns/root.yml"),
+                configs.stream().map(NamedConfig::relativePath).toList());
+    }
+
+    @Test
+    void namedLoadingRejectsDuplicateExtensions() throws Exception {
+        Path dir = tempDir.resolve("gui/menus");
+        Files.createDirectories(dir);
+        String original = "name: \"one\"\nunknown: \"preserved\"\n";
+        Files.writeString(dir.resolve("same.yml"), original, StandardCharsets.UTF_8);
+        Files.writeString(dir.resolve("same.yaml"), "name: \"two\"\n", StandardCharsets.UTF_8);
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> manager().loadAllNamed("gui/menus", SimpleNamedConfig.class, true));
+
+        assertTrue(error.getMessage().contains("Duplicate config id"));
+        assertEquals(original, Files.readString(dir.resolve("same.yml"), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void nonMapYamlRootIsRejectedWithoutRewriting() throws Exception {
+        Path file = tempDir.resolve("invalid-root.yml");
+        String original = "- invalid\n- root\n";
+        Files.writeString(file, original, StandardCharsets.UTF_8);
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> manager().load("invalid-root.yml", SimpleNamedConfig.class));
+
+        assertTrue(error.getMessage().contains("root must be a map"));
+        assertEquals(original, Files.readString(file, StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void loadingRejectsPathsOutsideTheDataFolder() {
+        assertThrows(IllegalArgumentException.class,
+                () -> manager().load("../outside.yml", SimpleNamedConfig.class));
     }
 
     @Test
@@ -410,6 +515,39 @@ class ConfigManagerTest {
 
     public static final class SimpleNamedConfig {
         public String name = "default";
+    }
+
+    public static final class DefaultsConfig {
+        public Map<String, DefaultItem> items = new java.util.LinkedHashMap<>();
+
+        static DefaultsConfig defaults() {
+            DefaultsConfig config = new DefaultsConfig();
+            config.items.put("previous", new DefaultItem("previous", true, List.of(4)));
+            config.items.put("next", new DefaultItem("next", true, List.of(6)));
+            return config;
+        }
+    }
+
+    public static final class OptionalDefaultsConfig {
+        @Optional
+        public List<Integer> values = List.of(1);
+        @Optional
+        public String label = "constructor";
+    }
+
+    public static final class DefaultItem {
+        public String label = "item";
+        public boolean enabled = true;
+        public List<Integer> slots = List.of();
+
+        public DefaultItem() {
+        }
+
+        DefaultItem(String label, boolean enabled, List<Integer> slots) {
+            this.label = label;
+            this.enabled = enabled;
+            this.slots = slots;
+        }
     }
 
     public static final class AutoHexConfig {

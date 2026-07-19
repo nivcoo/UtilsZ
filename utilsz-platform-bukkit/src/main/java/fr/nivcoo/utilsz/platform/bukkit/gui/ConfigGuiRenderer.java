@@ -35,6 +35,10 @@ public final class ConfigGuiRenderer<T> {
     public void set(GuiInventory inv, ConfigGuiItem item, T context, int page, Consumer<InventoryClickEvent> click) {
         if (item == null || !item.enabled) return;
         ItemStack stack = item(item, context, page);
+        if (stack.getType().isAir()) {
+            for (int slot : slots(item, inv.getBukkitInventory().getSize())) inv.clear(slot);
+            return;
+        }
         for (int slot : slots(item, inv.getBukkitInventory().getSize())) {
             inv.set(slot, ClickableItem.of(stack.clone(), click));
         }

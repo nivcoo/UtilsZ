@@ -14,6 +14,9 @@ public class MaterialConv implements Converter<Material> {
         if (raw == null) return fallback;
         String name = String.valueOf(raw).trim().toLowerCase();
 
+        Material direct = Material.matchMaterial(name);
+        if (direct != null) return direct;
+
         NamespacedKey key = name.contains(":")
                 ? NamespacedKey.fromString(name)
                 : NamespacedKey.minecraft(name);

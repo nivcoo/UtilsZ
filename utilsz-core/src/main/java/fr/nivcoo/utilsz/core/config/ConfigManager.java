@@ -21,6 +21,7 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
@@ -86,11 +87,34 @@ public final class ConfigManager {
     }
 
     public <T> T load(String relativePath, Class<T> cfgClass) {
-        File file = new File(dataFolder, relativePath);
+        return load(relativePath, cfgClass, newInstance(cfgClass), false);
+    }
+
+    @SuppressWarnings("unused")
+    public <T> T load(String relativePath, Class<T> cfgClass, Supplier<? extends T> defaults) {
+        Objects.requireNonNull(cfgClass, "cfgClass");
+        Objects.requireNonNull(defaults, "defaults");
+        T instance = Objects.requireNonNull(defaults.get(), "defaults returned null");
+        if (!cfgClass.isInstance(instance)) {
+            throw new IllegalArgumentException("Defaults must be an instance of " + cfgClass.getName());
+        }
+        return load(relativePath, cfgClass, instance, true);
+    }
+
+    private <T> T load(String relativePath, Class<T> cfgClass, T instance, boolean mergeDefaults) {
+        Objects.requireNonNull(cfgClass, "cfgClass");
+        File file = resolveFile(relativePath);
         Map<String, Object> existing = loadYaml(file);
 
-        T instance = newInstance(cfgClass);
-        inject(existing, instance, rootName(cfgClass));
+        Map<String, Object> input = existing;
+        if (mergeDefaults) {
+            input = new LinkedHashMap<>();
+            export(instance, rootName(cfgClass), Map.of(), input, new LinkedHashMap<>());
+            mergeYaml(input, existing);
+            instance = copyConfigInstance(instance, cfgClass);
+        }
+
+        inject(input, instance, rootName(cfgClass));
         validate(instance, rootName(cfgClass));
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -118,7 +142,7 @@ public final class ConfigManager {
     }
 
     public <T> List<T> loadAll(String relativeDir, Class<T> cfgClass, Predicate<File> filter) {
-        File dir = new File(dataFolder, relativeDir);
+        File dir = resolveFile(relativeDir);
         if (!dir.exists() && !dir.mkdirs())
             throw new IllegalStateException("Unable to create directory: " + dir);
         File[] files = dir.listFiles(f -> f.isFile() && filter.test(f));
@@ -129,8 +153,131 @@ public final class ConfigManager {
         return list;
     }
 
+    @SuppressWarnings("unused")
+    public <T> List<NamedConfig<T>> loadAllNamed(String relativeDir, Class<T> cfgClass, boolean recursive) {
+        return loadAllNamed(relativeDir, cfgClass, recursive, Map.of());
+    }
+
+    @SuppressWarnings("unused")
+    public <T> List<NamedConfig<T>> loadAllNamed(
+            String relativeDir,
+            Class<T> cfgClass,
+            boolean recursive,
+            Map<String, ? extends Supplier<? extends T>> defaultsById
+    ) {
+        Objects.requireNonNull(cfgClass, "cfgClass");
+        Objects.requireNonNull(defaultsById, "defaultsById");
+        File dir = resolveFile(relativeDir);
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw new IllegalStateException("Unable to create directory: " + dir);
+        }
+
+        java.nio.file.Path root = dir.toPath().toAbsolutePath().normalize();
+        List<NamedFile> files;
+        try (var paths = recursive ? Files.walk(dir.toPath()) : Files.list(dir.toPath())) {
+            files = paths
+                    .filter(Files::isRegularFile)
+                    .filter(ConfigManager::isYamlFile)
+                    .map(path -> namedFile(root, path.toFile()))
+                    .toList();
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to list config directory: " + dir, e);
+        }
+
+        Map<String, NamedFile> byId = new LinkedHashMap<>();
+        for (NamedFile file : files) {
+            if (byId.putIfAbsent(file.normalizedId(), file) != null) {
+                throw new IllegalArgumentException("Duplicate config id '" + file.id() + "' in " + dir);
+            }
+        }
+
+        Map<String, Supplier<? extends T>> defaults = new LinkedHashMap<>();
+        for (Map.Entry<String, ? extends Supplier<? extends T>> entry : defaultsById.entrySet()) {
+            String id = normalizeNamedId(entry.getKey());
+            String normalizedId = id.toLowerCase(Locale.ROOT);
+            Supplier<? extends T> supplier = Objects.requireNonNull(entry.getValue(), "defaults supplier");
+            if (defaults.putIfAbsent(normalizedId, supplier) != null) {
+                throw new IllegalArgumentException("Duplicate default config id '" + id + "'");
+            }
+            byId.putIfAbsent(normalizedId, new NamedFile(
+                    id,
+                    normalizedId,
+                    pathRelativeToData(resolveFile(relativeDir + '/' + id + ".yml"))
+            ));
+        }
+
+        List<NamedFile> ordered = byId.values().stream()
+                .sorted(Comparator.comparing(NamedFile::relativePath, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(NamedFile::relativePath))
+                .toList();
+        List<NamedConfig<T>> configs = new ArrayList<>(ordered.size());
+        for (NamedFile file : ordered) {
+            Supplier<? extends T> supplier = defaults.get(file.normalizedId());
+            T value = supplier == null
+                    ? load(file.relativePath(), cfgClass)
+                    : load(file.relativePath(), cfgClass, supplier);
+            configs.add(new NamedConfig<>(file.id(), file.relativePath(), value));
+        }
+        return List.copyOf(configs);
+    }
+
+    private NamedFile namedFile(java.nio.file.Path root, File file) {
+        String localPath = root.relativize(file.toPath().toAbsolutePath().normalize())
+                .toString().replace('\\', '/');
+        String id = stripYamlExtension(localPath);
+        return new NamedFile(id, id.toLowerCase(Locale.ROOT), pathRelativeToData(file));
+    }
+
+    private static String normalizeNamedId(String value) {
+        if (value == null) throw new IllegalArgumentException("Config id cannot be null");
+        String id = value.trim().replace('\\', '/');
+        if (id.isBlank() || id.startsWith("/") || id.endsWith("/") || id.contains("//")) {
+            throw new IllegalArgumentException("Invalid config id: " + value);
+        }
+        for (String segment : id.split("/")) {
+            if (segment.equals(".") || segment.equals("..")) {
+                throw new IllegalArgumentException("Invalid config id: " + value);
+            }
+        }
+        String lower = id.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".yml") || lower.endsWith(".yaml")) {
+            throw new IllegalArgumentException("Config id must not include an extension: " + value);
+        }
+        return id;
+    }
+
+    private static boolean isYamlFile(java.nio.file.Path path) {
+        String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
+        return name.endsWith(".yml") || name.endsWith(".yaml");
+    }
+
+    private static String stripYamlExtension(String path) {
+        String lower = path.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".yaml")) return path.substring(0, path.length() - 5);
+        if (lower.endsWith(".yml")) return path.substring(0, path.length() - 4);
+        return path;
+    }
+
+    private record NamedFile(String id, String normalizedId, String relativePath) {
+    }
+
+    private File resolveFile(String relativePath) {
+        if (relativePath == null) throw new IllegalArgumentException("relativePath cannot be null");
+        java.nio.file.Path root = dataFolder.toPath().toAbsolutePath().normalize();
+        java.nio.file.Path resolved = root.resolve(relativePath).normalize();
+        if (!resolved.startsWith(root)) {
+            throw new IllegalArgumentException("Config path escapes the data folder: " + relativePath);
+        }
+        return resolved.toFile();
+    }
+
     private String pathRelativeToData(File f) {
-        return dataFolder.toPath().relativize(f.toPath()).toString().replace('\\', '/');
+        java.nio.file.Path root = dataFolder.toPath().toAbsolutePath().normalize();
+        java.nio.file.Path path = f.toPath().toAbsolutePath().normalize();
+        if (!path.startsWith(root)) {
+            throw new IllegalArgumentException("Config file escapes the data folder: " + f);
+        }
+        return root.relativize(path).toString().replace('\\', '/');
     }
 
     @SuppressWarnings("unchecked")
@@ -139,7 +286,8 @@ public final class ConfigManager {
         try (var r = new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8)) {
             Object o = new Yaml().load(r);
             if (o instanceof Map<?, ?> m) return new LinkedHashMap<>((Map<String, Object>) m);
-            return new LinkedHashMap<>();
+            if (o == null) return new LinkedHashMap<>();
+            throw new IllegalArgumentException("Config root must be a map: " + f);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -1232,6 +1380,63 @@ public final class ConfigManager {
         } catch (Exception e) {
             throw new RuntimeException("Config class must have a no-args constructor: " + type.getName(), e);
         }
+    }
+
+    private static <T> T copyConfigInstance(T source, Class<T> type) {
+        return type.cast(copyConfigValue(source, new IdentityHashMap<>()));
+    }
+
+    private static Object copyConfigValue(Object value, IdentityHashMap<Object, Object> copies) {
+        if (value == null || value instanceof String || value instanceof Number || value instanceof Boolean
+                || value instanceof Character || value instanceof Enum<?> || value instanceof UUID
+                || value instanceof Duration || value instanceof Component) {
+            return value;
+        }
+        Object known = copies.get(value);
+        if (known != null) return known;
+        if (value.getClass().isArray()) {
+            int length = Array.getLength(value);
+            Object copy = Array.newInstance(value.getClass().getComponentType(), length);
+            copies.put(value, copy);
+            for (int i = 0; i < length; i++) {
+                Array.set(copy, i, copyConfigValue(Array.get(value, i), copies));
+            }
+            return copy;
+        }
+        if (value instanceof List<?> list) {
+            List<Object> copy = new ArrayList<>(list.size());
+            copies.put(value, copy);
+            for (Object element : list) copy.add(copyConfigValue(element, copies));
+            return copy;
+        }
+        if (value instanceof Set<?> set) {
+            Set<Object> copy = new LinkedHashSet<>();
+            copies.put(value, copy);
+            for (Object element : set) copy.add(copyConfigValue(element, copies));
+            return copy;
+        }
+        if (value instanceof Map<?, ?> map) {
+            Map<Object, Object> copy = new LinkedHashMap<>();
+            copies.put(value, copy);
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                copy.put(copyConfigValue(entry.getKey(), copies), copyConfigValue(entry.getValue(), copies));
+            }
+            return copy;
+        }
+        if (isConfigPojo(value.getClass())) {
+            Object copy = newInstance(value.getClass());
+            copies.put(value, copy);
+            for (Field field : orderedConfigFields(value.getClass(), true)) {
+                if (isStatic(field)) continue;
+                try {
+                    field.set(copy, copyConfigValue(field.get(value), copies));
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException("Unable to copy config field: " + field.getName(), e);
+                }
+            }
+            return copy;
+        }
+        return value;
     }
 
     public static Component parseDynamic(String s) {
