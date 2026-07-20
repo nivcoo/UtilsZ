@@ -38,8 +38,7 @@ public final class ConfigGuiView {
     }
 
     public ConfigGuiView begin() {
-        Set<Integer> excluded = inventory.getExcludeCases() == null
-                ? Set.of() : new HashSet<>(inventory.getExcludeCases());
+        Set<Integer> excluded = new HashSet<>(inventory.getEditableSlots().slots());
         for (int slot = 0; slot < inventory.getBukkitInventory().getSize(); slot++) {
             if (!excluded.contains(slot) || inventory.isManagedSlot(slot)) inventory.clear(slot);
         }

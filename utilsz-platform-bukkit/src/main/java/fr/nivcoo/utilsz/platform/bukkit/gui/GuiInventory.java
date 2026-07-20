@@ -11,7 +11,7 @@ import org.bukkit.inventory.InventoryView;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
-import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -28,7 +28,7 @@ public final class GuiInventory implements InventoryHolder {
     private final int rows;
     private final AtomicBoolean refreshRequested = new AtomicBoolean();
 
-    private final List<Integer> excludeCases;
+    private final GuiEditableSlots editableSlots;
     private final ClickableItem[] items;
     private Inventory bukkitInventory;
 
@@ -38,7 +38,8 @@ public final class GuiInventory implements InventoryHolder {
         this.provider = provider;
         if (params != null) params.accept(this);
 
-        this.excludeCases = provider.excludeCases(this);
+        this.editableSlots = Objects.requireNonNull(
+                provider.editableSlots(this), "editable slots");
         this.rows = provider.rows(this);
         this.items = new ClickableItem[9 * rows];
 
@@ -96,8 +97,8 @@ public final class GuiInventory implements InventoryHolder {
         return rows;
     }
 
-    public List<Integer> getExcludeCases() {
-        return excludeCases;
+    public GuiEditableSlots getEditableSlots() {
+        return editableSlots;
     }
 
     public boolean isManagedSlot(int slot) {

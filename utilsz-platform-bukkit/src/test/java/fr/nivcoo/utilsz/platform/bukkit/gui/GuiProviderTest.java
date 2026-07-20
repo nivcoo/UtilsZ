@@ -4,6 +4,7 @@ import net.kyori.adventure.text.Component;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -26,6 +27,25 @@ class GuiProviderTest {
         assertFalse(GuiInventoryManager.editableTopSlot(List.of(10, 11), true, 10));
         assertFalse(GuiInventoryManager.editableTopSlot(List.of(10, 11), false, 12));
         assertFalse(GuiInventoryManager.editableTopSlot(null, false, 10));
+    }
+
+    @Test
+    void editableSlotsCarryDragAndSinglePassValidationRules() {
+        AtomicInteger validations = new AtomicInteger();
+        GuiEditableSlots slots = GuiEditableSlots.of(List.of(10, 11))
+                .allowDrag()
+                .validateWith((inventory, item) -> {
+                    validations.incrementAndGet();
+                    return GuiEditableSlots.Validation.reject(Component.text("Refusé"));
+                });
+
+        assertEquals(List.of(10, 11), slots.slots());
+        assertTrue(slots.dragAllowed());
+        assertTrue(GuiEditableSlots.of(List.of(10)).validate(null, null).accepted());
+        GuiEditableSlots.Validation rejected = slots.validate(null, null);
+        assertFalse(rejected.accepted());
+        assertEquals(Component.text("Refusé"), rejected.rejectionMessage());
+        assertEquals(1, validations.get());
     }
 
     private static final class TrackingProvider implements GuiProvider {

@@ -2,10 +2,6 @@ package fr.nivcoo.utilsz.platform.bukkit.gui;
 
 import net.kyori.adventure.text.Component;
 import org.bukkit.event.inventory.InventoryCloseEvent;
-import org.bukkit.inventory.ItemStack;
-
-import java.util.ArrayList;
-import java.util.List;
 
 public interface GuiProvider {
 
@@ -21,11 +17,8 @@ public interface GuiProvider {
     default boolean needsUpdate(GuiInventory inv) { return true; }
 
     default boolean cancelBottomClicks() { return false; }
-    default boolean cancelTopDrag() { return true; }
-    default boolean acceptsEditableItem(GuiInventory inv, ItemStack item) { return true; }
+    default GuiEditableSlots editableSlots(GuiInventory inv) { return GuiEditableSlots.none(); }
 
     default boolean allowClose(GuiInventory inv) { return true; }
     default void onClose(InventoryCloseEvent e, GuiInventory inv) {}
-
-    default List<Integer> excludeCases(GuiInventory inv) { return new ArrayList<>(); }
 }

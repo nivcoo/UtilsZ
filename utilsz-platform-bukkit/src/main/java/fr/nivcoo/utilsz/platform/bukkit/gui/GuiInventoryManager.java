@@ -1,5 +1,6 @@
 package fr.nivcoo.utilsz.platform.bukkit.gui;
 
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -134,16 +135,17 @@ public final class GuiInventoryManager implements Listener {
             return;
         }
         if (isTop) {
-            if (!editableTopSlot(inv.getExcludeCases(), inv.isManagedSlot(e.getSlot()), e.getSlot())) {
+            if (!editableTopSlot(inv.getEditableSlots().slots(),
+                    inv.isManagedSlot(e.getSlot()), e.getSlot())) {
                 e.setCancelled(true);
-            } else if (!e.isCancelled() && !accepts(provider, inv, incomingTopItem(e, p))) {
+            } else if (!e.isCancelled() && !accepts(inv, incomingTopItem(e, p))) {
                 e.setCancelled(true);
             }
         } else {
             if (provider.cancelBottomClicks()) {
                 e.setCancelled(true);
             } else if (e.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY) {
-                if (!e.isCancelled() && accepts(provider, inv, e.getCurrentItem())) {
+                if (!e.isCancelled() && accepts(inv, e.getCurrentItem())) {
                     moveToEditableTop(inv, e.getClickedInventory(), e.getSlot());
                 }
                 e.setCancelled(true);
@@ -173,11 +175,12 @@ public final class GuiInventoryManager implements Listener {
         int topSize = e.getView().getTopInventory().getSize();
         boolean touchesLockedTop = e.getRawSlots().stream()
                 .filter(raw -> raw < topSize)
-                .anyMatch(raw -> inv.getProvider().cancelTopDrag()
-                        || !editableTopSlot(inv.getExcludeCases(), inv.isManagedSlot(raw), raw));
+                .anyMatch(raw -> !inv.getEditableSlots().dragAllowed()
+                        || !editableTopSlot(inv.getEditableSlots().slots(),
+                        inv.isManagedSlot(raw), raw));
         boolean touchesTop = e.getRawSlots().stream().anyMatch(raw -> raw < topSize);
         if (touchesLockedTop || !e.isCancelled() && touchesTop
-                && !accepts(inv.getProvider(), inv, e.getOldCursor())) e.setCancelled(true);
+                && !accepts(inv, e.getOldCursor())) e.setCancelled(true);
     }
 
     static boolean editableTopSlot(
@@ -190,7 +193,7 @@ public final class GuiInventoryManager implements Listener {
 
     private static boolean moveToEditableTop(GuiInventory inv, Inventory sourceInventory, int sourceSlot) {
         if (sourceInventory == null || sourceSlot < 0 || sourceSlot >= sourceInventory.getSize()) return false;
-        Collection<Integer> editableSlots = inv.getExcludeCases();
+        Collection<Integer> editableSlots = inv.getEditableSlots().slots();
         if (editableSlots == null || editableSlots.isEmpty()) return false;
         ItemStack source = sourceInventory.getItem(sourceSlot);
         if (source == null || source.getType().isAir() || source.getAmount() <= 0) return false;
@@ -242,8 +245,16 @@ public final class GuiInventoryManager implements Listener {
         };
     }
 
-    private static boolean accepts(GuiProvider provider, GuiInventory inventory, ItemStack item) {
-        return item == null || item.getType().isAir() || provider.acceptsEditableItem(inventory, item);
+    private static boolean accepts(GuiInventory inventory, ItemStack item) {
+        if (item == null || item.getType().isAir()) return true;
+        GuiEditableSlots.Validation validation = inventory.getEditableSlots()
+                .validate(inventory, item);
+        if (validation.accepted()) return true;
+        Component message = validation.rejectionMessage();
+        if (message != null && !Component.empty().equals(message)) {
+            inventory.getPlayer().sendMessage(message);
+        }
+        return false;
     }
 
     private boolean isViewing(Player player, GuiInventory inv) {
