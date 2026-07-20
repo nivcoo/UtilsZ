@@ -3,7 +3,11 @@ package fr.nivcoo.utilsz.platform.bukkit.gui;
 import net.kyori.adventure.text.Component;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GuiProviderTest {
 
@@ -14,6 +18,14 @@ class GuiProviderTest {
         provider.refresh(null);
 
         assertEquals(1, provider.updates);
+    }
+
+    @Test
+    void configuredItemsTakePriorityOverEditableSlots() {
+        assertTrue(GuiInventoryManager.editableTopSlot(List.of(10, 11), false, 10));
+        assertFalse(GuiInventoryManager.editableTopSlot(List.of(10, 11), true, 10));
+        assertFalse(GuiInventoryManager.editableTopSlot(List.of(10, 11), false, 12));
+        assertFalse(GuiInventoryManager.editableTopSlot(null, false, 10));
     }
 
     private static final class TrackingProvider implements GuiProvider {

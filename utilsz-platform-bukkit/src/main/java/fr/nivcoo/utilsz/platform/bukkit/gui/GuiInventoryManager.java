@@ -5,15 +5,19 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -105,7 +109,7 @@ public final class GuiInventoryManager implements Listener {
     }
 
     public void closeAll() {
-        for (GuiInventory inv : inventories.values()) inv.getPlayer().closeInventory();
+        for (GuiInventory inv : List.copyOf(inventories.values())) inv.getPlayer().closeInventory();
     }
 
     @EventHandler
@@ -125,12 +129,23 @@ public final class GuiInventoryManager implements Listener {
         boolean isTop = e.getRawSlot() < topSize;
 
         GuiProvider provider = inv.getProvider();
+        if (e.getAction() == InventoryAction.COLLECT_TO_CURSOR) {
+            e.setCancelled(true);
+            return;
+        }
         if (isTop) {
-            if (inv.getExcludeCases() == null || !inv.getExcludeCases().contains(e.getSlot())) {
+            if (!editableTopSlot(inv.getExcludeCases(), inv.isManagedSlot(e.getSlot()), e.getSlot())) {
+                e.setCancelled(true);
+            } else if (!e.isCancelled() && !accepts(provider, inv, incomingTopItem(e, p))) {
                 e.setCancelled(true);
             }
         } else {
             if (provider.cancelBottomClicks()) {
+                e.setCancelled(true);
+            } else if (e.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY) {
+                if (!e.isCancelled() && accepts(provider, inv, e.getCurrentItem())) {
+                    moveToEditableTop(inv, e.getClickedInventory(), e.getSlot());
+                }
                 e.setCancelled(true);
             }
         }
@@ -155,15 +170,80 @@ public final class GuiInventoryManager implements Listener {
             return;
         }
 
-        boolean cancelTopDrag = inv.getProvider().cancelTopDrag();
-        if (!cancelTopDrag) {
-            e.setCancelled(false);
-            return;
-        }
-
         int topSize = e.getView().getTopInventory().getSize();
+        boolean touchesLockedTop = e.getRawSlots().stream()
+                .filter(raw -> raw < topSize)
+                .anyMatch(raw -> inv.getProvider().cancelTopDrag()
+                        || !editableTopSlot(inv.getExcludeCases(), inv.isManagedSlot(raw), raw));
         boolean touchesTop = e.getRawSlots().stream().anyMatch(raw -> raw < topSize);
-        e.setCancelled(touchesTop);
+        if (touchesLockedTop || !e.isCancelled() && touchesTop
+                && !accepts(inv.getProvider(), inv, e.getOldCursor())) e.setCancelled(true);
+    }
+
+    static boolean editableTopSlot(
+            Collection<Integer> editableSlots,
+            boolean managed,
+            int slot
+    ) {
+        return !managed && editableSlots != null && editableSlots.contains(slot);
+    }
+
+    private static boolean moveToEditableTop(GuiInventory inv, Inventory sourceInventory, int sourceSlot) {
+        if (sourceInventory == null || sourceSlot < 0 || sourceSlot >= sourceInventory.getSize()) return false;
+        Collection<Integer> editableSlots = inv.getExcludeCases();
+        if (editableSlots == null || editableSlots.isEmpty()) return false;
+        ItemStack source = sourceInventory.getItem(sourceSlot);
+        if (source == null || source.getType().isAir() || source.getAmount() <= 0) return false;
+        Inventory top = inv.getBukkitInventory();
+        int remaining = source.getAmount();
+        for (Integer slot : editableSlots) {
+            if (remaining <= 0) break;
+            if (slot == null || slot < 0 || slot >= top.getSize() || inv.isManagedSlot(slot)) continue;
+            ItemStack target = top.getItem(slot);
+            if (target == null || target.getType().isAir() || !target.isSimilar(source)) continue;
+            int capacity = target.getMaxStackSize() - target.getAmount();
+            if (capacity <= 0) continue;
+            int moved = Math.min(capacity, remaining);
+            target.setAmount(target.getAmount() + moved);
+            top.setItem(slot, target);
+            remaining -= moved;
+        }
+        for (Integer slot : editableSlots) {
+            if (remaining <= 0) break;
+            if (slot == null || slot < 0 || slot >= top.getSize() || inv.isManagedSlot(slot)) continue;
+            ItemStack target = top.getItem(slot);
+            if (target != null && !target.getType().isAir()) continue;
+            ItemStack moved = source.clone();
+            moved.setAmount(Math.min(source.getMaxStackSize(), remaining));
+            top.setItem(slot, moved);
+            remaining -= moved.getAmount();
+        }
+        if (remaining == source.getAmount()) return false;
+        if (remaining <= 0) {
+            sourceInventory.setItem(sourceSlot, null);
+        } else {
+            ItemStack left = source.clone();
+            left.setAmount(remaining);
+            sourceInventory.setItem(sourceSlot, left);
+        }
+        return true;
+    }
+
+    private static ItemStack incomingTopItem(InventoryClickEvent event, Player player) {
+        return switch (event.getAction()) {
+            case PLACE_ALL, PLACE_ONE, PLACE_SOME, SWAP_WITH_CURSOR -> event.getCursor();
+            case HOTBAR_SWAP, HOTBAR_MOVE_AND_READD -> {
+                int button = event.getHotbarButton();
+                if (button >= 0 && button <= 8) yield player.getInventory().getItem(button);
+                yield event.getClick() == ClickType.SWAP_OFFHAND
+                        ? player.getInventory().getItemInOffHand() : null;
+            }
+            default -> null;
+        };
+    }
+
+    private static boolean accepts(GuiProvider provider, GuiInventory inventory, ItemStack item) {
+        return item == null || item.getType().isAir() || provider.acceptsEditableItem(inventory, item);
     }
 
     private boolean isViewing(Player player, GuiInventory inv) {
@@ -202,10 +282,13 @@ public final class GuiInventoryManager implements Listener {
             }, 4L);
         }
 
-        GuiInventory inv = inventories.get(uuid);
-        if (inv == null) return;
-
-        if (!inv.getBukkitInventory().equals(e.getInventory())) return;
+        GuiInventory current = inventories.get(uuid);
+        GuiInventory inv = e.getInventory().getHolder() instanceof GuiInventory holder ? holder : current;
+        if (inv == null || !inv.getBukkitInventory().equals(e.getInventory())) return;
+        if (current != inv) {
+            if (current != null) inv.getProvider().onClose(e, inv);
+            return;
+        }
 
         GuiProvider provider = inv.getProvider();
 
@@ -214,7 +297,7 @@ public final class GuiInventoryManager implements Listener {
             return;
         }
 
-        inventories.remove(uuid);
+        inventories.remove(uuid, inv);
         provider.onClose(e, inv);
     }
 }

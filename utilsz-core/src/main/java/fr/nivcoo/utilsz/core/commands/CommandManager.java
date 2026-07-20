@@ -198,10 +198,10 @@ public final class CommandManager implements CommandDispatcher {
     public String getUsage(Command command, CommandContext context) {
         if (command == null) throw new NullPointerException("command");
         if (context == null) throw new NullPointerException("context");
-        if (command == defaultCommand) return rootUsage(command.getUsage(context));
+        if (command == defaultCommand) return rootUsage(command.getUsage(context), context.label());
         CommandMatch match = findRegistration(command);
         if (match == null) throw new IllegalArgumentException("Command is not registered in this manager");
-        return usage(match, context);
+        return usage(match, context, match.invokedPathFromLocal(context.args()));
     }
 
     public void sendUsage(Command command, CommandContext context) {
@@ -264,7 +264,7 @@ public final class CommandManager implements CommandDispatcher {
                 CommandContext context = new CommandContext(sender, label, args);
                 if (args.length < defaultCommand.getMinArgs() || args.length > defaultCommand.getMaxArgs()) {
                     Component message = fmtComp(
-                            provider.incorrectUsage(), rootUsage(defaultCommand.getUsage(context)));
+                            provider.incorrectUsage(), rootUsage(defaultCommand.getUsage(context), label));
                     if (isNotEmpty(message)) sender.sendMessage(message);
                     return true;
                 }
@@ -300,7 +300,7 @@ public final class CommandManager implements CommandDispatcher {
             if (localArgs.length < sub.getMinArgs() || localArgs.length > sub.getMaxArgs()) {
                 RegisteredSection section = findDeepestSection(args);
                 if (section != null && section.path.size() >= match.routeLength()) {
-                    sendSectionUsage(sender, section);
+                    sendSectionUsage(sender, label, args, section);
                     return true;
                 }
             }
@@ -318,7 +318,7 @@ public final class CommandManager implements CommandDispatcher {
 
             if (localArgs.length < sub.getMinArgs() || localArgs.length > sub.getMaxArgs()) {
                 Component msgTpl = provider.incorrectUsage();
-                Component msg = fmtComp(msgTpl, usage(match, context));
+                Component msg = fmtComp(msgTpl, usage(match, context, match.invokedPath(args)));
                 if (isNotEmpty(msg)) sender.sendMessage(msg);
                 return true;
             }
@@ -329,7 +329,7 @@ public final class CommandManager implements CommandDispatcher {
 
         RegisteredSection section = findDeepestSection(args);
         if (section != null) {
-            sendSectionUsage(sender, section);
+            sendSectionUsage(sender, label, args, section);
             return true;
         }
 
@@ -348,7 +348,7 @@ public final class CommandManager implements CommandDispatcher {
             if (args.length < defaultCommand.getMinArgs() || args.length > defaultCommand.getMaxArgs()) {
                 Component msgTpl = provider.incorrectUsage();
                 CommandContext context = new CommandContext(sender, label, args);
-                Component msg = fmtComp(msgTpl, rootUsage(defaultCommand.getUsage(context)));
+                Component msg = fmtComp(msgTpl, rootUsage(defaultCommand.getUsage(context), label));
                 if (isNotEmpty(msg)) sender.sendMessage(msg);
                 return true;
             }
@@ -402,32 +402,53 @@ public final class CommandManager implements CommandDispatcher {
         if (isNotEmpty(playerOnly)) sender.sendMessage(playerOnly);
     }
 
-    private String usage(CommandMatch match, CommandContext ctx) {
+    private String usage(CommandMatch match, CommandContext ctx, List<String> invokedPath) {
         Command command = match.command();
         String usage = command == null ? "" : command.getUsage(ctx);
-        String route = match.canonicalRoute();
-        if (usage == null || usage.isBlank()) return globalCommand + " " + route;
-        String trimmed = usage.trim();
-        if (trimmed.equalsIgnoreCase(globalCommand)) return globalCommand;
-        String prefix = globalCommand + " ";
-        if (trimmed.regionMatches(true, 0, prefix, 0, prefix.length())) return trimmed;
-        if (startsWithRoute(trimmed, route)) return prefix + trimmed;
+        String root = invokedRoot(ctx.label());
+        String route = String.join(" ", invokedPath);
+        String base = root + " " + route;
+        if (usage == null || usage.isBlank()) return base;
 
-        String alias = match.primaryAlias();
-        if (startsWithRoute(trimmed, alias)) {
-            if (match.parentPath().isEmpty()) return prefix + trimmed;
-            return prefix + String.join(" ", match.parentPath()) + " " + trimmed;
+        String relative = usage.trim();
+        if (relative.equalsIgnoreCase(globalCommand) || relative.equalsIgnoreCase(root)) return root;
+        if (startsWithRoute(relative, globalCommand)) {
+            relative = suffixAfterRoute(relative, globalCommand);
+        } else if (startsWithRoute(relative, root)) {
+            relative = suffixAfterRoute(relative, root);
         }
-        return prefix + route + " " + trimmed;
+        if (relative.isBlank()) return root;
+
+        String canonicalRoute = match.canonicalRoute();
+        if (startsWithRoute(relative, canonicalRoute)) {
+            return appendUsage(base, suffixAfterRoute(relative, canonicalRoute));
+        }
+        if (startsWithRoute(relative, route)) {
+            return appendUsage(base, suffixAfterRoute(relative, route));
+        }
+
+        String invokedAlias = invokedPath.getLast();
+        if (startsWithRoute(relative, match.primaryAlias())) {
+            return appendUsage(base, suffixAfterRoute(relative, match.primaryAlias()));
+        }
+        if (startsWithRoute(relative, invokedAlias)) {
+            return appendUsage(base, suffixAfterRoute(relative, invokedAlias));
+        }
+        return base + " " + relative;
     }
 
-    private String rootUsage(String usage) {
-        if (usage == null || usage.isBlank()) return globalCommand;
+    private String rootUsage(String usage, String label) {
+        String root = invokedRoot(label);
+        if (usage == null || usage.isBlank()) return root;
         String trimmed = usage.trim();
-        if (trimmed.equalsIgnoreCase(globalCommand)) return globalCommand;
-        String prefix = globalCommand + " ";
-        if (trimmed.regionMatches(true, 0, prefix, 0, prefix.length())) return trimmed;
-        return prefix + trimmed;
+        if (trimmed.equalsIgnoreCase(globalCommand) || trimmed.equalsIgnoreCase(root)) return root;
+        if (startsWithRoute(trimmed, globalCommand)) {
+            return appendUsage(root, suffixAfterRoute(trimmed, globalCommand));
+        }
+        if (startsWithRoute(trimmed, root)) {
+            return appendUsage(root, suffixAfterRoute(trimmed, root));
+        }
+        return root + " " + trimmed;
     }
 
     private List<String> routeSuggestions(Sender sender, String[] args) {
@@ -517,7 +538,12 @@ public final class CommandManager implements CommandDispatcher {
         return best;
     }
 
-    private void sendSectionUsage(Sender sender, RegisteredSection section) {
+    private void sendSectionUsage(
+            Sender sender,
+            String label,
+            String[] args,
+            RegisteredSection section
+    ) {
         if (sender.isConsole() && !section.consoleAllowed) {
             sendPlayerOnly(sender);
             return;
@@ -527,11 +553,16 @@ public final class CommandManager implements CommandDispatcher {
             if (isNotEmpty(noPermission)) sender.sendMessage(noPermission);
             return;
         }
-        Component message = fmtComp(provider.incorrectUsage(), sectionUsage(section, sender));
+        Component message = fmtComp(provider.incorrectUsage(), sectionUsage(section, sender, label, args));
         if (isNotEmpty(message)) sender.sendMessage(message);
     }
 
-    private String sectionUsage(RegisteredSection section, Sender sender) {
+    private String sectionUsage(
+            RegisteredSection section,
+            Sender sender,
+            String label,
+            String[] args
+    ) {
         LinkedHashSet<String> children = new LinkedHashSet<>();
         for (Command command : commands) {
             collectSectionChild(children, section.path,
@@ -541,9 +572,21 @@ public final class CommandManager implements CommandDispatcher {
             collectSectionChild(children, section.path,
                     new CommandMatch(nested.parentSections(), nested.command(), nested.aliases()), sender);
         }
-        String base = globalCommand + " " + String.join(" ", section.path);
+        String base = invokedRoot(label) + " " + String.join(" ", section.invokedPath(args));
         if (children.isEmpty()) return base;
         return base + " <" + String.join("|", children) + ">";
+    }
+
+    private String invokedRoot(String label) {
+        return label == null || label.isBlank() ? globalCommand : label.trim();
+    }
+
+    private static String suffixAfterRoute(String value, String route) {
+        return value.substring(route.length()).trim();
+    }
+
+    private static String appendUsage(String base, String suffix) {
+        return suffix.isBlank() ? base : base + " " + suffix;
     }
 
     private static void collectSectionChild(
@@ -798,6 +841,19 @@ public final class CommandManager implements CommandDispatcher {
         private String[] localArgs(String[] args) {
             return Arrays.copyOfRange(args, parentSections.size(), args.length);
         }
+
+        private List<String> invokedPath(String[] args) {
+            if (!matches(args)) return canonicalPath();
+            return List.copyOf(Arrays.asList(Arrays.copyOf(args, routeLength())));
+        }
+
+        private List<String> invokedPathFromLocal(String[] args) {
+            List<String> path = new ArrayList<>(parentSections.size() + 1);
+            path.addAll(parentPath());
+            path.add(args != null && args.length > 0 && matchesAlias(aliases, args[0])
+                    ? args[0] : primaryAlias());
+            return List.copyOf(path);
+        }
     }
 
     private static final class RegisteredSection {
@@ -835,6 +891,11 @@ public final class CommandManager implements CommandDispatcher {
                 if (!parentSections.get(i).matches(args[i])) return false;
             }
             return matches(args[parentSections.size()]);
+        }
+
+        private List<String> invokedPath(String[] args) {
+            if (!matches(args)) return path;
+            return List.copyOf(Arrays.asList(Arrays.copyOf(args, path.size())));
         }
     }
 }

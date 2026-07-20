@@ -175,7 +175,7 @@ class CommandManagerNestedCommandTest {
     }
 
     @Test
-    void sectionAliasesAlwaysProduceCanonicalUsage() {
+    void usagePreservesInvokedRootSectionAndLeafAliases() {
         CommandManager manager = manager();
         CommandSection admin = manager.addSection("admin", "a");
         CommandSection logs = admin.addSection("logs", "l");
@@ -186,9 +186,27 @@ class CommandManagerNestedCommandTest {
 
         manager.dispatch(sender, "ah", new String[]{"a", "l", "clear"});
 
-        assertEquals(List.of("Usage: auction admin logs purge <days>"), sender.messages());
-        assertEquals("auction admin logs purge <days>", manager.getUsage(purge,
-                new CommandContext(sender, "ah", new String[]{"clear"})));
+        assertEquals(List.of("Usage: ah a l clear <days>"), sender.messages());
+        assertEquals("hdv admin logs clear <days>", manager.getUsage(purge,
+                new CommandContext(sender, "hdv", new String[]{"clear"})));
+    }
+
+    @Test
+    void rootAndLeafAliasesProduceTheInvokedUsage() {
+        CommandManager manager = new CommandManager(
+                (rootLabel, dispatcher) -> { }, MESSAGES,
+                "auction", List.of("ah", "hdv"), "");
+        manager.addCommand(command(List.of("sell", "s"), "", "<price>", 2, 2,
+                ctx -> { }, ctx -> List.of()));
+        TestSender sender = new TestSender();
+
+        manager.dispatch(sender, "hdv", new String[]{"sell"});
+        manager.dispatch(sender, "ah", new String[]{"s"});
+
+        assertEquals(List.of(
+                "Usage: hdv sell <price>",
+                "Usage: ah s <price>"
+        ), sender.messages());
     }
 
     @Test
@@ -322,7 +340,7 @@ class CommandManagerNestedCommandTest {
                 new String[]{"staff", "tools", "rl", "yes", "extra"});
 
         assertEquals(List.of("Usage: auction admin reload [force]"), adminSender.messages());
-        assertEquals(List.of("Usage: auction staff tools reload [force]"), staffSender.messages());
+        assertEquals(List.of("Usage: auction staff tools rl [force]"), staffSender.messages());
         assertEquals("auction admin reload [force]", adminManager.getUsage(command,
                 new CommandContext(adminSender, "auction", new String[]{"reload"})));
         assertEquals("auction staff tools reload [force]", staffManager.getUsage(command,

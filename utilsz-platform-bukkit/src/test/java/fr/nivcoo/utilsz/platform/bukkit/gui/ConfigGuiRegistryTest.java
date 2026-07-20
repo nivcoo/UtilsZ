@@ -123,18 +123,6 @@ class ConfigGuiRegistryTest {
     }
 
     @Test
-    void customItemsDoNotRenderInExcludedSlots() {
-        ConfigGuiItem fill = new ConfigGuiItem();
-        fill.slots = List.of(0, 1, 2);
-
-        ConfigGuiItem visible = ConfigGuiView.withoutExcludedSlots(fill, java.util.Set.of(1));
-
-        assertEquals(List.of(0, 2), visible.slots);
-        assertEquals(List.of(0, 1, 2), fill.slots);
-        assertNull(ConfigGuiView.withoutExcludedSlots(item(Material.STONE, 1), java.util.Set.of(1)));
-    }
-
-    @Test
     void copiedItemsOwnTheirEnchantMap() {
         ConfigGuiItem source = item(Material.STONE, 1);
         source.enchants = new java.util.LinkedHashMap<>(Map.of("minecraft:unbreaking", 1));

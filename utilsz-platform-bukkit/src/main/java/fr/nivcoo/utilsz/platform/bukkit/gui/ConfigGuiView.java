@@ -41,11 +41,10 @@ public final class ConfigGuiView {
         Set<Integer> excluded = inventory.getExcludeCases() == null
                 ? Set.of() : new HashSet<>(inventory.getExcludeCases());
         for (int slot = 0; slot < inventory.getBukkitInventory().getSize(); slot++) {
-            if (!excluded.contains(slot)) inventory.clear(slot);
+            if (!excluded.contains(slot) || inventory.isManagedSlot(slot)) inventory.clear(slot);
         }
         for (ConfigGuiItem customItem : menu.customItems().values()) {
-            ConfigGuiItem visible = withoutExcludedSlots(customItem, excluded);
-            if (visible != null) passive(visible);
+            passive(customItem);
         }
         return this;
     }
@@ -152,22 +151,6 @@ public final class ConfigGuiView {
         ConfigGuiItem copy = (ConfigGuiItem) ConfigItemFactory.copy(source);
         copy.slot = slot;
         copy.slots = List.of();
-        return copy;
-    }
-
-    static ConfigGuiItem withoutExcludedSlots(ConfigGuiItem source, Set<Integer> excluded) {
-        List<Integer> visible = slots(source).stream()
-                .filter(slot -> !excluded.contains(slot))
-                .toList();
-        if (visible.isEmpty()) return null;
-        ConfigGuiItem copy = (ConfigGuiItem) ConfigItemFactory.copy(source);
-        if (source.slots != null && !source.slots.isEmpty()) {
-            copy.slot = null;
-            copy.slots = visible;
-        } else {
-            copy.slot = visible.getFirst();
-            copy.slots = List.of();
-        }
         return copy;
     }
 

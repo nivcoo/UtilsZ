@@ -100,6 +100,10 @@ public final class GuiInventory implements InventoryHolder {
         return excludeCases;
     }
 
+    public boolean isManagedSlot(int slot) {
+        return slot >= 0 && slot < items.length && items[slot] != null;
+    }
+
     public void set(int col, int row, ClickableItem item) {
         if (col < 1 || col > 9) throw new IllegalArgumentException("col must be between 1 and 9 but is " + col);
         if (row < 1 || row > rows) throw new IllegalArgumentException("row must be between 1 and " + rows);
