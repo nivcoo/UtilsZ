@@ -299,7 +299,12 @@ public final class CommandManager implements CommandDispatcher {
             CommandContext context = new CommandContext(sender, label, localArgs);
             if (localArgs.length < sub.getMinArgs() || localArgs.length > sub.getMaxArgs()) {
                 RegisteredSection section = findDeepestSection(args);
-                if (section != null && section.path.size() >= match.routeLength()) {
+                boolean deeperSection = section != null && section.path.size() > match.routeLength();
+                boolean unknownChild = section != null
+                        && section.path.size() == match.routeLength()
+                        && sub.getMaxArgs() == 1
+                        && args.length > match.routeLength();
+                if (deeperSection || unknownChild) {
                     sendSectionUsage(sender, label, args, section);
                     return true;
                 }

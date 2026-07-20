@@ -262,6 +262,41 @@ class CommandManagerNestedCommandTest {
     }
 
     @Test
+    void executableSectionNodeKeepsItsOwnUsageWhenArgumentsAreMissing() {
+        CommandManager manager = manager();
+        manager.addCommand(command(List.of("sell"), "", "<price>", 2, 2,
+                ctx -> { }, ctx -> List.of()));
+        manager.addSection("sell").addCommand(command(
+                List.of("inventory"), "", "<price>", 2, 2,
+                ctx -> { }, ctx -> List.of()));
+        TestSender sender = new TestSender();
+
+        manager.dispatch(sender, "auction", new String[]{"sell"});
+        manager.dispatch(sender, "auction", new String[]{"sell", "inventory"});
+
+        assertEquals(List.of(
+                "Usage: auction sell <price>",
+                "Usage: auction sell inventory <price>"
+        ), sender.messages());
+    }
+
+    @Test
+    void routeOnlyExecutableSectionStillShowsItsChildrenForAnUnknownToken() {
+        CommandManager manager = manager();
+        CommandSection admin = manager.addSection("admin");
+        admin.addCommand(command(List.of("logs"), "", "", 1, 1,
+                ctx -> { }, ctx -> List.of()));
+        admin.addSection("logs").addCommand(command(
+                List.of("player"), "", "<player>", 2, 2,
+                ctx -> { }, ctx -> List.of()));
+        TestSender sender = new TestSender();
+
+        manager.dispatch(sender, "auction", new String[]{"admin", "logs", "unknown"});
+
+        assertEquals(List.of("Usage: auction admin logs <player>"), sender.messages());
+    }
+
+    @Test
     void rejectsRegisteringTheSameCommandInstanceTwice() {
         CommandManager manager = manager();
         CommandSection admin = manager.addSection("admin");
