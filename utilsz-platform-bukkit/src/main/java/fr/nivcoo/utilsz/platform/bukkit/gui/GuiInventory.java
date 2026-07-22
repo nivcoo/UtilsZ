@@ -41,6 +41,10 @@ public final class GuiInventory implements InventoryHolder {
         this.editableSlots = Objects.requireNonNull(
                 provider.editableSlots(this), "editable slots");
         this.rows = provider.rows(this);
+        for (int slot : editableSlots.slots()) {
+            if (slot >= rows * 9) throw new IllegalArgumentException(
+                    "editable slot " + slot + " is outside inventory size " + rows * 9);
+        }
         this.items = new ClickableItem[9 * rows];
 
         Component initialTitle = provider.title(this);

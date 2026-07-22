@@ -48,6 +48,23 @@ class GuiProviderTest {
         assertEquals(1, validations.get());
     }
 
+    @Test
+    void editableRegionsKeepIndependentPolicies() {
+        GuiEditableSlots slots = GuiEditableSlots.builder()
+                .region(List.of(10, 11), true, false,
+                        (inventory, item) -> GuiEditableSlots.Validation.allow())
+                .region(List.of(15), false, true,
+                        (inventory, item) -> GuiEditableSlots.Validation.reject(Component.text("Refusé")))
+                .build();
+
+        assertTrue(slots.dragAllowed(10));
+        assertFalse(slots.shiftClickAllowed(10));
+        assertFalse(slots.dragAllowed(15));
+        assertTrue(slots.shiftClickAllowed(15));
+        assertTrue(slots.validate(null, 11, null).accepted());
+        assertFalse(slots.validate(null, 15, null).accepted());
+    }
+
     private static final class TrackingProvider implements GuiProvider {
 
         private int updates;

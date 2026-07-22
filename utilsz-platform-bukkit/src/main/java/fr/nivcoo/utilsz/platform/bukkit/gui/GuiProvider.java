@@ -17,8 +17,11 @@ public interface GuiProvider {
     default boolean needsUpdate(GuiInventory inv) { return true; }
 
     default boolean cancelBottomClicks() { return false; }
+    default boolean cancelBottomClicks(GuiInventory inv) { return cancelBottomClicks(); }
     default GuiEditableSlots editableSlots(GuiInventory inv) { return GuiEditableSlots.none(); }
 
     default boolean allowClose(GuiInventory inv) { return true; }
+    default void onEditableChange(GuiInventory inv) { }
+    default void onQuit(GuiInventory inv) { }
     default void onClose(InventoryCloseEvent e, GuiInventory inv) {}
 }

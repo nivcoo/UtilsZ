@@ -12,6 +12,8 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -28,6 +30,7 @@ public final class GuiInventoryManager implements Listener {
     private final JavaPlugin plugin;
     private final HashMap<UUID, GuiInventory> inventories;
     private final HashMap<UUID, GuiInventory> pendingOpens;
+    private boolean initialized;
 
     public GuiInventoryManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -36,6 +39,8 @@ public final class GuiInventoryManager implements Listener {
     }
 
     public void init() {
+        if (initialized) return;
+        initialized = true;
         Bukkit.getPluginManager().registerEvents(this, plugin);
 
         Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, () -> {
@@ -76,8 +81,24 @@ public final class GuiInventoryManager implements Listener {
     }
 
     public GuiInventory open(GuiProvider provider, Player p, Consumer<GuiInventory> params) {
-        GuiInventory inv = new GuiInventory(p, provider, params);
+        return open(prepare(provider, p, params));
+    }
+
+    public GuiInventory prepare(GuiProvider provider, Player player) {
+        return prepare(provider, player, null);
+    }
+
+    public GuiInventory prepare(GuiProvider provider, Player player, Consumer<GuiInventory> params) {
+        if (provider == null) throw new IllegalArgumentException("provider cannot be null");
+        if (player == null) throw new IllegalArgumentException("player cannot be null");
+        GuiInventory inv = new GuiInventory(player, provider, params);
         provider.init(inv);
+        return inv;
+    }
+
+    public GuiInventory open(GuiInventory inv) {
+        if (inv == null) throw new IllegalArgumentException("inventory cannot be null");
+        Player p = inv.getPlayer();
         inventories.put(p.getUniqueId(), inv);
         if (shouldDeferOpen(p, inv)) {
             UUID uuid = p.getUniqueId();
@@ -113,6 +134,14 @@ public final class GuiInventoryManager implements Listener {
         for (GuiInventory inv : List.copyOf(inventories.values())) inv.getPlayer().closeInventory();
     }
 
+    public void shutdown() {
+        closeAll();
+        inventories.clear();
+        pendingOpens.clear();
+        HandlerList.unregisterAll(this);
+        initialized = false;
+    }
+
     @EventHandler
     public void onClick(InventoryClickEvent e) {
         UUID uuid = e.getWhoClicked().getUniqueId();
@@ -138,15 +167,17 @@ public final class GuiInventoryManager implements Listener {
             if (!editableTopSlot(inv.getEditableSlots().slots(),
                     inv.isManagedSlot(e.getSlot()), e.getSlot())) {
                 e.setCancelled(true);
-            } else if (!e.isCancelled() && !accepts(inv, incomingTopItem(e, p))) {
+            } else if (!e.isCancelled() && !accepts(inv, e.getSlot(), incomingTopItem(e, p))) {
                 e.setCancelled(true);
+            } else if (!e.isCancelled()) {
+                scheduleEditableChange(inv);
             }
         } else {
-            if (provider.cancelBottomClicks()) {
+            if (provider.cancelBottomClicks(inv)) {
                 e.setCancelled(true);
             } else if (e.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY) {
-                if (!e.isCancelled() && accepts(inv, e.getCurrentItem())) {
-                    moveToEditableTop(inv, e.getClickedInventory(), e.getSlot());
+                if (!e.isCancelled() && moveToEditableTop(inv, e.getClickedInventory(), e.getSlot())) {
+                    scheduleEditableChange(inv);
                 }
                 e.setCancelled(true);
             }
@@ -175,12 +206,18 @@ public final class GuiInventoryManager implements Listener {
         int topSize = e.getView().getTopInventory().getSize();
         boolean touchesLockedTop = e.getRawSlots().stream()
                 .filter(raw -> raw < topSize)
-                .anyMatch(raw -> !inv.getEditableSlots().dragAllowed()
+                .anyMatch(raw -> !inv.getEditableSlots().dragAllowed(raw)
                         || !editableTopSlot(inv.getEditableSlots().slots(),
                         inv.isManagedSlot(raw), raw));
         boolean touchesTop = e.getRawSlots().stream().anyMatch(raw -> raw < topSize);
-        if (touchesLockedTop || !e.isCancelled() && touchesTop
-                && !accepts(inv, e.getOldCursor())) e.setCancelled(true);
+        boolean rejected = !e.isCancelled() && e.getRawSlots().stream()
+                .filter(raw -> raw < topSize)
+                .anyMatch(raw -> !accepts(inv, raw, e.getOldCursor()));
+        if (touchesLockedTop || rejected) {
+            e.setCancelled(true);
+        } else if (touchesTop && !e.isCancelled()) {
+            scheduleEditableChange(inv);
+        }
     }
 
     static boolean editableTopSlot(
@@ -197,9 +234,21 @@ public final class GuiInventoryManager implements Listener {
         if (editableSlots == null || editableSlots.isEmpty()) return false;
         ItemStack source = sourceInventory.getItem(sourceSlot);
         if (source == null || source.getType().isAir() || source.getAmount() <= 0) return false;
+        GuiEditableSlots.Validation rejection = null;
+        List<Integer> acceptedSlots = new java.util.ArrayList<>();
+        for (Integer slot : editableSlots) {
+            if (slot == null || !inv.getEditableSlots().shiftClickAllowed(slot)) continue;
+            GuiEditableSlots.Validation validation = inv.getEditableSlots().validate(inv, slot, source);
+            if (validation.accepted()) acceptedSlots.add(slot);
+            else if (rejection == null && validation.rejectionMessage() != null) rejection = validation;
+        }
+        if (acceptedSlots.isEmpty()) {
+            if (rejection != null) inv.getPlayer().sendMessage(rejection.rejectionMessage());
+            return false;
+        }
         Inventory top = inv.getBukkitInventory();
         int remaining = source.getAmount();
-        for (Integer slot : editableSlots) {
+        for (Integer slot : acceptedSlots) {
             if (remaining <= 0) break;
             if (slot == null || slot < 0 || slot >= top.getSize() || inv.isManagedSlot(slot)) continue;
             ItemStack target = top.getItem(slot);
@@ -211,7 +260,7 @@ public final class GuiInventoryManager implements Listener {
             top.setItem(slot, target);
             remaining -= moved;
         }
-        for (Integer slot : editableSlots) {
+        for (Integer slot : acceptedSlots) {
             if (remaining <= 0) break;
             if (slot == null || slot < 0 || slot >= top.getSize() || inv.isManagedSlot(slot)) continue;
             ItemStack target = top.getItem(slot);
@@ -245,16 +294,24 @@ public final class GuiInventoryManager implements Listener {
         };
     }
 
-    private static boolean accepts(GuiInventory inventory, ItemStack item) {
+    private static boolean accepts(GuiInventory inventory, int slot, ItemStack item) {
         if (item == null || item.getType().isAir()) return true;
         GuiEditableSlots.Validation validation = inventory.getEditableSlots()
-                .validate(inventory, item);
+                .validate(inventory, slot, item);
         if (validation.accepted()) return true;
         Component message = validation.rejectionMessage();
         if (message != null && !Component.empty().equals(message)) {
             inventory.getPlayer().sendMessage(message);
         }
         return false;
+    }
+
+    private void scheduleEditableChange(GuiInventory inventory) {
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (inventories.get(inventory.getPlayer().getUniqueId()) == inventory) {
+                inventory.getProvider().onEditableChange(inventory);
+            }
+        });
     }
 
     private boolean isViewing(Player player, GuiInventory inv) {
@@ -310,5 +367,13 @@ public final class GuiInventoryManager implements Listener {
 
         inventories.remove(uuid, inv);
         provider.onClose(e, inv);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onQuit(PlayerQuitEvent event) {
+        UUID uuid = event.getPlayer().getUniqueId();
+        pendingOpens.remove(uuid);
+        GuiInventory inventory = inventories.remove(uuid);
+        if (inventory != null) inventory.getProvider().onQuit(inventory);
     }
 }
