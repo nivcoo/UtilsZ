@@ -4,7 +4,8 @@ import fr.nivcoo.utilsz.core.config.annotations.Comment;
 import fr.nivcoo.utilsz.core.config.annotations.Optional;
 import fr.nivcoo.utilsz.core.config.annotations.Range;
 import fr.nivcoo.utilsz.core.config.annotations.Required;
-import fr.nivcoo.utilsz.core.config.annotations.SaveOnLoad;
+import fr.nivcoo.utilsz.core.config.annotations.ConfigStructure;
+import fr.nivcoo.utilsz.core.config.annotations.DefaultConfig;
 import fr.nivcoo.utilsz.core.config.annotations.Section;
 import fr.nivcoo.utilsz.core.config.annotations.TextFormat;
 import fr.nivcoo.utilsz.core.config.annotations.WithConverter;
@@ -177,7 +178,7 @@ class ConfigManagerTest {
     }
 
     @Test
-    void saveOnLoadFalseDoesNotRewriteExistingFile() throws Exception {
+    void defaultConfigDoesNotRewriteExistingFile() throws Exception {
         Path file = tempDir.resolve("manual.yml");
         String original = "name: \"custom\"\n# keep this exact file\n";
         Files.writeString(file, original, StandardCharsets.UTF_8);
@@ -343,6 +344,32 @@ class ConfigManagerTest {
     }
 
     @Test
+    void defaultConfigCreatesMissingFileOnce() throws Exception {
+        Path file = tempDir.resolve("manual.yml");
+
+        ManualConfig config = manager().load("manual.yml", ManualConfig.class);
+
+        assertEquals("default", config.name);
+        assertTrue(Files.isRegularFile(file));
+        assertTrue(Files.readString(file, StandardCharsets.UTF_8).contains("name:"));
+    }
+
+    @Test
+    void configStructureNeverCreatesOrRewritesFiles() throws Exception {
+        Path missing = tempDir.resolve("structure.yml");
+        StructureConfig defaults = manager().load("structure.yml", StructureConfig.class);
+
+        assertEquals("default", defaults.name);
+        assertFalse(Files.exists(missing));
+
+        Files.writeString(missing, "name: custom\n# preserved\n", StandardCharsets.UTF_8);
+        StructureConfig configured = manager().load("structure.yml", StructureConfig.class);
+
+        assertEquals("custom", configured.name);
+        assertEquals("name: custom\n# preserved\n", Files.readString(missing, StandardCharsets.UTF_8));
+    }
+
+    @Test
     void loadingRejectsPathsOutsideTheDataFolder() {
         assertThrows(IllegalArgumentException.class,
                 () -> manager().load("../outside.yml", SimpleNamedConfig.class));
@@ -459,7 +486,7 @@ class ConfigManagerTest {
         public int amount = 10;
     }
 
-    @SaveOnLoad(false)
+    @ConfigStructure
     public static final class ValidationGraphConfig implements Validatable {
         @Section
         public ValidationSection section = new ValidationSection();
@@ -518,7 +545,7 @@ class ConfigManagerTest {
         }
     }
 
-    @SaveOnLoad(false)
+    @ConfigStructure
     public static final class InvalidListElementConfig {
         public List<RequiredElement> entries = List.of(new RequiredElement());
     }
@@ -528,12 +555,12 @@ class ConfigManagerTest {
         public String name = "";
     }
 
-    @SaveOnLoad(false)
+    @ConfigStructure
     public static final class InvalidMapElementConfig {
         public Map<String, RangeElement> entries = Map.of("premium", new RangeElement());
     }
 
-    @SaveOnLoad(false)
+    @ConfigStructure
     public static final class InvalidArrayElementConfig {
         public RangeElement[] entries = {new RangeElement()};
     }
@@ -552,8 +579,13 @@ class ConfigManagerTest {
         }
     }
 
-    @SaveOnLoad(false)
+    @DefaultConfig
     public static final class ManualConfig {
+        public String name = "default";
+    }
+
+    @ConfigStructure
+    public static final class StructureConfig {
         public String name = "default";
     }
 

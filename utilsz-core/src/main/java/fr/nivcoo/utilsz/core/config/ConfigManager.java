@@ -104,6 +104,7 @@ public final class ConfigManager {
     private <T> T load(String relativePath, Class<T> cfgClass, T instance, boolean mergeDefaults) {
         Objects.requireNonNull(cfgClass, "cfgClass");
         File file = resolveFile(relativePath);
+        boolean existed = file.exists();
         Map<String, Object> existing = loadYaml(file);
 
         Map<String, Object> input = existing;
@@ -121,7 +122,7 @@ public final class ConfigManager {
         Map<String, List<String>> comments = new LinkedHashMap<>();
         export(instance, rootName(cfgClass), existing, out, comments);
 
-        if (shouldSaveOnLoad(cfgClass)) {
+        if (shouldWrite(cfgClass, existed)) {
             Comment rootC = cfgClass.getAnnotation(Comment.class);
             String header = (rootC != null) ? String.join("\n", rootC.value()) : null;
             saveText(file, writeYamlWithComments(out, comments, header));
@@ -129,9 +130,16 @@ public final class ConfigManager {
         return instance;
     }
 
-    private static boolean shouldSaveOnLoad(Class<?> cfgClass) {
-        SaveOnLoad an = cfgClass.getAnnotation(SaveOnLoad.class);
-        return an == null || an.value();
+    private static boolean shouldWrite(Class<?> cfgClass, boolean existed) {
+        boolean structure = cfgClass.isAnnotationPresent(ConfigStructure.class);
+        boolean defaults = cfgClass.isAnnotationPresent(DefaultConfig.class);
+        if (structure && defaults) {
+            throw new IllegalArgumentException(cfgClass.getName()
+                    + " cannot declare both @ConfigStructure and @DefaultConfig");
+        }
+        if (structure) return false;
+        if (defaults) return !existed;
+        return true;
     }
 
     public <T> List<T> loadAll(String relativeDir, Class<T> cfgClass) {
