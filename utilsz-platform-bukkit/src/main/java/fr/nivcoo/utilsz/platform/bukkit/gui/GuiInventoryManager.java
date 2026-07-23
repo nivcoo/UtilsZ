@@ -34,6 +34,7 @@ public final class GuiInventoryManager implements Listener {
     private final HashMap<UUID, GuiInventory> inventories;
     private final HashMap<UUID, GuiInventory> pendingOpens;
     private final Set<GuiInventory> pendingEditableChanges;
+    private final Set<GuiInventory> pendingCloses;
     private boolean initialized;
     private int updateTaskId = -1;
 
@@ -42,6 +43,7 @@ public final class GuiInventoryManager implements Listener {
         this.inventories = new HashMap<>();
         this.pendingOpens = new HashMap<>();
         this.pendingEditableChanges = Collections.newSetFromMap(new IdentityHashMap<>());
+        this.pendingCloses = Collections.newSetFromMap(new IdentityHashMap<>());
     }
 
     public void init() {
@@ -56,10 +58,7 @@ public final class GuiInventoryManager implements Listener {
             while (iterator.hasNext()) {
                 GuiInventory inv = iterator.next();
                 if (pendingOpens.containsKey(inv.getPlayer().getUniqueId())) continue;
-                if (!isViewing(inv.getPlayer(), inv)) {
-                    iterator.remove();
-                    continue;
-                }
+                if (!isViewing(inv.getPlayer(), inv)) continue;
 
                 int tick = 0;
                 Object currentTick = inv.get(GuiInventory.TICK);
@@ -171,6 +170,7 @@ public final class GuiInventoryManager implements Listener {
         inventories.clear();
         pendingOpens.clear();
         pendingEditableChanges.clear();
+        pendingCloses.clear();
         HandlerList.unregisterAll(this);
         initialized = false;
     }
@@ -411,13 +411,17 @@ public final class GuiInventoryManager implements Listener {
 
         GuiProvider provider = inv.getProvider();
 
-        if (!provider.allowClose(inv)) {
-            Bukkit.getScheduler().runTask(plugin, inv::open);
-            return;
-        }
-
-        inventories.remove(uuid, inv);
-        provider.onClose(e, inv);
+        if (!pendingCloses.add(inv)) return;
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            pendingCloses.remove(inv);
+            if (inventories.get(uuid) != inv || isViewing(inv.getPlayer(), inv)) return;
+            if (!provider.allowClose(inv)) {
+                inv.open();
+                return;
+            }
+            inventories.remove(uuid, inv);
+            provider.onClose(e, inv);
+        });
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -425,6 +429,7 @@ public final class GuiInventoryManager implements Listener {
         UUID uuid = event.getPlayer().getUniqueId();
         pendingOpens.remove(uuid);
         GuiInventory inventory = inventories.remove(uuid);
+        if (inventory != null) pendingCloses.remove(inventory);
         if (inventory != null) inventory.getProvider().onQuit(inventory);
     }
 }
