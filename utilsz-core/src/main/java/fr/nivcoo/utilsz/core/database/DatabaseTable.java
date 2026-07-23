@@ -23,6 +23,14 @@ public final class DatabaseTable {
         return database.insert(connection, name, values);
     }
 
+    public long insertReturningId(Map<String, ?> values) throws SQLException {
+        return database.insertReturningId(name, values);
+    }
+
+    public long insertReturningId(Connection connection, Map<String, ?> values) throws SQLException {
+        return database.insertReturningId(connection, name, values);
+    }
+
     public int update(Map<String, ?> values, String where, Object... params) throws SQLException {
         return database.update(name, values, where, params);
     }

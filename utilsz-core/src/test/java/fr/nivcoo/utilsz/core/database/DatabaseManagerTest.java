@@ -88,6 +88,35 @@ class DatabaseManagerTest {
     }
 
     @Test
+    void insertReturningIdUsesGeneratedKeysWithOwnedAndTransactionConnections() throws Exception {
+        DatabaseManager database = new DatabaseManager(
+                DatabaseType.SQLITE,
+                null,
+                0,
+                null,
+                null,
+                null,
+                tempDirectory.resolve("generated-ids.db").toString()
+        );
+
+        try {
+            ModelRepository<ReservedIdentifiers> repository = database.model(ReservedIdentifiers.MODEL);
+            repository.createTable();
+
+            long firstId = repository.insertReturningId(new ReservedIdentifiers(0L, "first", 1));
+            long secondId = database.transaction(connection ->
+                    repository.insertReturningId(connection, new ReservedIdentifiers(0L, "second", 2)));
+
+            assertEquals(1L, firstId);
+            assertEquals(2L, secondId);
+            assertEquals("first", repository.find().where("select", firstId).all().getFirst().trigger());
+            assertEquals("second", repository.find().where("select", secondId).all().getFirst().trigger());
+        } finally {
+            database.closeConnection();
+        }
+    }
+
+    @Test
     void concurrentIndexCreationAcceptsAnIndexCreatedByAnotherInstance() throws Exception {
         RacingIndexManager database = new RacingIndexManager(
                 tempDirectory.resolve("index-race.db"), true);

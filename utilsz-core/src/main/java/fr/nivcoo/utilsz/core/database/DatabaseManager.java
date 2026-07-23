@@ -6,6 +6,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -205,6 +206,39 @@ public class DatabaseManager {
     }
 
     public int insert(Connection connection, String table, Map<String, ?> values) throws SQLException {
+        InsertQuery insert = insertQuery(table, values);
+        return connection == null ? execute(insert.sql(), insert.params()) : execute(connection, insert.sql(), insert.params());
+    }
+
+    public long insertReturningId(String table, Map<String, ?> values) throws SQLException {
+        try (Connection connection = getConnection()) {
+            return insertReturningId(connection, table, values);
+        }
+    }
+
+    public long insertReturningId(Connection connection, String table, Map<String, ?> values) throws SQLException {
+        if (connection == null) return insertReturningId(table, values);
+
+        InsertQuery insert = insertQuery(table, values);
+        try (PreparedStatement statement = prepare(connection, insert.sql(), Statement.RETURN_GENERATED_KEYS)) {
+            bind(statement, insert.params());
+            if (statement.executeUpdate() < 1) {
+                throw new SQLException("Insert did not affect any row in table " + table);
+            }
+            try (ResultSet keys = statement.getGeneratedKeys()) {
+                if (!keys.next()) {
+                    throw new SQLException("Database did not return a generated id for table " + table);
+                }
+                long id = keys.getLong(1);
+                if (keys.wasNull()) {
+                    throw new SQLException("Database returned a null generated id for table " + table);
+                }
+                return id;
+            }
+        }
+    }
+
+    private InsertQuery insertQuery(String table, Map<String, ?> values) {
         if (values == null || values.isEmpty()) {
             throw new IllegalArgumentException("Cannot insert an empty value map.");
         }
@@ -219,7 +253,7 @@ public class DatabaseManager {
         }
 
         String sql = "INSERT INTO " + quote(table) + "(" + columns + ") VALUES (" + placeholders + ")";
-        return connection == null ? execute(sql, params.toArray()) : execute(connection, sql, params.toArray());
+        return new InsertQuery(sql, params.toArray());
     }
 
     public int update(String table, Map<String, ?> values, String where, Object... params) throws SQLException {
@@ -348,6 +382,16 @@ public class DatabaseManager {
         int timeout = operationTimeoutSeconds;
         if (timeout > 0) statement.setQueryTimeout(timeout);
         return statement;
+    }
+
+    private PreparedStatement prepare(Connection connection, String query, int generatedKeys) throws SQLException {
+        PreparedStatement statement = connection.prepareStatement(query, generatedKeys);
+        int timeout = operationTimeoutSeconds;
+        if (timeout > 0) statement.setQueryTimeout(timeout);
+        return statement;
+    }
+
+    private record InsertQuery(String sql, Object[] params) {
     }
 
     @FunctionalInterface

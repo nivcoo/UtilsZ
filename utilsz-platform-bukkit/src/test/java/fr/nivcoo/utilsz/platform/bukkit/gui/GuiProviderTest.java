@@ -4,6 +4,7 @@ import net.kyori.adventure.text.Component;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -27,6 +28,14 @@ class GuiProviderTest {
         assertFalse(GuiInventoryManager.editableTopSlot(List.of(10, 11), true, 10));
         assertFalse(GuiInventoryManager.editableTopSlot(List.of(10, 11), false, 12));
         assertFalse(GuiInventoryManager.editableTopSlot(null, false, 10));
+    }
+
+    @Test
+    void detectsDragsTouchingThePlayerInventory() {
+        assertFalse(GuiInventoryManager.touchesBottom(Set.of(0, 8, 26), 27));
+        assertTrue(GuiInventoryManager.touchesBottom(Set.of(0, 27), 27));
+        assertTrue(GuiInventoryManager.touchesBottom(Set.of(44), 27));
+        assertFalse(GuiInventoryManager.touchesBottom(null, 27));
     }
 
     @Test

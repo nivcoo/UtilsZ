@@ -30,12 +30,27 @@ public final class ModelRepository<T> {
     }
 
     public int insert(Connection connection, T model) throws SQLException {
+        return database.insert(connection, schema.name(), insertValues(model));
+    }
+
+    public long insertReturningId(T model) throws SQLException {
+        return insertReturningId(null, model);
+    }
+
+    public long insertReturningId(Connection connection, T model) throws SQLException {
+        if (schema.idColumn() == null || schema.idColumn().isBlank()) {
+            throw new IllegalStateException("Table " + schema.name() + " does not define a generated id column.");
+        }
+        return database.insertReturningId(connection, schema.name(), insertValues(model));
+    }
+
+    private Map<String, Object> insertValues(T model) {
         Map<String, Object> values = new LinkedHashMap<>();
         for (ModelColumn<T> column : schema.columns()) {
             if (column.generated()) continue;
             values.put(column.name(), column.toDatabase(model));
         }
-        return database.insert(connection, schema.name(), values);
+        return values;
     }
 
     public int update(Object id, Map<String, ?> values) throws SQLException {

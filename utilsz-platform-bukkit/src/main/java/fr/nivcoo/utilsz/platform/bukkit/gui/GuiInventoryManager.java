@@ -206,6 +206,10 @@ public final class GuiInventoryManager implements Listener {
         }
 
         int topSize = e.getView().getTopInventory().getSize();
+        if (inv.getProvider().cancelBottomClicks(inv) && touchesBottom(e.getRawSlots(), topSize)) {
+            e.setCancelled(true);
+            return;
+        }
         boolean touchesLockedTop = e.getRawSlots().stream()
                 .filter(raw -> raw < topSize)
                 .anyMatch(raw -> !inv.getEditableSlots().dragAllowed(raw)
@@ -228,6 +232,10 @@ public final class GuiInventoryManager implements Listener {
             int slot
     ) {
         return !managed && editableSlots != null && editableSlots.contains(slot);
+    }
+
+    static boolean touchesBottom(Collection<Integer> rawSlots, int topSize) {
+        return rawSlots != null && rawSlots.stream().anyMatch(slot -> slot != null && slot >= topSize);
     }
 
     private static boolean moveToEditableTop(GuiInventory inv, Inventory sourceInventory, int sourceSlot) {
