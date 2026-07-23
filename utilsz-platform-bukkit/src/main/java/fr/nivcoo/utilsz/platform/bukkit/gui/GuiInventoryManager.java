@@ -11,7 +11,7 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryAction;
-import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
@@ -32,7 +32,6 @@ public final class GuiInventoryManager implements Listener {
 
     private final JavaPlugin plugin;
     private final HashMap<UUID, GuiInventory> inventories;
-    private final HashMap<UUID, GuiInventory> pendingOpens;
     private final Set<GuiInventory> pendingEditableChanges;
     private final Set<GuiInventory> pendingCloses;
     private boolean initialized;
@@ -41,7 +40,6 @@ public final class GuiInventoryManager implements Listener {
     public GuiInventoryManager(JavaPlugin plugin) {
         this.plugin = plugin;
         this.inventories = new HashMap<>();
-        this.pendingOpens = new HashMap<>();
         this.pendingEditableChanges = Collections.newSetFromMap(new IdentityHashMap<>());
         this.pendingCloses = Collections.newSetFromMap(new IdentityHashMap<>());
     }
@@ -57,7 +55,6 @@ public final class GuiInventoryManager implements Listener {
             var iterator = inventories.values().iterator();
             while (iterator.hasNext()) {
                 GuiInventory inv = iterator.next();
-                if (pendingOpens.containsKey(inv.getPlayer().getUniqueId())) continue;
                 if (!isViewing(inv.getPlayer(), inv)) continue;
 
                 int tick = 0;
@@ -113,22 +110,17 @@ public final class GuiInventoryManager implements Listener {
     public GuiInventory open(GuiInventory inv) {
         if (inv == null) throw new IllegalArgumentException("inventory cannot be null");
         Player p = inv.getPlayer();
-        pendingOpens.remove(p.getUniqueId());
-        GuiInventory previous = inventories.put(p.getUniqueId(), inv);
-        if (shouldDeferOpen(p, inv, previous)) {
-            UUID uuid = p.getUniqueId();
-            pendingOpens.put(uuid, inv);
-            p.closeInventory();
-            return inv;
-        }
-        Inventory current = p.getOpenInventory().getTopInventory();
-        ItemStack cursor = p.getItemOnCursor();
-        boolean preserveCursor = !current.equals(inv.getBukkitInventory()) && cursor != null && !cursor.getType().isAir();
-        if (preserveCursor) p.setItemOnCursor(null);
+        UUID uuid = p.getUniqueId();
+        GuiInventory previous = inventories.put(uuid, inv);
         try {
             inv.open();
-        } finally {
-            if (preserveCursor) p.setItemOnCursor(cursor);
+            if (!isViewing(p, inv)) {
+                throw new IllegalStateException("Managed inventory opening was cancelled");
+            }
+        } catch (RuntimeException exception) {
+            if (previous == null) inventories.remove(uuid, inv);
+            else inventories.replace(uuid, inv, previous);
+            throw exception;
         }
         return inv;
     }
@@ -151,7 +143,6 @@ public final class GuiInventoryManager implements Listener {
 
     public void close(Player p) {
         UUID uuid = p.getUniqueId();
-        pendingOpens.remove(uuid);
         GuiInventory inventory = inventories.get(uuid);
         if (inventory != null && !isViewing(p, inventory)) inventories.remove(uuid, inventory);
         p.closeInventory();
@@ -168,7 +159,6 @@ public final class GuiInventoryManager implements Listener {
         }
         closeAll();
         inventories.clear();
-        pendingOpens.clear();
         pendingEditableChanges.clear();
         pendingCloses.clear();
         HandlerList.unregisterAll(this);
@@ -178,13 +168,16 @@ public final class GuiInventoryManager implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onClick(InventoryClickEvent e) {
         UUID uuid = e.getWhoClicked().getUniqueId();
-        if (!inventories.containsKey(uuid)) return;
-
         Player p = (Player) e.getWhoClicked();
         GuiInventory inv = get(p);
-        if (inv == null) return;
+        Inventory top = e.getView().getTopInventory();
+        if (inv == null) {
+            if (isManagedInventory(top)) e.setCancelled(true);
+            return;
+        }
         if (!e.getView().getTopInventory().equals(inv.getBukkitInventory())) {
-            if (!pendingOpens.containsKey(uuid) && !isViewing(p, inv)) inventories.remove(uuid);
+            if (isManagedInventory(top)) e.setCancelled(true);
+            if (!isViewing(p, inv)) inventories.remove(uuid);
             return;
         }
 
@@ -228,13 +221,16 @@ public final class GuiInventoryManager implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onDrag(InventoryDragEvent e) {
         UUID uuid = e.getWhoClicked().getUniqueId();
-        if (!inventories.containsKey(uuid)) return;
-
         Player p = (Player) e.getWhoClicked();
         GuiInventory inv = get(p);
-        if (inv == null) return;
+        Inventory top = e.getView().getTopInventory();
+        if (inv == null) {
+            if (isManagedInventory(top)) e.setCancelled(true);
+            return;
+        }
         if (!e.getView().getTopInventory().equals(inv.getBukkitInventory())) {
-            if (!pendingOpens.containsKey(uuid) && !isViewing(p, inv)) inventories.remove(uuid);
+            if (isManagedInventory(top)) e.setCancelled(true);
+            if (!isViewing(p, inv)) inventories.remove(uuid);
             return;
         }
 
@@ -371,15 +367,6 @@ public final class GuiInventoryManager implements Listener {
                 && player.getOpenInventory().getTopInventory().equals(inv.getBukkitInventory());
     }
 
-    private boolean shouldDeferOpen(Player player, GuiInventory next, GuiInventory previous) {
-        if (player == null || !player.isOnline()) return false;
-        Inventory current = player.getOpenInventory().getTopInventory();
-        return current.getType() != InventoryType.CRAFTING
-                && !current.equals(next.getBukkitInventory())
-                && (previous == null || !current.equals(previous.getBukkitInventory()))
-                && !isManagedInventory(current);
-    }
-
     private boolean isManagedInventory(Inventory inventory) {
         if (inventory == null) return false;
         if (inventory.getHolder() instanceof GuiInventory) return true;
@@ -388,19 +375,18 @@ public final class GuiInventoryManager implements Listener {
     }
 
     @EventHandler(priority = EventPriority.HIGH)
+    public void onOpen(InventoryOpenEvent event) {
+        if (!(event.getPlayer() instanceof Player player)) return;
+        GuiInventory inventory = inventories.get(player.getUniqueId());
+        if (inventory == null || !inventory.getBukkitInventory().equals(event.getInventory())) return;
+        Component title = inventory.titleForOpen();
+        event.titleOverride(title);
+        inventory.displayedTitle(title);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
     public void onClose(InventoryCloseEvent e) {
         UUID uuid = e.getPlayer().getUniqueId();
-        GuiInventory pending = pendingOpens.get(uuid);
-        if (pending != null && !pending.getBukkitInventory().equals(e.getInventory())) {
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                if (pendingOpens.get(uuid) != pending) return;
-                pendingOpens.remove(uuid);
-                if (pending.getPlayer().isOnline() && inventories.get(uuid) == pending) {
-                    pending.open();
-                }
-            }, 4L);
-        }
-
         GuiInventory current = inventories.get(uuid);
         GuiInventory inv = e.getInventory().getHolder() instanceof GuiInventory holder ? holder : current;
         if (inv == null || !inv.getBukkitInventory().equals(e.getInventory())) return;
@@ -427,7 +413,6 @@ public final class GuiInventoryManager implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
-        pendingOpens.remove(uuid);
         GuiInventory inventory = inventories.remove(uuid);
         if (inventory != null) pendingCloses.remove(inventory);
         if (inventory != null) inventory.getProvider().onQuit(inventory);

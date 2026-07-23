@@ -1,14 +1,13 @@
 package fr.nivcoo.utilsz.platform.bukkit.gui;
 
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
-import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.InventoryView;
+import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
@@ -20,18 +19,18 @@ import java.util.function.Consumer;
 public final class GuiInventory implements InventoryHolder {
 
     public static final String TICK = "tick";
-    private static final PlainTextComponentSerializer PLAIN = PlainTextComponentSerializer.plainText();
 
     private final HashMap<String, Object> values;
     private final Player player;
     private final GuiProvider provider;
     private final int rows;
-    private final boolean sharedInventory;
     private final AtomicBoolean refreshRequested = new AtomicBoolean();
 
     private final GuiEditableSlots editableSlots;
     private final ClickableItem[] items;
-    private Inventory bukkitInventory;
+    private final Inventory bukkitInventory;
+    private Component displayedTitle;
+    private Component pendingTitle;
 
     public GuiInventory(Player player, GuiProvider provider, Consumer<GuiInventory> params) {
         this(player, provider, null, params);
@@ -53,7 +52,6 @@ public final class GuiInventory implements InventoryHolder {
         this.items = new ClickableItem[9 * rows];
 
         Component initialTitle = provider.title(this);
-        this.sharedInventory = inventory != null;
         if (inventory != null) {
             if (inventory.getSize() != rows * 9) {
                 throw new IllegalArgumentException(
@@ -78,26 +76,15 @@ public final class GuiInventory implements InventoryHolder {
         updateTitle(Component.text(title == null ? "" : title));
     }
 
-    @SuppressWarnings("deprecation")
     public void updateTitle(Component newTitle) {
         InventoryView view = player.getOpenInventory();
         if (!view.getTopInventory().equals(bukkitInventory)) return;
 
-        Component current = view.title();
-        String curPlain = PLAIN.serialize(current);
-        String newPlain = PLAIN.serialize(newTitle);
-        if (curPlain.equals(newPlain)) return;
+        Component title = newTitle == null ? Component.empty() : newTitle;
+        if (Objects.equals(displayedTitle, title)) return;
 
-        if (sharedInventory) {
-            view.setTitle(LegacyComponentSerializer.legacySection().serialize(newTitle));
-            return;
-        }
-
-        Inventory newInv = Bukkit.createInventory(this, bukkitInventory.getSize(), newTitle);
-        newInv.setContents(bukkitInventory.getContents());
-
-        this.bukkitInventory = newInv;
-        player.openInventory(newInv);
+        pendingTitle = title;
+        openInventory(bukkitInventory);
     }
 
     @Override
@@ -216,8 +203,18 @@ public final class GuiInventory implements InventoryHolder {
     }
 
     public void open() {
-        player.openInventory(bukkitInventory);
-        if (sharedInventory) updateTitle(provider.title(this));
+        openInventory(bukkitInventory);
+    }
+
+    void displayedTitle(Component displayedTitle) {
+        this.displayedTitle = displayedTitle == null ? Component.empty() : displayedTitle;
+        pendingTitle = null;
+    }
+
+    Component titleForOpen() {
+        if (pendingTitle != null) return pendingTitle;
+        Component title = provider.title(this);
+        return title == null ? Component.empty() : title;
     }
 
     public void refresh() {
@@ -226,6 +223,17 @@ public final class GuiInventory implements InventoryHolder {
 
     boolean consumeRefreshRequest() {
         return refreshRequested.getAndSet(false);
+    }
+
+    private void openInventory(Inventory inventory) {
+        ItemStack cursor = player.getItemOnCursor();
+        boolean preserveCursor = cursor != null && !cursor.getType().isAir();
+        if (preserveCursor) player.setItemOnCursor(null);
+        try {
+            player.openInventory(inventory);
+        } finally {
+            if (preserveCursor) player.setItemOnCursor(cursor);
+        }
     }
 
     public void handleClick(InventoryClickEvent e) {
