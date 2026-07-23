@@ -1,6 +1,7 @@
 package fr.nivcoo.utilsz.platform.bukkit.gui;
 
 import net.kyori.adventure.text.Component;
+import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 
 public interface GuiProvider {
@@ -18,6 +19,7 @@ public interface GuiProvider {
 
     default boolean cancelBottomClicks() { return false; }
     default boolean cancelBottomClicks(GuiInventory inv) { return cancelBottomClicks(); }
+    default void onBottomClick(InventoryClickEvent event, GuiInventory inv) { }
     default GuiEditableSlots editableSlots(GuiInventory inv) { return GuiEditableSlots.none(); }
 
     default boolean allowClose(GuiInventory inv) { return true; }

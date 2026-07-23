@@ -173,6 +173,8 @@ public final class GuiInventoryManager implements Listener {
                 scheduleEditableChange(inv);
             }
         } else {
+            provider.onBottomClick(e, inv);
+            if (e.isCancelled()) return;
             if (provider.cancelBottomClicks(inv)) {
                 e.setCancelled(true);
             } else if (e.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY) {
