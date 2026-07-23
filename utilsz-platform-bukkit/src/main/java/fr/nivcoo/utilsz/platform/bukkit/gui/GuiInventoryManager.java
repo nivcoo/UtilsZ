@@ -19,8 +19,11 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -30,12 +33,15 @@ public final class GuiInventoryManager implements Listener {
     private final JavaPlugin plugin;
     private final HashMap<UUID, GuiInventory> inventories;
     private final HashMap<UUID, GuiInventory> pendingOpens;
+    private final Set<GuiInventory> pendingEditableChanges;
     private boolean initialized;
+    private int updateTaskId = -1;
 
     public GuiInventoryManager(JavaPlugin plugin) {
         this.plugin = plugin;
         this.inventories = new HashMap<>();
         this.pendingOpens = new HashMap<>();
+        this.pendingEditableChanges = Collections.newSetFromMap(new IdentityHashMap<>());
     }
 
     public void init() {
@@ -43,7 +49,7 @@ public final class GuiInventoryManager implements Listener {
         initialized = true;
         Bukkit.getPluginManager().registerEvents(this, plugin);
 
-        Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, () -> {
+        updateTaskId = Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, () -> {
             if (inventories.isEmpty()) return;
 
             var iterator = inventories.values().iterator();
@@ -89,9 +95,18 @@ public final class GuiInventoryManager implements Listener {
     }
 
     public GuiInventory prepare(GuiProvider provider, Player player, Consumer<GuiInventory> params) {
+        return prepare(provider, player, null, params);
+    }
+
+    public GuiInventory prepare(
+            GuiProvider provider,
+            Player player,
+            Inventory sharedInventory,
+            Consumer<GuiInventory> params
+    ) {
         if (provider == null) throw new IllegalArgumentException("provider cannot be null");
         if (player == null) throw new IllegalArgumentException("player cannot be null");
-        GuiInventory inv = new GuiInventory(player, provider, params);
+        GuiInventory inv = new GuiInventory(player, provider, sharedInventory, params);
         provider.init(inv);
         return inv;
     }
@@ -99,6 +114,7 @@ public final class GuiInventoryManager implements Listener {
     public GuiInventory open(GuiInventory inv) {
         if (inv == null) throw new IllegalArgumentException("inventory cannot be null");
         Player p = inv.getPlayer();
+        pendingOpens.remove(p.getUniqueId());
         inventories.put(p.getUniqueId(), inv);
         if (shouldDeferOpen(p, inv)) {
             UUID uuid = p.getUniqueId();
@@ -127,17 +143,26 @@ public final class GuiInventoryManager implements Listener {
     }
 
     public void close(Player p) {
+        UUID uuid = p.getUniqueId();
+        pendingOpens.remove(uuid);
+        GuiInventory inventory = inventories.get(uuid);
+        if (inventory != null && !isViewing(p, inventory)) inventories.remove(uuid, inventory);
         p.closeInventory();
     }
 
     public void closeAll() {
-        for (GuiInventory inv : List.copyOf(inventories.values())) inv.getPlayer().closeInventory();
+        for (GuiInventory inv : List.copyOf(inventories.values())) close(inv.getPlayer());
     }
 
     public void shutdown() {
+        if (updateTaskId >= 0) {
+            Bukkit.getScheduler().cancelTask(updateTaskId);
+            updateTaskId = -1;
+        }
         closeAll();
         inventories.clear();
         pendingOpens.clear();
+        pendingEditableChanges.clear();
         HandlerList.unregisterAll(this);
         initialized = false;
     }
@@ -305,7 +330,6 @@ public final class GuiInventoryManager implements Listener {
     }
 
     private static boolean accepts(GuiInventory inventory, int slot, ItemStack item) {
-        if (item == null || item.getType().isAir()) return true;
         GuiEditableSlots.Validation validation = inventory.getEditableSlots()
                 .validate(inventory, slot, item);
         if (validation.accepted()) return true;
@@ -317,7 +341,9 @@ public final class GuiInventoryManager implements Listener {
     }
 
     private void scheduleEditableChange(GuiInventory inventory) {
+        if (!pendingEditableChanges.add(inventory)) return;
         Bukkit.getScheduler().runTask(plugin, () -> {
+            pendingEditableChanges.remove(inventory);
             if (inventories.get(inventory.getPlayer().getUniqueId()) == inventory) {
                 inventory.getProvider().onEditableChange(inventory);
             }

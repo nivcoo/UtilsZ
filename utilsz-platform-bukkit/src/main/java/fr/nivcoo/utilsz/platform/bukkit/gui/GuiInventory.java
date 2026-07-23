@@ -1,7 +1,6 @@
 package fr.nivcoo.utilsz.platform.bukkit.gui;
 
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -20,12 +19,11 @@ public final class GuiInventory implements InventoryHolder {
 
     public static final String TICK = "tick";
 
-    private static final PlainTextComponentSerializer PLAIN = PlainTextComponentSerializer.plainText();
-
     private final HashMap<String, Object> values;
     private final Player player;
     private final GuiProvider provider;
     private final int rows;
+    private final boolean sharedInventory;
     private final AtomicBoolean refreshRequested = new AtomicBoolean();
 
     private final GuiEditableSlots editableSlots;
@@ -33,6 +31,10 @@ public final class GuiInventory implements InventoryHolder {
     private Inventory bukkitInventory;
 
     public GuiInventory(Player player, GuiProvider provider, Consumer<GuiInventory> params) {
+        this(player, provider, null, params);
+    }
+
+    GuiInventory(Player player, GuiProvider provider, Inventory inventory, Consumer<GuiInventory> params) {
         this.values = new HashMap<>();
         this.player = player;
         this.provider = provider;
@@ -48,9 +50,18 @@ public final class GuiInventory implements InventoryHolder {
         this.items = new ClickableItem[9 * rows];
 
         Component initialTitle = provider.title(this);
-        this.bukkitInventory = Bukkit.createInventory(
-                this, rows * 9, initialTitle == null ? Component.empty() : initialTitle
-        );
+        this.sharedInventory = inventory != null;
+        if (inventory != null) {
+            if (inventory.getSize() != rows * 9) {
+                throw new IllegalArgumentException(
+                        "shared inventory size " + inventory.getSize() + " does not match " + rows * 9);
+            }
+            this.bukkitInventory = inventory;
+        } else {
+            this.bukkitInventory = Bukkit.createInventory(
+                    this, rows * 9, initialTitle == null ? Component.empty() : initialTitle
+            );
+        }
 
         put(TICK, 0);
     }
@@ -69,9 +80,9 @@ public final class GuiInventory implements InventoryHolder {
         if (!view.getTopInventory().equals(bukkitInventory)) return;
 
         Component current = view.title();
-        String curPlain = PLAIN.serialize(current);
-        String newPlain = PLAIN.serialize(newTitle);
-        if (curPlain.equals(newPlain)) return;
+        if (current.equals(newTitle)) return;
+
+        if (sharedInventory) return;
 
         Inventory newInv = Bukkit.createInventory(this, bukkitInventory.getSize(), newTitle);
         newInv.setContents(bukkitInventory.getContents());
