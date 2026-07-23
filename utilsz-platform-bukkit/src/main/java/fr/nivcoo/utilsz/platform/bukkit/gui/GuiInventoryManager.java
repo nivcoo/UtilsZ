@@ -374,14 +374,21 @@ public final class GuiInventoryManager implements Listener {
         return inventories.values().stream().anyMatch(inv -> inventory.equals(inv.getBukkitInventory()));
     }
 
-    @EventHandler(priority = EventPriority.HIGH)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onOpen(InventoryOpenEvent event) {
         if (!(event.getPlayer() instanceof Player player)) return;
         GuiInventory inventory = inventories.get(player.getUniqueId());
         if (inventory == null || !inventory.getBukkitInventory().equals(event.getInventory())) return;
-        Component title = inventory.titleForOpen();
-        event.titleOverride(title);
-        inventory.displayedTitle(title);
+        event.titleOverride(inventory.titleForOpen());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onOpened(InventoryOpenEvent event) {
+        if (!(event.getPlayer() instanceof Player player)) return;
+        GuiInventory inventory = inventories.get(player.getUniqueId());
+        if (inventory == null || !inventory.getBukkitInventory().equals(event.getInventory())) return;
+        Component title = event.titleOverride();
+        inventory.displayedTitle(title == null ? inventory.titleForOpen() : title);
     }
 
     @EventHandler(priority = EventPriority.HIGH)
