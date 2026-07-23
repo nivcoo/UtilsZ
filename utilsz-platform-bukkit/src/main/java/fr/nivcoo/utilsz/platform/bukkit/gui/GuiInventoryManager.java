@@ -115,8 +115,8 @@ public final class GuiInventoryManager implements Listener {
         if (inv == null) throw new IllegalArgumentException("inventory cannot be null");
         Player p = inv.getPlayer();
         pendingOpens.remove(p.getUniqueId());
-        inventories.put(p.getUniqueId(), inv);
-        if (shouldDeferOpen(p, inv)) {
+        GuiInventory previous = inventories.put(p.getUniqueId(), inv);
+        if (shouldDeferOpen(p, inv, previous)) {
             UUID uuid = p.getUniqueId();
             pendingOpens.put(uuid, inv);
             p.closeInventory();
@@ -124,10 +124,7 @@ public final class GuiInventoryManager implements Listener {
         }
         Inventory current = p.getOpenInventory().getTopInventory();
         ItemStack cursor = p.getItemOnCursor();
-        boolean preserveCursor = current != null
-                && !current.equals(inv.getBukkitInventory())
-                && cursor != null
-                && !cursor.getType().isAir();
+        boolean preserveCursor = !current.equals(inv.getBukkitInventory()) && cursor != null && !cursor.getType().isAir();
         if (preserveCursor) p.setItemOnCursor(null);
         try {
             inv.open();
@@ -336,7 +333,7 @@ public final class GuiInventoryManager implements Listener {
     private static ItemStack incomingTopItem(InventoryClickEvent event, Player player) {
         return switch (event.getAction()) {
             case PLACE_ALL, PLACE_ONE, PLACE_SOME, SWAP_WITH_CURSOR -> event.getCursor();
-            case HOTBAR_SWAP, HOTBAR_MOVE_AND_READD -> {
+            case HOTBAR_SWAP -> {
                 int button = event.getHotbarButton();
                 if (button >= 0 && button <= 8) yield player.getInventory().getItem(button);
                 yield event.getClick() == ClickType.SWAP_OFFHAND
@@ -374,11 +371,12 @@ public final class GuiInventoryManager implements Listener {
                 && player.getOpenInventory().getTopInventory().equals(inv.getBukkitInventory());
     }
 
-    private boolean shouldDeferOpen(Player player, GuiInventory next) {
+    private boolean shouldDeferOpen(Player player, GuiInventory next, GuiInventory previous) {
         if (player == null || !player.isOnline()) return false;
         Inventory current = player.getOpenInventory().getTopInventory();
         return current.getType() != InventoryType.CRAFTING
                 && !current.equals(next.getBukkitInventory())
+                && (previous == null || !current.equals(previous.getBukkitInventory()))
                 && !isManagedInventory(current);
     }
 
