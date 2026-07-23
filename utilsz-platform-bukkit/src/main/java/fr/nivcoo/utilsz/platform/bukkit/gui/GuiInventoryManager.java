@@ -118,7 +118,7 @@ public final class GuiInventoryManager implements Listener {
                 throw new IllegalStateException("Managed inventory opening was cancelled");
             }
         } catch (RuntimeException exception) {
-            if (previous == null) inventories.remove(uuid, inv);
+            if (previous == null || previous == inv) inventories.remove(uuid, inv);
             else inventories.replace(uuid, inv, previous);
             throw exception;
         }
@@ -402,7 +402,14 @@ public final class GuiInventoryManager implements Listener {
             pendingCloses.remove(inv);
             if (inventories.get(uuid) != inv || isViewing(inv.getPlayer(), inv)) return;
             if (!provider.allowClose(inv)) {
-                inv.open();
+                try {
+                    open(inv);
+                } catch (RuntimeException exception) {
+                    inventories.remove(uuid, inv);
+                    provider.onClose(e, inv);
+                    plugin.getLogger().warning("Unable to reopen managed inventory: "
+                            + exception.getMessage());
+                }
                 return;
             }
             inventories.remove(uuid, inv);

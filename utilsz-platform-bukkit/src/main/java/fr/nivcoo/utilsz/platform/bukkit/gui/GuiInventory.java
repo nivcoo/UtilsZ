@@ -226,8 +226,9 @@ public final class GuiInventory implements InventoryHolder {
     }
 
     private void openInventory(Inventory inventory) {
-        ItemStack cursor = player.getItemOnCursor();
-        boolean preserveCursor = cursor != null && !cursor.getType().isAir();
+        ItemStack currentCursor = player.getItemOnCursor();
+        boolean preserveCursor = currentCursor != null && !currentCursor.getType().isAir();
+        ItemStack cursor = preserveCursor ? currentCursor.clone() : null;
         if (preserveCursor) player.setItemOnCursor(null);
         try {
             player.openInventory(inventory);
