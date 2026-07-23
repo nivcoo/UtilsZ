@@ -1,6 +1,7 @@
 package fr.nivcoo.utilsz.platform.bukkit.gui;
 
 import net.kyori.adventure.text.Component;
+import org.bukkit.event.inventory.InventoryAction;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -36,6 +37,14 @@ class GuiProviderTest {
         assertTrue(GuiInventoryManager.touchesBottom(Set.of(0, 27), 27));
         assertTrue(GuiInventoryManager.touchesBottom(Set.of(44), 27));
         assertFalse(GuiInventoryManager.touchesBottom(null, 27));
+    }
+
+    @Test
+    void blocksUnsafeInventoryActions() {
+        assertTrue(GuiInventoryManager.blockedAction(InventoryAction.COLLECT_TO_CURSOR));
+        assertTrue(GuiInventoryManager.blockedAction(InventoryAction.CLONE_STACK));
+        assertTrue(GuiInventoryManager.blockedAction(InventoryAction.UNKNOWN));
+        assertFalse(GuiInventoryManager.blockedAction(InventoryAction.PICKUP_ALL));
     }
 
     @Test

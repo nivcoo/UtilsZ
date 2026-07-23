@@ -1,6 +1,8 @@
 package fr.nivcoo.utilsz.platform.bukkit.gui;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -18,6 +20,7 @@ import java.util.function.Consumer;
 public final class GuiInventory implements InventoryHolder {
 
     public static final String TICK = "tick";
+    private static final PlainTextComponentSerializer PLAIN = PlainTextComponentSerializer.plainText();
 
     private final HashMap<String, Object> values;
     private final Player player;
@@ -75,14 +78,20 @@ public final class GuiInventory implements InventoryHolder {
         updateTitle(Component.text(title == null ? "" : title));
     }
 
+    @SuppressWarnings("deprecation")
     public void updateTitle(Component newTitle) {
         InventoryView view = player.getOpenInventory();
         if (!view.getTopInventory().equals(bukkitInventory)) return;
 
         Component current = view.title();
-        if (current.equals(newTitle)) return;
+        String curPlain = PLAIN.serialize(current);
+        String newPlain = PLAIN.serialize(newTitle);
+        if (curPlain.equals(newPlain)) return;
 
-        if (sharedInventory) return;
+        if (sharedInventory) {
+            view.setTitle(LegacyComponentSerializer.legacySection().serialize(newTitle));
+            return;
+        }
 
         Inventory newInv = Bukkit.createInventory(this, bukkitInventory.getSize(), newTitle);
         newInv.setContents(bukkitInventory.getContents());
@@ -208,6 +217,7 @@ public final class GuiInventory implements InventoryHolder {
 
     public void open() {
         player.openInventory(bukkitInventory);
+        if (sharedInventory) updateTitle(provider.title(this));
     }
 
     public void refresh() {

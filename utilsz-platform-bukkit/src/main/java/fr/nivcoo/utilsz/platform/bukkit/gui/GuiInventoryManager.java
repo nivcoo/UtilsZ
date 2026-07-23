@@ -122,7 +122,18 @@ public final class GuiInventoryManager implements Listener {
             p.closeInventory();
             return inv;
         }
-        inv.open();
+        Inventory current = p.getOpenInventory().getTopInventory();
+        ItemStack cursor = p.getItemOnCursor();
+        boolean preserveCursor = current != null
+                && !current.equals(inv.getBukkitInventory())
+                && cursor != null
+                && !cursor.getType().isAir();
+        if (preserveCursor) p.setItemOnCursor(null);
+        try {
+            inv.open();
+        } finally {
+            if (preserveCursor) p.setItemOnCursor(cursor);
+        }
         return inv;
     }
 
@@ -167,7 +178,7 @@ public final class GuiInventoryManager implements Listener {
         initialized = false;
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onClick(InventoryClickEvent e) {
         UUID uuid = e.getWhoClicked().getUniqueId();
         if (!inventories.containsKey(uuid)) return;
@@ -184,7 +195,7 @@ public final class GuiInventoryManager implements Listener {
         boolean isTop = e.getRawSlot() < topSize;
 
         GuiProvider provider = inv.getProvider();
-        if (e.getAction() == InventoryAction.COLLECT_TO_CURSOR) {
+        if (blockedAction(e.getAction())) {
             e.setCancelled(true);
             return;
         }
@@ -217,7 +228,7 @@ public final class GuiInventoryManager implements Listener {
         inv.handleClick(e);
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onDrag(InventoryDragEvent e) {
         UUID uuid = e.getWhoClicked().getUniqueId();
         if (!inventories.containsKey(uuid)) return;
@@ -261,6 +272,12 @@ public final class GuiInventoryManager implements Listener {
 
     static boolean touchesBottom(Collection<Integer> rawSlots, int topSize) {
         return rawSlots != null && rawSlots.stream().anyMatch(slot -> slot != null && slot >= topSize);
+    }
+
+    static boolean blockedAction(InventoryAction action) {
+        return action == InventoryAction.COLLECT_TO_CURSOR
+                || action == InventoryAction.CLONE_STACK
+                || action == InventoryAction.UNKNOWN;
     }
 
     private static boolean moveToEditableTop(GuiInventory inv, Inventory sourceInventory, int sourceSlot) {
