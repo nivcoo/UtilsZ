@@ -2,10 +2,14 @@ package fr.nivcoo.utilsz.core.config;
 
 import fr.nivcoo.utilsz.core.config.annotations.*;
 import fr.nivcoo.utilsz.core.config.annotations.Optional;
+import fr.nivcoo.utilsz.core.config.reload.ConfigReloadListener;
+import fr.nivcoo.utilsz.core.config.reload.ConfigReloadOptions;
+import fr.nivcoo.utilsz.core.config.reload.ConfigReloadTicker;
 import fr.nivcoo.utilsz.core.conversion.Converter;
 import fr.nivcoo.utilsz.core.conversion.ConverterRegistry;
 import fr.nivcoo.utilsz.core.config.text.TextMode;
 import fr.nivcoo.utilsz.core.config.validation.Validatable;
+import fr.nivcoo.utilsz.core.scheduler.PluginScheduler;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextReplacementConfig;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -25,6 +29,7 @@ import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -99,6 +104,22 @@ public final class ConfigManager {
             throw new IllegalArgumentException("Defaults must be an instance of " + cfgClass.getName());
         }
         return load(relativePath, cfgClass, instance, true);
+    }
+
+    public <T> ConfigReloadTicker<T> watch(String relativePath, Class<T> cfgClass, T current,
+                                            PluginScheduler scheduler, ConfigReloadListener<T> listener,
+                                            Consumer<Throwable> errorHandler) {
+        return watch(relativePath, cfgClass, current, scheduler, listener, errorHandler,
+                ConfigReloadOptions.DEFAULT);
+    }
+
+    public <T> ConfigReloadTicker<T> watch(String relativePath, Class<T> cfgClass, T current,
+                                            PluginScheduler scheduler, ConfigReloadListener<T> listener,
+                                            Consumer<Throwable> errorHandler, ConfigReloadOptions options) {
+        Objects.requireNonNull(cfgClass, "cfgClass");
+        File file = resolveFile(relativePath);
+        return new ConfigReloadTicker<>(scheduler, file.toPath(), current,
+                () -> load(relativePath, cfgClass), listener, errorHandler, options);
     }
 
     private <T> T load(String relativePath, Class<T> cfgClass, T instance, boolean mergeDefaults) {
