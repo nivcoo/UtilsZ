@@ -92,7 +92,7 @@ public final class ConfigManager {
     }
 
     public <T> T load(String relativePath, Class<T> cfgClass) {
-        return load(relativePath, cfgClass, newInstance(cfgClass), false);
+        return load(relativePath, cfgClass, newInstance(cfgClass), false, true);
     }
 
     @SuppressWarnings("unused")
@@ -103,7 +103,7 @@ public final class ConfigManager {
         if (!cfgClass.isInstance(instance)) {
             throw new IllegalArgumentException("Defaults must be an instance of " + cfgClass.getName());
         }
-        return load(relativePath, cfgClass, instance, true);
+        return load(relativePath, cfgClass, instance, true, true);
     }
 
     public <T> ConfigReloadTicker<T> watch(String relativePath, Class<T> cfgClass, T current,
@@ -119,10 +119,11 @@ public final class ConfigManager {
         Objects.requireNonNull(cfgClass, "cfgClass");
         File file = resolveFile(relativePath);
         return new ConfigReloadTicker<>(scheduler, file.toPath(), current,
-                () -> load(relativePath, cfgClass), listener, errorHandler, options);
+                () -> load(relativePath, cfgClass, newInstance(cfgClass), false, false),
+                listener, errorHandler, options);
     }
 
-    private <T> T load(String relativePath, Class<T> cfgClass, T instance, boolean mergeDefaults) {
+    private <T> T load(String relativePath, Class<T> cfgClass, T instance, boolean mergeDefaults, boolean write) {
         Objects.requireNonNull(cfgClass, "cfgClass");
         File file = resolveFile(relativePath);
         boolean existed = file.exists();
@@ -143,7 +144,7 @@ public final class ConfigManager {
         Map<String, List<String>> comments = new LinkedHashMap<>();
         export(instance, rootName(cfgClass), existing, out, comments);
 
-        if (shouldWrite(cfgClass, existed)) {
+        if (write && shouldWrite(cfgClass, existed)) {
             Comment rootC = cfgClass.getAnnotation(Comment.class);
             String header = (rootC != null) ? String.join("\n", rootC.value()) : null;
             saveText(file, writeYamlWithComments(out, comments, header));

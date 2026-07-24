@@ -99,9 +99,16 @@ public final class ConfigReloadTicker<T> implements PluginTicker {
         if (fingerprint.equals(failedFingerprint) && System.nanoTime() < retryAfter) return;
         if (!loading.compareAndSet(false, true)) return;
         try {
+            String expectedFingerprint = fingerprint;
             T candidate = Objects.requireNonNull(loader.get(), "config loader returned null");
             String candidateFingerprint = Objects.requireNonNull(fingerprint(file),
                     "Auto-reloaded config file disappeared");
+            if (!candidateFingerprint.equals(expectedFingerprint)) {
+                observedFingerprint = candidateFingerprint;
+                observations = 1;
+                failedFingerprint = null;
+                return;
+            }
             if (!started.get()) return;
             listener.reload(new ConfigReloadEvent<>(file, current, candidate));
             if (!started.get()) return;

@@ -6,8 +6,11 @@ import fr.nivcoo.utilsz.core.scheduler.ScheduledTask;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -51,6 +54,48 @@ class ConfigReloadTickerTest {
         assertEquals("second", ticker.current().value);
         assertEquals("second", applied.get());
         assertEquals(1, failures.get());
+    }
+
+    @Test
+    void waitsForTheReplacementWhenTheFileChangesDuringLoading(@TempDir Path directory) throws Exception {
+        ConfigManager manager = new ConfigManager(directory.toFile());
+        ReloadConfig initial = manager.load("config.yml", ReloadConfig.class);
+        TestScheduler scheduler = new TestScheduler();
+        AtomicBoolean replaceDuringLoad = new AtomicBoolean(true);
+        AtomicInteger reloads = new AtomicInteger();
+        Path file = directory.resolve("config.yml");
+        ConfigReloadTicker<ReloadConfig> ticker = new ConfigReloadTicker<>(
+                scheduler,
+                file,
+                initial,
+                () -> {
+                    try {
+                        ReloadConfig candidate = new ReloadConfig();
+                        candidate.value = Files.readString(file).substring("value: ".length()).trim();
+                        if (replaceDuringLoad.compareAndSet(true, false)) {
+                            Files.writeString(file, "value: third\n");
+                        }
+                        return candidate;
+                    } catch (IOException exception) {
+                        throw new UncheckedIOException(exception);
+                    }
+                },
+                event -> reloads.incrementAndGet(),
+                exception -> {
+                    throw new AssertionError(exception);
+                },
+                new ConfigReloadOptions(1L, 2, 1L));
+        ticker.start();
+
+        Files.writeString(file, "value: second\n");
+        scheduler.tick();
+        scheduler.tick();
+        assertEquals("first", ticker.current().value);
+        assertEquals(0, reloads.get());
+
+        scheduler.tick();
+        assertEquals("third", ticker.current().value);
+        assertEquals(1, reloads.get());
     }
 
     public static final class ReloadConfig {
