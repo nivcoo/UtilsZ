@@ -48,6 +48,15 @@ class GuiProviderTest {
     }
 
     @Test
+    void blocksDropsFromEditableManagedInventories() {
+        assertTrue(GuiInventoryManager.blockedEditableAction(InventoryAction.DROP_ALL_CURSOR));
+        assertTrue(GuiInventoryManager.blockedEditableAction(InventoryAction.DROP_ONE_CURSOR));
+        assertTrue(GuiInventoryManager.blockedEditableAction(InventoryAction.DROP_ALL_SLOT));
+        assertTrue(GuiInventoryManager.blockedEditableAction(InventoryAction.DROP_ONE_SLOT));
+        assertFalse(GuiInventoryManager.blockedEditableAction(InventoryAction.PICKUP_ALL));
+    }
+
+    @Test
     void editableSlotsCarryDragAndSinglePassValidationRules() {
         AtomicInteger validations = new AtomicInteger();
         GuiEditableSlots slots = GuiEditableSlots.of(List.of(10, 11))

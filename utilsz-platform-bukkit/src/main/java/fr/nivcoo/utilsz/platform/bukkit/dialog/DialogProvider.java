@@ -2,6 +2,7 @@ package fr.nivcoo.utilsz.platform.bukkit.dialog;
 
 import io.papermc.paper.registry.data.dialog.ActionButton;
 import io.papermc.paper.registry.data.dialog.DialogBase;
+import io.papermc.paper.registry.data.dialog.DialogRegistryEntry;
 import io.papermc.paper.registry.data.dialog.body.DialogBody;
 import io.papermc.paper.registry.data.dialog.input.DialogInput;
 import io.papermc.paper.registry.data.dialog.type.DialogType;
@@ -51,6 +52,23 @@ public interface DialogProvider {
 
     default int columns(DialogView view) {
         return 1;
+    }
+
+    default DialogBase base(DialogView view) {
+        return DialogBase.builder(title(view))
+                .externalTitle(externalTitle(view))
+                .canCloseWithEscape(canCloseWithEscape(view))
+                .pause(pause(view))
+                .afterAction(afterAction(view))
+                .body(body(view))
+                .inputs(inputs(view))
+                .build();
+    }
+
+    default void configureBuilder(DialogView view, DialogRegistryEntry.Builder builder) {
+        List<ActionButton> buttons = buttons(view);
+        ActionButton exitButton = exitButton(view);
+        builder.base(base(view)).type(type(view, buttons, exitButton));
     }
 
     default DialogType type(DialogView view, List<ActionButton> buttons, @Nullable ActionButton exitButton) {

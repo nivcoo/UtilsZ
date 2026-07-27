@@ -1,8 +1,6 @@
 package fr.nivcoo.utilsz.platform.bukkit.dialog;
 
 import io.papermc.paper.dialog.Dialog;
-import io.papermc.paper.registry.data.dialog.DialogBase;
-import io.papermc.paper.registry.data.dialog.DialogRegistryEntry;
 import org.bukkit.entity.Player;
 
 import java.util.HashMap;
@@ -24,9 +22,20 @@ public final class DialogManager {
         DialogView view = new DialogView(player, provider);
         if (params != null) params.accept(view);
         provider.init(view);
-        views.put(player.getUniqueId(), view);
-        player.showDialog(build(view));
-        return view;
+        Dialog dialog = build(view);
+        UUID playerId = player.getUniqueId();
+        DialogView previous = views.put(playerId, view);
+        try {
+            player.showDialog(dialog);
+            return view;
+        } catch (RuntimeException | Error error) {
+            if (previous == null) {
+                views.remove(playerId, view);
+            } else {
+                views.replace(playerId, view, previous);
+            }
+            throw error;
+        }
     }
 
     public DialogView get(Player player) {
@@ -46,23 +55,16 @@ public final class DialogManager {
         player.closeDialog();
     }
 
+    /**
+     * Stops tracking a dialog whose remaining lifecycle is entirely
+     * client-side, without changing the screen currently shown to the player.
+     */
+    public DialogView detach(Player player) {
+        return views.remove(player.getUniqueId());
+    }
+
     public Dialog build(DialogView view) {
         DialogProvider provider = view.provider();
-        DialogBase base = DialogBase.builder(provider.title(view))
-                .externalTitle(provider.externalTitle(view))
-                .canCloseWithEscape(provider.canCloseWithEscape(view))
-                .pause(provider.pause(view))
-                .afterAction(provider.afterAction(view))
-                .body(provider.body(view))
-                .inputs(provider.inputs(view))
-                .build();
-
-        var buttons = provider.buttons(view);
-        var exitButton = provider.exitButton(view);
-        var type = provider.type(view, buttons, exitButton);
-        return Dialog.create(factory -> {
-            DialogRegistryEntry.Builder builder = factory.empty();
-            builder.base(base).type(type);
-        });
+        return Dialog.create(factory -> provider.configureBuilder(view, factory.empty()));
     }
 }

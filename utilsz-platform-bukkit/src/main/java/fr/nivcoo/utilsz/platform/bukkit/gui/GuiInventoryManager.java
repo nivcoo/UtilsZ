@@ -144,7 +144,11 @@ public final class GuiInventoryManager implements Listener {
     public void close(Player p) {
         UUID uuid = p.getUniqueId();
         GuiInventory inventory = inventories.get(uuid);
-        if (inventory != null && !isViewing(p, inventory)) inventories.remove(uuid, inventory);
+        if (inventory == null) return;
+        if (!isViewing(p, inventory)) {
+            inventories.remove(uuid, inventory);
+            return;
+        }
         p.closeInventory();
     }
 
@@ -186,6 +190,10 @@ public final class GuiInventoryManager implements Listener {
 
         GuiProvider provider = inv.getProvider();
         if (blockedAction(e.getAction())) {
+            e.setCancelled(true);
+            return;
+        }
+        if (isTop && blockedEditableAction(e.getAction())) {
             e.setCancelled(true);
             return;
         }
@@ -271,6 +279,13 @@ public final class GuiInventoryManager implements Listener {
         return action == InventoryAction.COLLECT_TO_CURSOR
                 || action == InventoryAction.CLONE_STACK
                 || action == InventoryAction.UNKNOWN;
+    }
+
+    static boolean blockedEditableAction(InventoryAction action) {
+        return action == InventoryAction.DROP_ALL_CURSOR
+                || action == InventoryAction.DROP_ONE_CURSOR
+                || action == InventoryAction.DROP_ALL_SLOT
+                || action == InventoryAction.DROP_ONE_SLOT;
     }
 
     private static boolean moveToEditableTop(GuiInventory inv, Inventory sourceInventory, int sourceSlot) {

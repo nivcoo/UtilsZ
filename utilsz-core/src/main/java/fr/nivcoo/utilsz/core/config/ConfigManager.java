@@ -15,6 +15,7 @@ import net.kyori.adventure.text.TextReplacementConfig;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
@@ -128,6 +129,9 @@ public final class ConfigManager {
         File file = resolveFile(relativePath);
         boolean existed = file.exists();
         Map<String, Object> existing = loadYaml(file);
+        if (cfgClass.isAnnotationPresent(RejectUnknownKeys.class)) {
+            rejectUnknownKeys(existing, cfgClass);
+        }
 
         Map<String, Object> input = existing;
         if (mergeDefaults) {
@@ -291,6 +295,223 @@ public final class ConfigManager {
     private record NamedFile(String id, String normalizedId, String relativePath) {
     }
 
+    private static void rejectUnknownKeys(Map<String, Object> source, Class<?> configClass) {
+        validateKnownObject(
+                source, configClass, "", configClass.getSimpleName(),
+                rootName(configClass));
+    }
+
+    private static void validateKnownObject(
+            Map<?, ?> source,
+            Class<?> configClass,
+            String path,
+            String owner,
+            String fieldPrefix
+    ) {
+        Map<String, List<StrictFieldPath>> fields = new LinkedHashMap<>();
+        for (Field field : orderedConfigFields(configClass, false)) {
+            if (isStatic(field)) continue;
+            String configuredPath = keyPath(field, fieldPrefix);
+            if (configuredPath.isBlank()) {
+                throw new IllegalArgumentException(
+                        "@RejectUnknownKeys cannot map an empty path on "
+                                + configClass.getName() + '.' + field.getName());
+            }
+            List<String> segments = Arrays.stream(configuredPath.split("\\."))
+                    .filter(segment -> !segment.isBlank())
+                    .toList();
+            if (segments.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "@RejectUnknownKeys cannot map an empty path on "
+                                + configClass.getName() + '.' + field.getName());
+            }
+            fields.computeIfAbsent(segments.getFirst(), ignored -> new ArrayList<>())
+                    .add(new StrictFieldPath(field, segments, 0));
+        }
+        validateKnownPathMap(source, fields, path, owner);
+    }
+
+    private static void validateKnownPathMap(
+            Map<?, ?> source,
+            Map<String, List<StrictFieldPath>> fields,
+            String path,
+            String owner
+    ) {
+        for (Map.Entry<?, ?> entry : source.entrySet()) {
+            String key = String.valueOf(entry.getKey());
+            String keyPath = appendPath(path, key);
+            List<StrictFieldPath> candidates = fields.get(key);
+            if (candidates == null || candidates.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Unknown configuration key '" + keyPath + "' for "
+                                + owner + "; expected one of " + fields.keySet());
+            }
+            List<StrictFieldPath> nested = candidates.stream()
+                    .filter(candidate -> !candidate.leaf())
+                    .map(StrictFieldPath::next)
+                    .toList();
+            List<StrictFieldPath> direct = candidates.stream()
+                    .filter(StrictFieldPath::leaf)
+                    .toList();
+            if (!direct.isEmpty() && !nested.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Ambiguous strict configuration schema at '" + keyPath + "'");
+            }
+            if (!direct.isEmpty()) {
+                if (direct.size() != 1) {
+                    throw new IllegalArgumentException(
+                            "Duplicate strict configuration mapping at '" + keyPath + "'");
+                }
+                validateKnownValue(entry.getValue(), direct.getFirst().field(), keyPath);
+                continue;
+            }
+            if (!(entry.getValue() instanceof Map<?, ?> map)) {
+                throw incompatibleStructure(keyPath, "mapping", entry.getValue());
+            }
+            Map<String, List<StrictFieldPath>> nestedFields = new LinkedHashMap<>();
+            for (StrictFieldPath candidate : nested) {
+                nestedFields.computeIfAbsent(candidate.segment(), ignored -> new ArrayList<>())
+                        .add(candidate);
+            }
+            validateKnownPathMap(map, nestedFields, keyPath, owner);
+        }
+    }
+
+    private static void validateKnownValue(Object raw, Field field, String path) {
+        if (findConverter(field) != null) return;
+        Elements elements = field.getAnnotation(Elements.class);
+        Type type = field.getGenericType();
+        Class<?> rawType = field.getType();
+        if (Map.class.isAssignableFrom(rawType)) {
+            if (!(raw instanceof Map<?, ?> values)) {
+                throw incompatibleStructure(path, "mapping", raw);
+            }
+            Type valueType = elements != null && elements.value() != Object.class
+                    ? elements.value() : mapValueType(field);
+            if (rawClass(valueType) == Object.class) return;
+            for (Map.Entry<?, ?> entry : values.entrySet()) {
+                validateKnownValue(entry.getValue(), valueType,
+                        appendPath(path, String.valueOf(entry.getKey())));
+            }
+            return;
+        }
+        if (Collection.class.isAssignableFrom(rawType)) {
+            requireSequence(raw, path);
+            Type elementType = elements != null && elements.value() != Object.class
+                    ? elements.value() : listElementType(field);
+            validateKnownElements(raw, elementType, path);
+            return;
+        }
+        if (rawType.isArray()) {
+            requireSequence(raw, path);
+            validateKnownElements(raw, rawType.getComponentType(), path);
+            return;
+        }
+        validateKnownValue(raw, type, path);
+    }
+
+    private static void validateKnownElements(Object raw, Type elementType, String path) {
+        if (elementType == null || rawClass(elementType) == Object.class) return;
+        if (raw instanceof Iterable<?> values) {
+            int index = 0;
+            for (Object value : values) {
+                validateKnownValue(value, elementType, path + '[' + index++ + ']');
+            }
+            return;
+        }
+        if (!raw.getClass().isArray()) return;
+        for (int index = 0; index < Array.getLength(raw); index++) {
+            validateKnownValue(Array.get(raw, index), elementType,
+                    path + '[' + index + ']');
+        }
+    }
+
+    private static void validateKnownValue(Object raw, Type type, String path) {
+        if (type == null) return;
+        Class<?> rawType = rawClass(type);
+        if (rawType == null || rawType == Object.class
+                || findConverterForClass(rawType) != null) return;
+        if (Map.class.isAssignableFrom(rawType)) {
+            if (!(raw instanceof Map<?, ?> values)) {
+                throw incompatibleStructure(path, "mapping", raw);
+            }
+            if (!(type instanceof ParameterizedType parameterized)) return;
+            Type[] arguments = parameterized.getActualTypeArguments();
+            if (arguments.length != 2 || rawClass(arguments[1]) == Object.class) return;
+            for (Map.Entry<?, ?> entry : values.entrySet()) {
+                validateKnownValue(entry.getValue(), arguments[1],
+                        appendPath(path, String.valueOf(entry.getKey())));
+            }
+            return;
+        }
+        if (Collection.class.isAssignableFrom(rawType)) {
+            requireSequence(raw, path);
+            if (!(type instanceof ParameterizedType parameterized)) return;
+            Type[] arguments = parameterized.getActualTypeArguments();
+            if (arguments.length == 1) validateKnownElements(raw, arguments[0], path);
+            return;
+        }
+        if (rawType.isArray()) {
+            requireSequence(raw, path);
+            validateKnownElements(raw, rawType.getComponentType(), path);
+            return;
+        }
+        if (hasPublicFields(rawType)) {
+            if (!(raw instanceof Map<?, ?> map)) {
+                throw incompatibleStructure(path, "mapping", raw);
+            }
+            validateKnownObject(
+                    map, rawType, path, rawType.getSimpleName(), "");
+            return;
+        }
+        if (raw instanceof Map<?, ?> || isSequence(raw)) {
+            throw incompatibleStructure(path, "scalar", raw);
+        }
+    }
+
+    private static void requireSequence(Object raw, String path) {
+        if (!isSequence(raw)) {
+            throw incompatibleStructure(path, "sequence", raw);
+        }
+    }
+
+    private static boolean isSequence(Object raw) {
+        return raw instanceof Iterable<?>
+                || raw != null && raw.getClass().isArray();
+    }
+
+    private static IllegalArgumentException incompatibleStructure(
+            String path,
+            String expected,
+            Object raw
+    ) {
+        String actual = raw == null ? "null"
+                : raw instanceof Map<?, ?> ? "mapping"
+                : isSequence(raw) ? "sequence"
+                : "scalar";
+        return new IllegalArgumentException(
+                "Invalid configuration structure at '" + path
+                        + "': expected " + expected + " but found " + actual);
+    }
+
+    private static String appendPath(String prefix, String key) {
+        return prefix == null || prefix.isBlank() ? key : prefix + '.' + key;
+    }
+
+    private record StrictFieldPath(Field field, List<String> segments, int index) {
+        private String segment() {
+            return segments.get(index);
+        }
+
+        private boolean leaf() {
+            return index == segments.size() - 1;
+        }
+
+        private StrictFieldPath next() {
+            return new StrictFieldPath(field, segments, index + 1);
+        }
+    }
+
     private File resolveFile(String relativePath) {
         if (relativePath == null) throw new IllegalArgumentException("relativePath cannot be null");
         java.nio.file.Path root = dataFolder.toPath().toAbsolutePath().normalize();
@@ -314,7 +535,9 @@ public final class ConfigManager {
     private Map<String, Object> loadYaml(File f) {
         if (!f.exists()) return new LinkedHashMap<>();
         try (var r = new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8)) {
-            Object o = new Yaml().load(r);
+            LoaderOptions options = new LoaderOptions();
+            options.setAllowDuplicateKeys(false);
+            Object o = new Yaml(options).load(r);
             if (o instanceof Map<?, ?> m) return new LinkedHashMap<>((Map<String, Object>) m);
             if (o == null) return new LinkedHashMap<>();
             throw new IllegalArgumentException("Config root must be a map: " + f);

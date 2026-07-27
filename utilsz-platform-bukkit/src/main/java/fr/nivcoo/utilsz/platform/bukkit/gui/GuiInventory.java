@@ -11,6 +11,9 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -114,6 +117,37 @@ public final class GuiInventory implements InventoryHolder {
 
     public boolean isManagedSlot(int slot) {
         return slot >= 0 && slot < items.length && items[slot] != null;
+    }
+
+    public List<ClickableItem> clickableSnapshot() {
+        List<ClickableItem> snapshot =
+                new ArrayList<>(items.length);
+        for (ClickableItem item : items) {
+            snapshot.add(item == null
+                    ? null : item.cloneItem());
+        }
+        return Collections.unmodifiableList(
+                snapshot);
+    }
+
+    public void restoreClickables(
+            List<ClickableItem> snapshot
+    ) {
+        Objects.requireNonNull(snapshot, "snapshot");
+        if (snapshot.size() != items.length) {
+            throw new IllegalArgumentException(
+                    "clickable snapshot size "
+                            + snapshot.size()
+                            + " does not match inventory size "
+                            + items.length);
+        }
+        for (int slot = 0;
+                slot < items.length; slot++) {
+            ClickableItem item =
+                    snapshot.get(slot);
+            items[slot] = item == null
+                    ? null : item.cloneItem();
+        }
     }
 
     public void set(int col, int row, ClickableItem item) {
