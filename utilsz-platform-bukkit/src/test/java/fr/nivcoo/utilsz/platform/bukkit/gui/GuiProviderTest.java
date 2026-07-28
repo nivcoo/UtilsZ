@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GuiProviderTest {
@@ -54,6 +55,22 @@ class GuiProviderTest {
         assertTrue(GuiInventoryManager.blockedEditableAction(InventoryAction.DROP_ALL_SLOT));
         assertTrue(GuiInventoryManager.blockedEditableAction(InventoryAction.DROP_ONE_SLOT));
         assertFalse(GuiInventoryManager.blockedEditableAction(InventoryAction.PICKUP_ALL));
+    }
+
+    @Test
+    void shutdownRejectsPreparationAndOpeningBeforeMutation() {
+        GuiInventoryManager manager =
+                new GuiInventoryManager(null);
+
+        manager.shutdown();
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> manager.prepare(null, null));
+        assertThrows(
+                IllegalStateException.class,
+                () -> manager.open((GuiInventory) null));
+        assertTrue(manager.getInventories().isEmpty());
     }
 
     @Test

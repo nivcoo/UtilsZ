@@ -100,6 +100,7 @@ public final class GuiInventoryManager implements Listener {
             Inventory sharedInventory,
             Consumer<GuiInventory> params
     ) {
+        requireInitialized();
         if (provider == null) throw new IllegalArgumentException("provider cannot be null");
         if (player == null) throw new IllegalArgumentException("player cannot be null");
         GuiInventory inv = new GuiInventory(player, provider, sharedInventory, params);
@@ -108,6 +109,7 @@ public final class GuiInventoryManager implements Listener {
     }
 
     public GuiInventory open(GuiInventory inv) {
+        requireInitialized();
         if (inv == null) throw new IllegalArgumentException("inventory cannot be null");
         Player p = inv.getPlayer();
         UUID uuid = p.getUniqueId();
@@ -167,6 +169,13 @@ public final class GuiInventoryManager implements Listener {
         inventories.clear();
         pendingEditableChanges.clear();
         pendingCloses.clear();
+    }
+
+    private void requireInitialized() {
+        if (!initialized) {
+            throw new IllegalStateException(
+                    "GuiInventoryManager is not initialized");
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
