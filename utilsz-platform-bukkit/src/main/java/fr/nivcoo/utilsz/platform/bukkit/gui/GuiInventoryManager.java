@@ -161,12 +161,12 @@ public final class GuiInventoryManager implements Listener {
             Bukkit.getScheduler().cancelTask(updateTaskId);
             updateTaskId = -1;
         }
+        HandlerList.unregisterAll(this);
+        initialized = false;
         closeAll();
         inventories.clear();
         pendingEditableChanges.clear();
         pendingCloses.clear();
-        HandlerList.unregisterAll(this);
-        initialized = false;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -420,23 +420,36 @@ public final class GuiInventoryManager implements Listener {
         GuiProvider provider = inv.getProvider();
 
         if (!pendingCloses.add(inv)) return;
-        Bukkit.getScheduler().runTask(plugin, () -> {
+        if (!plugin.isEnabled()) {
             pendingCloses.remove(inv);
-            if (inventories.get(uuid) != inv || isViewing(inv.getPlayer(), inv)) return;
-            if (!provider.allowClose(inv)) {
-                try {
-                    open(inv);
-                } catch (RuntimeException exception) {
-                    inventories.remove(uuid, inv);
-                    provider.onClose(e, inv);
-                    plugin.getLogger().warning("Unable to reopen managed inventory: "
-                            + exception.getMessage());
-                }
-                return;
-            }
             inventories.remove(uuid, inv);
-            provider.onClose(e, inv);
-        });
+            return;
+        }
+        try {
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                pendingCloses.remove(inv);
+                if (inventories.get(uuid) != inv || isViewing(inv.getPlayer(), inv)) return;
+                if (!provider.allowClose(inv)) {
+                    try {
+                        open(inv);
+                    } catch (RuntimeException exception) {
+                        inventories.remove(uuid, inv);
+                        provider.onClose(e, inv);
+                        plugin.getLogger().warning("Unable to reopen managed inventory: "
+                                + exception.getMessage());
+                    }
+                    return;
+                }
+                inventories.remove(uuid, inv);
+                provider.onClose(e, inv);
+            });
+        } catch (RuntimeException exception) {
+            pendingCloses.remove(inv);
+            inventories.remove(uuid, inv);
+            plugin.getLogger().warning(
+                    "Unable to schedule managed inventory close: "
+                            + exception.getMessage());
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
