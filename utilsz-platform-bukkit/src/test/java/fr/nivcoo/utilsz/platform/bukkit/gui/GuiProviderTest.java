@@ -43,18 +43,17 @@ class GuiProviderTest {
     @Test
     void blocksUnsafeInventoryActions() {
         assertTrue(GuiInventoryManager.blockedAction(InventoryAction.COLLECT_TO_CURSOR));
-        assertTrue(GuiInventoryManager.blockedAction(InventoryAction.CLONE_STACK));
         assertTrue(GuiInventoryManager.blockedAction(InventoryAction.UNKNOWN));
+        assertFalse(GuiInventoryManager.blockedAction(InventoryAction.CLONE_STACK));
         assertFalse(GuiInventoryManager.blockedAction(InventoryAction.PICKUP_ALL));
     }
 
     @Test
-    void blocksDropsFromEditableManagedInventories() {
-        assertTrue(GuiInventoryManager.blockedEditableAction(InventoryAction.DROP_ALL_CURSOR));
-        assertTrue(GuiInventoryManager.blockedEditableAction(InventoryAction.DROP_ONE_CURSOR));
-        assertTrue(GuiInventoryManager.blockedEditableAction(InventoryAction.DROP_ALL_SLOT));
-        assertTrue(GuiInventoryManager.blockedEditableAction(InventoryAction.DROP_ONE_SLOT));
-        assertFalse(GuiInventoryManager.blockedEditableAction(InventoryAction.PICKUP_ALL));
+    void identifiesActionsThatDoNotMutateEditableSlots() {
+        assertTrue(GuiInventoryManager.nonMutatingTopAction(InventoryAction.CLONE_STACK));
+        assertTrue(GuiInventoryManager.nonMutatingTopAction(InventoryAction.NOTHING));
+        assertFalse(GuiInventoryManager.nonMutatingTopAction(InventoryAction.DROP_ALL_SLOT));
+        assertFalse(GuiInventoryManager.nonMutatingTopAction(InventoryAction.PICKUP_ALL));
     }
 
     @Test
@@ -132,4 +131,5 @@ class GuiProviderTest {
             updates++;
         }
     }
+
 }

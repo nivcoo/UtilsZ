@@ -195,25 +195,41 @@ public final class GuiInventoryManager implements Listener {
         }
 
         int topSize = e.getView().getTopInventory().getSize();
-        boolean isTop = e.getRawSlot() < topSize;
+        boolean isTop = e.getRawSlot() >= 0
+                && e.getRawSlot() < topSize;
+        boolean editableTop = isTop
+                && editableTopSlot(
+                inv.getEditableSlots().slots(),
+                inv.isManagedSlot(e.getSlot()),
+                e.getSlot());
 
         GuiProvider provider = inv.getProvider();
-        if (blockedAction(e.getAction())) {
+        if (e.getAction() == InventoryAction.UNKNOWN) {
             e.setCancelled(true);
             return;
         }
-        if (isTop && blockedEditableAction(e.getAction())) {
+        if (editableTop
+                && !provider.allowEditableInteraction(inv)) {
             e.setCancelled(true);
             return;
         }
         if (isTop) {
-            if (!editableTopSlot(inv.getEditableSlots().slots(),
-                    inv.isManagedSlot(e.getSlot()), e.getSlot())) {
+            if (!editableTop) {
                 e.setCancelled(true);
             } else if (!e.isCancelled() && !accepts(inv, e.getSlot(), incomingTopItem(e, p))) {
                 e.setCancelled(true);
+            } else if (!e.isCancelled()
+                    && e.getAction()
+                    == InventoryAction.COLLECT_TO_CURSOR) {
+                e.setCancelled(true);
+                if (collectToCursor(e, inv, topSize)) {
+                    scheduleEditableChange(inv);
+                }
             } else if (!e.isCancelled()) {
-                scheduleEditableChange(inv);
+                if (!nonMutatingTopAction(
+                        e.getAction())) {
+                    scheduleEditableChange(inv);
+                }
             }
         } else {
             provider.onBottomClick(e, inv);
@@ -225,6 +241,14 @@ public final class GuiInventoryManager implements Listener {
                     scheduleEditableChange(inv);
                 }
                 e.setCancelled(true);
+            } else if (e.getAction()
+                    == InventoryAction.COLLECT_TO_CURSOR) {
+                e.setCancelled(true);
+                if (provider.allowEditableInteraction(inv)
+                        && collectToCursor(
+                        e, inv, topSize)) {
+                    scheduleEditableChange(inv);
+                }
             }
         }
 
@@ -252,18 +276,30 @@ public final class GuiInventoryManager implements Listener {
         }
 
         int topSize = e.getView().getTopInventory().getSize();
+        if (!inv.getProvider()
+                .allowEditableInteraction(inv)
+                && e.getRawSlots().stream()
+                .anyMatch(raw -> raw >= 0
+                        && raw < topSize)) {
+            e.setCancelled(true);
+            return;
+        }
         if (inv.getProvider().cancelBottomClicks(inv) && touchesBottom(e.getRawSlots(), topSize)) {
             e.setCancelled(true);
             return;
         }
         boolean touchesLockedTop = e.getRawSlots().stream()
-                .filter(raw -> raw < topSize)
+                .filter(raw -> raw >= 0
+                        && raw < topSize)
                 .anyMatch(raw -> !inv.getEditableSlots().dragAllowed(raw)
                         || !editableTopSlot(inv.getEditableSlots().slots(),
                         inv.isManagedSlot(raw), raw));
-        boolean touchesTop = e.getRawSlots().stream().anyMatch(raw -> raw < topSize);
+        boolean touchesTop = e.getRawSlots().stream()
+                .anyMatch(raw -> raw >= 0
+                        && raw < topSize);
         boolean rejected = !e.isCancelled() && e.getRawSlots().stream()
-                .filter(raw -> raw < topSize)
+                .filter(raw -> raw >= 0
+                        && raw < topSize)
                 .anyMatch(raw -> !accepts(inv, raw, e.getOldCursor()));
         if (touchesLockedTop || rejected) {
             e.setCancelled(true);
@@ -286,15 +322,104 @@ public final class GuiInventoryManager implements Listener {
 
     static boolean blockedAction(InventoryAction action) {
         return action == InventoryAction.COLLECT_TO_CURSOR
-                || action == InventoryAction.CLONE_STACK
                 || action == InventoryAction.UNKNOWN;
     }
 
-    static boolean blockedEditableAction(InventoryAction action) {
-        return action == InventoryAction.DROP_ALL_CURSOR
-                || action == InventoryAction.DROP_ONE_CURSOR
-                || action == InventoryAction.DROP_ALL_SLOT
-                || action == InventoryAction.DROP_ONE_SLOT;
+    static boolean nonMutatingTopAction(
+            InventoryAction action
+    ) {
+        return action == InventoryAction.CLONE_STACK
+                || action == InventoryAction.NOTHING;
+    }
+
+    private boolean collectToCursor(
+            InventoryClickEvent event,
+            GuiInventory inventory,
+            int topSize
+    ) {
+        ItemStack cursor = event.getCursor();
+        if (cursor == null
+                || cursor.getType().isAir()
+                || cursor.getAmount()
+                >= cursor.getMaxStackSize()) {
+            return false;
+        }
+        int remaining =
+                cursor.getMaxStackSize()
+                        - cursor.getAmount();
+        List<CollectMove> moves =
+                new java.util.ArrayList<>();
+        boolean topChanged = false;
+        for (int raw = 0;
+                raw < event.getView()
+                .countSlots()
+                        && remaining > 0;
+                raw++) {
+            if (raw < topSize
+                    && !editableTopSlot(
+                    inventory.getEditableSlots()
+                            .slots(),
+                    inventory.isManagedSlot(raw),
+                    raw)) {
+                continue;
+            }
+            ItemStack item =
+                    event.getView().getItem(raw);
+            if (item == null
+                    || item.getType().isAir()
+                    || !item.isSimilar(cursor)) {
+                continue;
+            }
+            int moved = Math.min(
+                    remaining, item.getAmount());
+            remaining -= moved;
+            boolean top = raw < topSize;
+            if (top
+                    && !accepts(
+                    inventory, raw, null)) {
+                return false;
+            }
+            moves.add(new CollectMove(
+                    raw, moved, top,
+                    item.clone()));
+        }
+        if (moves.isEmpty()) return false;
+        for (CollectMove move : moves) {
+            ItemStack item = move.original();
+            if (move.amount()
+                    >= item.getAmount()) {
+                event.getView().setItem(
+                        move.rawSlot(), null);
+            } else {
+                ItemStack left = item.clone();
+                left.setAmount(
+                        item.getAmount()
+                                - move.amount());
+                event.getView().setItem(
+                        move.rawSlot(), left);
+            }
+            if (move.top()) {
+                topChanged = true;
+            }
+        }
+        int collected =
+                cursor.getMaxStackSize()
+                        - cursor.getAmount()
+                        - remaining;
+        if (collected <= 0) return false;
+        ItemStack updated = cursor.clone();
+        updated.setAmount(
+                cursor.getAmount() + collected);
+        event.setCursor(updated);
+        return topChanged;
+    }
+
+    private record CollectMove(
+            int rawSlot,
+            int amount,
+            boolean top,
+            ItemStack original
+    ) {
     }
 
     private static boolean moveToEditableTop(GuiInventory inv, Inventory sourceInventory, int sourceSlot) {

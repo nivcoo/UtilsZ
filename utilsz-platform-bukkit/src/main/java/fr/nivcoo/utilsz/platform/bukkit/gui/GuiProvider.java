@@ -21,6 +21,7 @@ public interface GuiProvider {
     default boolean cancelBottomClicks(GuiInventory inv) { return cancelBottomClicks(); }
     default void onBottomClick(InventoryClickEvent event, GuiInventory inv) { }
     default GuiEditableSlots editableSlots(GuiInventory inv) { return GuiEditableSlots.none(); }
+    default boolean allowEditableInteraction(GuiInventory inv) { return true; }
 
     default boolean allowClose(GuiInventory inv) { return true; }
     default void onEditableChange(GuiInventory inv) { }
