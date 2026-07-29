@@ -3,6 +3,7 @@ package fr.nivcoo.utilsz.core.config;
 import fr.nivcoo.utilsz.core.config.annotations.Comment;
 import fr.nivcoo.utilsz.core.config.annotations.Optional;
 import fr.nivcoo.utilsz.core.config.annotations.Range;
+import fr.nivcoo.utilsz.core.config.annotations.RejectUnknownKeys;
 import fr.nivcoo.utilsz.core.config.annotations.Required;
 import fr.nivcoo.utilsz.core.config.annotations.ConfigStructure;
 import fr.nivcoo.utilsz.core.config.annotations.DefaultConfig;
@@ -146,6 +147,26 @@ class ConfigManagerTest {
         assertEquals(1, config.array[0].section.validationCount());
         assertEquals(1, config.shared.validationCount());
         assertEquals(1, config.shared.section.validationCount());
+    }
+
+    @Test
+    void decodeUsesTheSameTypedStrictPipelineWithoutTouchingTheFilesystem() {
+        ConfigManager manager = manager();
+
+        DecodedConfig decoded = manager.decode(Map.of(
+                "name", "surface",
+                "labels", List.of("&aVisible"),
+                "nested", Map.of("enabled", false)
+        ), DecodedConfig.class);
+
+        assertEquals("surface", decoded.name);
+        assertEquals("Visible", PlainTextComponentSerializer.plainText()
+                .serialize(decoded.labels.getFirst()));
+        assertFalse(decoded.nested.enabled);
+        assertThrows(IllegalArgumentException.class, () -> manager.decode(
+                Map.of("name", "surface", "unknown", true),
+                DecodedConfig.class));
+        assertFalse(Files.exists(tempDir.resolve("config.yml")));
     }
 
     @Test
@@ -543,6 +564,13 @@ class ConfigManagerTest {
         int validationCount() {
             return validationCount;
         }
+    }
+
+    @RejectUnknownKeys
+    public static final class DecodedConfig {
+        public String name = "";
+        public List<Component> labels = List.of();
+        public Nested nested = new Nested();
     }
 
     @ConfigStructure

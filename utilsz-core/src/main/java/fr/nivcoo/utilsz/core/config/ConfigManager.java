@@ -96,6 +96,22 @@ public final class ConfigManager {
         return load(relativePath, cfgClass, newInstance(cfgClass), false, true);
     }
 
+    public <T> T decode(Map<String, ?> source, Class<T> cfgClass) {
+        Objects.requireNonNull(source, "source");
+        Objects.requireNonNull(cfgClass, "cfgClass");
+        Map<String, Object> input = new LinkedHashMap<>();
+        source.forEach((key, value) -> input.put(
+                Objects.requireNonNull(key, "source contains a null key"),
+                value));
+        if (cfgClass.isAnnotationPresent(RejectUnknownKeys.class)) {
+            rejectUnknownKeys(input, cfgClass);
+        }
+        T instance = newInstance(cfgClass);
+        inject(input, instance, rootName(cfgClass));
+        validate(instance, rootName(cfgClass));
+        return instance;
+    }
+
     @SuppressWarnings("unused")
     public <T> T load(String relativePath, Class<T> cfgClass, Supplier<? extends T> defaults) {
         Objects.requireNonNull(cfgClass, "cfgClass");
