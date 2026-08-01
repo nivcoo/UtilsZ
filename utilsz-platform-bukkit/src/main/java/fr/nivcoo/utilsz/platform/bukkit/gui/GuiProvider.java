@@ -9,6 +9,10 @@ public interface GuiProvider {
     Component title(GuiInventory inv);
     int rows(GuiInventory inv);
 
+    default GuiInventoryLayout inventoryLayout(GuiInventory inv) {
+        return GuiInventoryLayout.chest(rows(inv));
+    }
+
     void init(GuiInventory inv);
     void update(GuiInventory inv);
 

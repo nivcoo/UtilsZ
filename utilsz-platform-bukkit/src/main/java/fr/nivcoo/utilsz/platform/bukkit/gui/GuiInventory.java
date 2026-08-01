@@ -4,6 +4,7 @@ import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.InventoryView;
@@ -26,6 +27,8 @@ public final class GuiInventory implements InventoryHolder {
     private final HashMap<String, Object> values;
     private final Player player;
     private final GuiProvider provider;
+    private final GuiInventoryLayout inventoryLayout;
+    private final int columns;
     private final int rows;
     private final AtomicBoolean refreshRequested = new AtomicBoolean();
 
@@ -45,26 +48,41 @@ public final class GuiInventory implements InventoryHolder {
         this.provider = provider;
         if (params != null) params.accept(this);
 
+        this.inventoryLayout = Objects.requireNonNull(
+                provider.inventoryLayout(this), "inventory layout");
+        this.columns = inventoryLayout.columns();
+        this.rows = inventoryLayout.rows();
+        int size = inventoryLayout.size();
+        this.items = new ClickableItem[size];
         this.editableSlots = Objects.requireNonNull(
                 provider.editableSlots(this), "editable slots");
-        this.rows = provider.rows(this);
         for (int slot : editableSlots.slots()) {
-            if (slot >= rows * 9) throw new IllegalArgumentException(
-                    "editable slot " + slot + " is outside inventory size " + rows * 9);
+            if (slot < 0 || slot >= size) throw new IllegalArgumentException(
+                    "editable slot " + slot + " is outside inventory size " + size);
         }
-        this.items = new ClickableItem[9 * rows];
 
         Component initialTitle = provider.title(this);
         if (inventory != null) {
-            if (inventory.getSize() != rows * 9) {
+            if (inventory.getSize() != size) {
                 throw new IllegalArgumentException(
-                        "shared inventory size " + inventory.getSize() + " does not match " + rows * 9);
+                        "shared inventory size " + inventory.getSize() + " does not match " + size);
+            }
+            if (inventoryLayout.type() == GuiInventoryType.HOPPER
+                    && inventory.getType() != InventoryType.HOPPER) {
+                throw new IllegalArgumentException(
+                        "shared inventory type " + inventory.getType()
+                                + " does not match HOPPER");
             }
             this.bukkitInventory = inventory;
         } else {
-            this.bukkitInventory = Bukkit.createInventory(
-                    this, rows * 9, initialTitle == null ? Component.empty() : initialTitle
-            );
+            Component title = initialTitle == null
+                    ? Component.empty() : initialTitle;
+            this.bukkitInventory = switch (inventoryLayout.type()) {
+                case CHEST -> Bukkit.createInventory(
+                        this, size, title);
+                case HOPPER -> Bukkit.createInventory(
+                        this, InventoryType.HOPPER, title);
+            };
         }
 
         put(TICK, 0);
@@ -111,6 +129,18 @@ public final class GuiInventory implements InventoryHolder {
         return rows;
     }
 
+    public int getColumns() {
+        return columns;
+    }
+
+    public int getSize() {
+        return items.length;
+    }
+
+    public GuiInventoryLayout getInventoryLayout() {
+        return inventoryLayout;
+    }
+
     public GuiEditableSlots getEditableSlots() {
         return editableSlots;
     }
@@ -151,43 +181,45 @@ public final class GuiInventory implements InventoryHolder {
     }
 
     public void set(int col, int row, ClickableItem item) {
-        if (col < 1 || col > 9) throw new IllegalArgumentException("col must be between 1 and 9 but is " + col);
+        if (col < 1 || col > columns) throw new IllegalArgumentException(
+                "col must be between 1 and " + columns + " but is " + col);
         if (row < 1 || row > rows) throw new IllegalArgumentException("row must be between 1 and " + rows);
         set(locToPos(col, row), item);
     }
 
     public void set(int pos, ClickableItem item) {
-        if (pos < 0 || pos > rows * 9 - 1)
-            throw new IllegalArgumentException("pos must be between 0 and " + (rows * 9 - 1) + ", but is " + pos);
+        if (pos < 0 || pos >= items.length)
+            throw new IllegalArgumentException("pos must be between 0 and " + (items.length - 1) + ", but is " + pos);
         items[pos] = item;
         bukkitInventory.setItem(pos, item.getItemStack());
     }
 
     public void clear(int col, int row) {
-        if (col < 1 || col > 9) throw new IllegalArgumentException("col must be between 1 and 9 but is " + col);
+        if (col < 1 || col > columns) throw new IllegalArgumentException(
+                "col must be between 1 and " + columns + " but is " + col);
         if (row < 1 || row > rows) throw new IllegalArgumentException("row must be between 1 and " + rows);
         clear(locToPos(col, row));
     }
 
     public void clear(int pos) {
-        if (pos < 0 || pos > rows * 9 - 1)
-            throw new IllegalArgumentException("pos must be between 0 and " + (rows * 9 - 1) + ", but is " + pos);
+        if (pos < 0 || pos >= items.length)
+            throw new IllegalArgumentException("pos must be between 0 and " + (items.length - 1) + ", but is " + pos);
         items[pos] = null;
         bukkitInventory.setItem(pos, null);
     }
 
     public void fill(ClickableItem item) {
-        for (int r = 0; r < rows; r++) {
-            for (int c = 0; c < 9; c++) {
-                set(r * 9 + c, item);
-            }
+        for (int slot = 0; slot < items.length; slot++) {
+            set(slot, item);
         }
     }
 
     public void rectangle(int col, int row, int width, int height, ClickableItem item) {
-        if (col < 1 || col > 9) throw new IllegalArgumentException("col must be between 1 and 9");
+        if (col < 1 || col > columns) throw new IllegalArgumentException(
+                "col must be between 1 and " + columns);
         if (row < 1 || row > rows) throw new IllegalArgumentException("row must be between 1 and rows");
-        if (width < 1 || width > 10 - col) throw new IllegalArgumentException("width must be between 1 and " + (10 - col));
+        if (width < 1 || width > columns + 1 - col) throw new IllegalArgumentException(
+                "width must be between 1 and " + (columns + 1 - col));
         if (height < 1 || height > rows + 1 - row) throw new IllegalArgumentException("height must be between 1 and " + (rows + 1 - row));
         rectangle(locToPos(col, row), width, height, item);
     }
@@ -224,14 +256,14 @@ public final class GuiInventory implements InventoryHolder {
     }
 
     public void checkInventoryData(Integer pos, Integer col, Integer row, Integer width, Integer height) {
-        if (pos != null && (pos < 0 || pos >= rows * 9))
-            throw new IllegalArgumentException("pos must be between 0 and " + (rows * 9 - 1) + ", but is " + pos);
-        if (col != null && (col < 1 || col > 9))
-            throw new IllegalArgumentException("col must be between 1 and 9, but is " + col);
+        if (pos != null && (pos < 0 || pos >= items.length))
+            throw new IllegalArgumentException("pos must be between 0 and " + (items.length - 1) + ", but is " + pos);
+        if (col != null && (col < 1 || col > columns))
+            throw new IllegalArgumentException("col must be between 1 and " + columns + ", but is " + col);
         if (row != null && (row < 1 || row > rows))
             throw new IllegalArgumentException("row must be between 1 and rows, but is " + row);
-        if (width != null && col != null && (width < 1 || width > 10 - col))
-            throw new IllegalArgumentException("width must be between 1 and " + (10 - col) + ", but is " + width);
+        if (width != null && col != null && (width < 1 || width > columns + 1 - col))
+            throw new IllegalArgumentException("width must be between 1 and " + (columns + 1 - col) + ", but is " + width);
         if (height != null && row != null && (height < 1 || height > rows + 1 - row))
             throw new IllegalArgumentException("height must be between 1 and " + (rows + 1 - row) + ", but is " + height);
     }
@@ -292,10 +324,10 @@ public final class GuiInventory implements InventoryHolder {
     }
 
     public int[] posToLoc(int pos) {
-        return new int[]{ (pos % 9) + 1, (pos / 9) + 1 };
+        return new int[]{ (pos % columns) + 1, (pos / columns) + 1 };
     }
 
     public int locToPos(int col, int row) {
-        return (row - 1) * 9 + (col - 1);
+        return (row - 1) * columns + (col - 1);
     }
 }

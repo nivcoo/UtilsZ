@@ -16,6 +16,76 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GuiProviderTest {
 
     @Test
+    void inventoryLayoutsKeepChestDefaultsAndSupportFixedContainers() {
+        TrackingProvider provider = new TrackingProvider();
+
+        assertEquals(GuiInventoryLayout.chest(1), provider.inventoryLayout(null));
+        GuiInventoryLayout hopper = GuiInventoryLayout.fixed(
+                GuiInventoryType.HOPPER, 5, 1);
+        assertEquals(5, hopper.size());
+        assertEquals(5, hopper.columns());
+        assertEquals(1, hopper.rows());
+        assertThrows(IllegalArgumentException.class,
+                () -> GuiInventoryLayout.fixed(
+                        GuiInventoryType.HOPPER, 9, 1));
+        assertThrows(IllegalArgumentException.class,
+                () -> GuiInventoryLayout.fixed(
+                        GuiInventoryType.HOPPER, 1, 5));
+    }
+
+    @Test
+    void editableSlotsCanInspectResolvedInventoryGeometry() {
+        GuiInventoryLayout hopper = GuiInventoryLayout.fixed(
+                GuiInventoryType.HOPPER, 5, 1);
+        AtomicInteger inspections = new AtomicInteger();
+        GuiProvider provider = new GuiProvider() {
+            @Override
+            public Component title(GuiInventory inventory) {
+                throw new ConstructionStopped();
+            }
+
+            @Override
+            public int rows(GuiInventory inventory) {
+                return 1;
+            }
+
+            @Override
+            public GuiInventoryLayout inventoryLayout(
+                    GuiInventory inventory
+            ) {
+                return hopper;
+            }
+
+            @Override
+            public GuiEditableSlots editableSlots(
+                    GuiInventory inventory
+            ) {
+                assertEquals(hopper,
+                        inventory.getInventoryLayout());
+                assertEquals(5, inventory.getColumns());
+                assertEquals(1, inventory.getRows());
+                assertEquals(5, inventory.getSize());
+                inspections.incrementAndGet();
+                return GuiEditableSlots.of(List.of(4));
+            }
+
+            @Override
+            public void init(GuiInventory inventory) {
+            }
+
+            @Override
+            public void update(GuiInventory inventory) {
+            }
+        };
+
+        assertThrows(ConstructionStopped.class,
+                () -> new GuiInventory(
+                        null, provider, null, null));
+
+        assertEquals(1, inspections.get());
+    }
+
+    @Test
     void refreshDelegatesToUpdateByDefault() {
         TrackingProvider provider = new TrackingProvider();
 
@@ -130,6 +200,10 @@ class GuiProviderTest {
         public void update(GuiInventory inventory) {
             updates++;
         }
+    }
+
+    private static final class ConstructionStopped
+            extends RuntimeException {
     }
 
 }
