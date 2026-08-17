@@ -32,6 +32,8 @@ public class ConfigItem {
     @Optional
     public Boolean glow = null;
     @Optional
+    public String color = "";
+    @Optional
     @Name("custom_model_data")
     public int customModelData = 0;
 

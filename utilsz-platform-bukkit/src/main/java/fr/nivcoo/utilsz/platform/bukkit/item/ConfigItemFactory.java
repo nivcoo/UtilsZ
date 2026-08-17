@@ -2,6 +2,7 @@ package fr.nivcoo.utilsz.platform.bukkit.item;
 
 import fr.nivcoo.utilsz.core.config.ConfigManager;
 import fr.nivcoo.utilsz.platform.bukkit.gui.ConfigGuiItem;
+import org.bukkit.Color;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
@@ -32,6 +33,7 @@ public final class ConfigItemFactory {
 
         ItemBuilder builder = ItemBuilder.of(def.material, amount(def))
                 .texture(def.texture)
+                .leatherColor(color(def.color, logger))
                 .customModelData(def.customModelData);
         applySkullOwner(def, logger, builder);
         if (def.name != null) builder.name(def.name);
@@ -88,6 +90,7 @@ public final class ConfigItemFactory {
         copy.enchants = def.enchants == null ? null : new LinkedHashMap<>(def.enchants);
         copy.flags = def.flags == null ? List.of() : List.copyOf(def.flags);
         copy.glow = def.glow;
+        copy.color = def.color;
         copy.customModelData = def.customModelData;
         return copy;
     }
@@ -132,6 +135,27 @@ public final class ConfigItemFactory {
 
     static int amount(ConfigItem def) {
         return def == null ? 1 : Math.max(1, def.amount);
+    }
+
+    private static Color color(String configured, Logger logger) {
+        if (configured == null || configured.isBlank()) return null;
+
+        String value = configured.trim();
+        try {
+            if (value.startsWith("#") && value.length() == 7) {
+                return Color.fromRGB(Integer.parseInt(value.substring(1), 16));
+            }
+
+            String[] components = value.split(",");
+            if (components.length != 3) throw new IllegalArgumentException();
+            int red = Integer.parseInt(components[0].trim());
+            int green = Integer.parseInt(components[1].trim());
+            int blue = Integer.parseInt(components[2].trim());
+            return Color.fromRGB(red, green, blue);
+        } catch (IllegalArgumentException ignored) {
+            if (logger != null) logger.warning("Invalid leather color: " + configured);
+            return null;
+        }
     }
 
 }
