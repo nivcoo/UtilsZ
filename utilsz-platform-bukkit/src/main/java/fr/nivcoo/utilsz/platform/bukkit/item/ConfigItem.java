@@ -16,6 +16,8 @@ public class ConfigItem {
 
     public Material material = Material.STONE;
     @Optional
+    public int amount = 1;
+    @Optional
     public String texture = "";
     @Comment("UUID du propriétaire de la tête joueur. Ignoré si texture est renseignée.")
     @Optional
@@ -40,5 +42,10 @@ public class ConfigItem {
         this.material = material;
         this.name = ConfigManager.parseDynamic(name);
         this.lore = lore == null ? List.of() : lore.stream().map(ConfigManager::parseDynamic).toList();
+    }
+
+    public ConfigItem(Material material, int amount, String name, List<String> lore) {
+        this(material, name, lore);
+        this.amount = amount;
     }
 }

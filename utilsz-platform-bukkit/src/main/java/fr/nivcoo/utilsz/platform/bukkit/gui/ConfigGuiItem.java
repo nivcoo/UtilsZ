@@ -11,7 +11,6 @@ import java.util.List;
 @SuppressWarnings("unused")
 public class ConfigGuiItem extends ConfigItem implements Validatable {
 
-    public int amount = 1;
     @Optional
     public boolean enabled = true;
     @Comment("Slot unique 0-53.")
@@ -25,8 +24,7 @@ public class ConfigGuiItem extends ConfigItem implements Validatable {
     }
 
     public ConfigGuiItem(Material material, int amount, String name, List<String> lore) {
-        super(material, name, lore);
-        this.amount = amount;
+        super(material, amount, name, lore);
     }
 
     @Override

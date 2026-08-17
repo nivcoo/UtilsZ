@@ -75,12 +75,12 @@ public final class ConfigItemFactory {
         if (def == null) return null;
         ConfigItem copy = def instanceof ConfigGuiItem ? new ConfigGuiItem() : new ConfigItem();
         if (copy instanceof ConfigGuiItem copyGui && def instanceof ConfigGuiItem gui) {
-            copyGui.amount = gui.amount;
             copyGui.enabled = gui.enabled;
             copyGui.slot = gui.slot;
             copyGui.slots = gui.slots == null ? List.of() : List.copyOf(gui.slots);
         }
         copy.material = def.material;
+        copy.amount = def.amount;
         copy.texture = def.texture;
         copy.skullOwner = def.skullOwner;
         copy.name = def.name;
@@ -130,7 +130,8 @@ public final class ConfigItemFactory {
         return Enchantment.getByName(name.toUpperCase());
     }
 
-    private static int amount(ConfigItem def) {
-        return def instanceof ConfigGuiItem gui ? Math.max(1, gui.amount) : 1;
+    static int amount(ConfigItem def) {
+        return def == null ? 1 : Math.max(1, def.amount);
     }
+
 }
