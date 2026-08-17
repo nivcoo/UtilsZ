@@ -9,6 +9,7 @@ import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -17,6 +18,9 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 
 public class DatabaseManager {
+
+    private static final long MIN_TRANSACTION_RETRY_MILLIS = 2L;
+    private static final long MAX_TRANSACTION_RETRY_MILLIS = 100L;
 
     private final DatabaseProvider provider;
     private final DatabaseType type;
@@ -124,19 +128,59 @@ public class DatabaseManager {
 
     public <T> T transaction(SqlTransaction<T> transaction) throws SQLException {
         Objects.requireNonNull(transaction, "transaction");
+        try {
+            return executeTransaction(null, transaction);
+        } catch (CommittedTransactionException exception) {
+            throw exception.failure();
+        }
+    }
+
+    public <T> T transaction(TransactionOptions options, SqlTransaction<T> transaction) throws SQLException {
+        Objects.requireNonNull(options, "options");
+        Objects.requireNonNull(transaction, "transaction");
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return executeTransaction(options, transaction);
+            } catch (CommittedTransactionException exception) {
+                throw exception.failure();
+            } catch (SQLException exception) {
+                if (attempt >= options.maxAttempts()
+                        || !isTransientTransactionConflict(type, exception)) {
+                    throw exception;
+                }
+                awaitTransactionRetry(attempt, exception);
+            }
+        }
+    }
+
+    private <T> T executeTransaction(
+            TransactionOptions options,
+            SqlTransaction<T> transaction
+    ) throws SQLException {
+        boolean committed = false;
         try (Connection connection = getConnection()) {
             boolean autoCommit = connection.getAutoCommit();
-            connection.setAutoCommit(false);
+            int isolationLevel = connection.getTransactionIsolation();
+            Throwable failure = null;
             try {
+                if (options != null && isolationLevel != options.isolationLevel()) {
+                    connection.setTransactionIsolation(options.isolationLevel());
+                }
+                if (autoCommit) connection.setAutoCommit(false);
                 T result = transaction.execute(connection);
                 connection.commit();
+                committed = true;
                 return result;
-            } catch (SQLException | RuntimeException exception) {
-                connection.rollback();
+            } catch (SQLException | RuntimeException | Error exception) {
+                failure = exception;
+                rollback(connection, exception);
                 throw exception;
             } finally {
-                connection.setAutoCommit(autoCommit);
+                restoreTransactionState(connection, autoCommit, isolationLevel, failure);
             }
+        } catch (SQLException exception) {
+            if (committed) throw new CommittedTransactionException(exception);
+            throw exception;
         }
     }
 
@@ -208,6 +252,23 @@ public class DatabaseManager {
     public int insert(Connection connection, String table, Map<String, ?> values) throws SQLException {
         InsertQuery insert = insertQuery(table, values);
         return connection == null ? execute(insert.sql(), insert.params()) : execute(connection, insert.sql(), insert.params());
+    }
+
+    public boolean insertIfAbsent(String table, Map<String, ?> values) throws SQLException {
+        return insertIfAbsent(null, table, values);
+    }
+
+    public boolean insertIfAbsent(Connection connection, String table, Map<String, ?> values) throws SQLException {
+        InsertQuery insert = insertQuery(table, values);
+        try {
+            int affectedRows = connection == null
+                    ? execute(insert.sql(), insert.params())
+                    : execute(connection, insert.sql(), insert.params());
+            return affectedRows > 0;
+        } catch (SQLException exception) {
+            if (isDuplicateKey(type, exception)) return false;
+            throw exception;
+        }
     }
 
     public long insertReturningId(String table, Map<String, ?> values) throws SQLException {
@@ -301,6 +362,60 @@ public class DatabaseManager {
         return execute(connection, sql, allParams.toArray());
     }
 
+    public int updateAtomic(String table, Map<String, ? extends AtomicUpdate> updates,
+                            String where, Object... params) throws SQLException {
+        return updateAtomic(null, table, updates, where, params);
+    }
+
+    public int updateAtomic(Connection connection, String table, Map<String, ? extends AtomicUpdate> updates,
+                            String where, Object... params) throws SQLException {
+        AtomicUpdateQuery update = atomicUpdateQuery(table, updates, where, params);
+        return connection == null
+                ? execute(update.sql(), update.params())
+                : execute(connection, update.sql(), update.params());
+    }
+
+    private AtomicUpdateQuery atomicUpdateQuery(String table, Map<String, ? extends AtomicUpdate> updates,
+                                                String where, Object... params) {
+        if (updates == null || updates.isEmpty()) {
+            throw new IllegalArgumentException("Cannot perform an empty atomic update.");
+        }
+
+        StringJoiner assignments = new StringJoiner(", ");
+        List<Object> allParams = new ArrayList<>();
+        for (Map.Entry<String, ? extends AtomicUpdate> entry : updates.entrySet()) {
+            String column = quote(entry.getKey());
+            AtomicUpdate atomicUpdate = Objects.requireNonNull(
+                    entry.getValue(), "Atomic update for column " + entry.getKey());
+            switch (atomicUpdate) {
+                case AtomicUpdate.Set set -> {
+                    assignments.add(column + " = ?");
+                    allParams.add(set.value());
+                }
+                case AtomicUpdate.Add add -> {
+                    assignments.add(column + " = " + column + " + ?");
+                    allParams.add(add.value());
+                }
+                case AtomicUpdate.Max max -> {
+                    assignments.add(column + " = CASE WHEN " + column + " < ? THEN ? ELSE " + column + " END");
+                    allParams.add(max.value());
+                    allParams.add(max.value());
+                }
+            }
+        }
+        if (params != null) {
+            for (Object param : params) {
+                allParams.add(param);
+            }
+        }
+
+        String sql = "UPDATE " + quote(table) + " SET " + assignments;
+        if (where != null && !where.isBlank()) {
+            sql += " WHERE " + where;
+        }
+        return new AtomicUpdateQuery(sql, allParams.toArray());
+    }
+
     public int delete(String table, String where, Object... params) throws SQLException {
         return delete(null, table, where, params);
     }
@@ -377,6 +492,107 @@ public class DatabaseManager {
         return "`" + clean + "`";
     }
 
+    static boolean isDuplicateKey(DatabaseType type, SQLException exception) {
+        for (SQLException current = exception; current != null; current = current.getNextException()) {
+            int errorCode = current.getErrorCode();
+            if ((type == DatabaseType.MYSQL || type == DatabaseType.MARIADB) && errorCode == 1062) {
+                return true;
+            }
+            if (type == DatabaseType.SQLITE) {
+                if (errorCode == 1555 || errorCode == 2067 || errorCode == 2579) {
+                    return true;
+                }
+                String message = current.getMessage();
+                if (message == null) continue;
+                String normalized = message.toUpperCase(Locale.ROOT);
+                if (normalized.contains("SQLITE_CONSTRAINT_PRIMARYKEY")
+                        || normalized.contains("SQLITE_CONSTRAINT_UNIQUE")
+                        || normalized.contains("UNIQUE CONSTRAINT FAILED")
+                        || normalized.contains("PRIMARY KEY CONSTRAINT FAILED")) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    static boolean isTransientTransactionConflict(DatabaseType type, SQLException exception) {
+        Objects.requireNonNull(type, "type");
+        Objects.requireNonNull(exception, "exception");
+        Throwable cause = exception;
+        for (int depth = 0; cause != null && depth < 16; depth++, cause = cause.getCause()) {
+            if (!(cause instanceof SQLException sqlException)) continue;
+            SQLException current = sqlException;
+            for (int next = 0; current != null && next < 32; next++, current = current.getNextException()) {
+                if ("40001".equals(current.getSQLState())) return true;
+                int errorCode = current.getErrorCode();
+                if ((type == DatabaseType.MYSQL || type == DatabaseType.MARIADB)
+                        && (errorCode == 1205 || errorCode == 1213)) {
+                    return true;
+                }
+                if (type != DatabaseType.SQLITE) continue;
+                int primaryCode = errorCode & 0xFF;
+                if (primaryCode == 5 || primaryCode == 6) return true;
+                String message = current.getMessage();
+                if (message == null) continue;
+                String normalized = message.toUpperCase(Locale.ROOT);
+                if (normalized.contains("SQLITE_BUSY")
+                        || normalized.contains("SQLITE_LOCKED")
+                        || normalized.contains("DATABASE IS LOCKED")
+                        || normalized.contains("DATABASE TABLE IS LOCKED")) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static void rollback(Connection connection, Throwable failure) {
+        try {
+            connection.rollback();
+        } catch (SQLException rollbackFailure) {
+            failure.addSuppressed(rollbackFailure);
+        }
+    }
+
+    private static void restoreTransactionState(
+            Connection connection,
+            boolean autoCommit,
+            int isolationLevel,
+            Throwable failure
+    ) throws SQLException {
+        SQLException restorationFailure = null;
+        try {
+            connection.setAutoCommit(autoCommit);
+        } catch (SQLException exception) {
+            restorationFailure = exception;
+        }
+        try {
+            connection.setTransactionIsolation(isolationLevel);
+        } catch (SQLException exception) {
+            if (restorationFailure == null) restorationFailure = exception;
+            else restorationFailure.addSuppressed(exception);
+        }
+        if (restorationFailure == null) return;
+        if (failure == null) throw restorationFailure;
+        failure.addSuppressed(restorationFailure);
+    }
+
+    private static void awaitTransactionRetry(int failedAttempt, SQLException failure) throws SQLException {
+        int shift = Math.min(6, Math.max(0, failedAttempt - 1));
+        long delayMillis = Math.min(MAX_TRANSACTION_RETRY_MILLIS,
+                MIN_TRANSACTION_RETRY_MILLIS << shift);
+        try {
+            TimeUnit.MILLISECONDS.sleep(delayMillis);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            SQLException exception = new SQLException(
+                    "Interrupted while retrying database transaction", "57014", interrupted);
+            exception.addSuppressed(failure);
+            throw exception;
+        }
+    }
+
     private PreparedStatement prepare(Connection connection, String query) throws SQLException {
         PreparedStatement statement = connection.prepareStatement(query);
         int timeout = operationTimeoutSeconds;
@@ -392,6 +608,22 @@ public class DatabaseManager {
     }
 
     private record InsertQuery(String sql, Object[] params) {
+    }
+
+    private record AtomicUpdateQuery(String sql, Object[] params) {
+    }
+
+    private static final class CommittedTransactionException extends SQLException {
+        private final SQLException failure;
+
+        private CommittedTransactionException(SQLException failure) {
+            super(failure.getMessage(), failure.getSQLState(), failure.getErrorCode(), failure);
+            this.failure = failure;
+        }
+
+        private SQLException failure() {
+            return failure;
+        }
     }
 
     @FunctionalInterface

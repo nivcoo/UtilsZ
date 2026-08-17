@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -117,6 +118,99 @@ class DatabaseManagerTest {
     }
 
     @Test
+    void insertIfAbsentPreservesTheExistingRowAndOnlyIgnoresDuplicateKeys() throws Exception {
+        DatabaseManager database = new DatabaseManager(
+                DatabaseType.SQLITE,
+                null,
+                0,
+                null,
+                null,
+                null,
+                tempDirectory.resolve("insert-if-absent.db").toString()
+        );
+
+        try {
+            ModelRepository<AtomicValues> repository = database.model(AtomicValues.MODEL);
+            repository.createTable();
+
+            AtomicValues initial = new AtomicValues("quest", 4L, 10L, 0L, "ACTIVE");
+            assertTrue(repository.insertIfAbsent(initial));
+            assertFalse(repository.insertIfAbsent(new AtomicValues("quest", 99L, 99L, 99L, "REPLACED")));
+            assertEquals(initial, repository.find().where("key", "quest").all().getFirst());
+
+            boolean transactionInsert = database.transaction(connection -> repository.insertIfAbsent(
+                    connection, new AtomicValues("transaction", 1L, 2L, 0L, "ACTIVE")));
+            boolean transactionDuplicate = database.transaction(connection -> repository.insertIfAbsent(
+                    connection, new AtomicValues("transaction", 9L, 9L, 9L, "REPLACED")));
+            assertTrue(transactionInsert);
+            assertFalse(transactionDuplicate);
+
+            assertThrows(SQLException.class, () -> repository.insertIfAbsent(
+                    new AtomicValues("invalid", 0L, 0L, 0L, null)));
+        } finally {
+            database.closeConnection();
+        }
+    }
+
+    @Test
+    void atomicUpdatesComposeSetAddAndMonotonicMaxInsideTransactions() throws Exception {
+        DatabaseManager database = new DatabaseManager(
+                DatabaseType.SQLITE,
+                null,
+                0,
+                null,
+                null,
+                null,
+                tempDirectory.resolve("atomic-updates.db").toString()
+        );
+
+        try {
+            ModelRepository<AtomicValues> repository = database.model(AtomicValues.MODEL);
+            repository.createTable();
+            repository.insert(new AtomicValues("quest", 4L, 10L, 0L, "PENDING"));
+
+            assertEquals(1, repository.updateAtomic(Map.of(
+                            "progress", AtomicUpdate.add(6L),
+                            "target", AtomicUpdate.max(20L),
+                            "revision", AtomicUpdate.add(1L),
+                            "state", AtomicUpdate.set("ACTIVE")
+                    ), "`key` = ? AND `revision` = ?", "quest", 0L));
+            assertEquals(
+                    new AtomicValues("quest", 10L, 20L, 1L, "ACTIVE"),
+                    repository.find().where("key", "quest").all().getFirst()
+            );
+
+            int transactionUpdate = database.transaction(connection -> repository.updateAtomic(connection, Map.of(
+                            "progress", AtomicUpdate.add(2L),
+                            "target", AtomicUpdate.max(15L),
+                            "revision", AtomicUpdate.add(1L),
+                            "state", AtomicUpdate.set("READY")
+                    ), "`key` = ? AND `revision` = ?", "quest", 1L));
+            assertEquals(1, transactionUpdate);
+            AtomicValues committed = new AtomicValues("quest", 12L, 20L, 2L, "READY");
+            assertEquals(committed, repository.find().where("key", "quest").all().getFirst());
+
+            assertEquals(0, repository.updateAtomic(
+                    Map.of("progress", AtomicUpdate.add(100L)),
+                    "`key` = ? AND `revision` = ?", "quest", 1L));
+            assertThrows(SQLException.class, () -> database.transaction(connection -> {
+                repository.updateAtomic(
+                        connection,
+                        Map.of("progress", AtomicUpdate.add(100L)),
+                        "`key` = ?", "quest"
+                );
+                throw new SQLException("rollback");
+            }));
+            assertEquals(committed, repository.find().where("key", "quest").all().getFirst());
+
+            assertThrows(IllegalArgumentException.class, () -> repository.updateAtomic(
+                    Map.of("state", AtomicUpdate.add(1L)), "`key` = ?", "quest"));
+        } finally {
+            database.closeConnection();
+        }
+    }
+
+    @Test
     void concurrentIndexCreationAcceptsAnIndexCreatedByAnotherInstance() throws Exception {
         RacingIndexManager database = new RacingIndexManager(
                 tempDirectory.resolve("index-race.db"), true);
@@ -156,6 +250,31 @@ class DatabaseManagerTest {
                         row.getLong("select"),
                         row.getString("trigger"),
                         row.getInt("limit")
+                );
+            }
+        };
+    }
+
+    private record AtomicValues(String key, long progress, long target, long revision, String state) {
+        private static final DatabaseModel<AtomicValues> MODEL = new DatabaseModel<>() {
+            @Override
+            public ModelSchema<AtomicValues> schema() {
+                return ModelSchema.<AtomicValues>of("atomic_values")
+                        .column("key", ColumnType.STRING, "PRIMARY KEY", AtomicValues::key)
+                        .column("progress", ColumnType.LONG, AtomicValues::progress)
+                        .column("target", ColumnType.LONG, AtomicValues::target)
+                        .column("revision", ColumnType.LONG, AtomicValues::revision)
+                        .column("state", ColumnType.STRING, AtomicValues::state);
+            }
+
+            @Override
+            public AtomicValues from(DatabaseRow row) {
+                return new AtomicValues(
+                        row.getString("key"),
+                        row.getLong("progress"),
+                        row.getLong("target"),
+                        row.getLong("revision"),
+                        row.getString("state")
                 );
             }
         };

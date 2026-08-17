@@ -23,6 +23,14 @@ public final class DatabaseTable {
         return database.insert(connection, name, values);
     }
 
+    public boolean insertIfAbsent(Map<String, ?> values) throws SQLException {
+        return database.insertIfAbsent(name, values);
+    }
+
+    public boolean insertIfAbsent(Connection connection, Map<String, ?> values) throws SQLException {
+        return database.insertIfAbsent(connection, name, values);
+    }
+
     public long insertReturningId(Map<String, ?> values) throws SQLException {
         return database.insertReturningId(name, values);
     }
@@ -33,6 +41,16 @@ public final class DatabaseTable {
 
     public int update(Map<String, ?> values, String where, Object... params) throws SQLException {
         return database.update(name, values, where, params);
+    }
+
+    public int updateAtomic(Map<String, ? extends AtomicUpdate> updates,
+                            String where, Object... params) throws SQLException {
+        return database.updateAtomic(name, updates, where, params);
+    }
+
+    public int updateAtomic(Connection connection, Map<String, ? extends AtomicUpdate> updates,
+                            String where, Object... params) throws SQLException {
+        return database.updateAtomic(connection, name, updates, where, params);
     }
 
     public int delete(String where, Object... params) throws SQLException {

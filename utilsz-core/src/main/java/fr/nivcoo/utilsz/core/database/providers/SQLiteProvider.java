@@ -8,48 +8,74 @@ import fr.nivcoo.utilsz.core.database.TypedColumnDefinition;
 
 import java.sql.*;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.UUID;
 
 public class SQLiteProvider implements DatabaseProvider {
 
-    private final String sqlitePath;
-    private Connection connection;
+    private static final int BUSY_TIMEOUT_MILLIS = 10_000;
+
+    private final Object lifecycleLock = new Object();
+    private final String jdbcUrl;
+    private final boolean transientDatabase;
+    private final boolean walEligible;
+    private volatile boolean connected;
+    private Connection keeperConnection;
 
     public SQLiteProvider(String sqlitePath) {
-        this.sqlitePath = sqlitePath;
+        String path = Objects.requireNonNull(sqlitePath, "sqlitePath");
+        boolean privateTransient = path.isBlank() || path.equalsIgnoreCase(":memory:");
+        transientDatabase = privateTransient || isMemoryPath(path);
+        jdbcUrl = privateTransient
+                ? "jdbc:sqlite:file:utilsz-" + UUID.randomUUID() + "?mode=memory&cache=shared"
+                : "jdbc:sqlite:" + sharedMemoryPath(path);
+        walEligible = !transientDatabase && !isReadOnlyPath(path);
     }
 
     @Override
     public void connect() throws SQLException {
-        if (connection == null || connection.isClosed()) {
-            connection = DriverManager.getConnection("jdbc:sqlite:" + sqlitePath);
+        synchronized (lifecycleLock) {
+            if (connected) return;
+
+            Connection connection = openConnection();
+            try {
+                if (walEligible) enableWal(connection);
+                if (transientDatabase) {
+                    keeperConnection = connection;
+                } else {
+                    connection.close();
+                }
+                connected = true;
+            } catch (SQLException exception) {
+                closeQuietly(connection);
+                throw exception;
+            }
         }
     }
 
     @Override
     public Connection getConnection() throws SQLException {
-        if (connection == null || connection.isClosed()) {
-            connect();
+        synchronized (lifecycleLock) {
+            if (!connected) {
+                throw new SQLException("SQLite provider is closed.");
+            }
+            return openConnection();
         }
-        return connection;
     }
 
     @Override
     public void close() {
-        try {
-            if (connection != null && !connection.isClosed()) {
-                connection.close();
-            }
-        } catch (SQLException ignored) {
+        synchronized (lifecycleLock) {
+            connected = false;
+            closeQuietly(keeperConnection);
+            keeperConnection = null;
         }
     }
 
     @Override
     public boolean isConnected() {
-        try {
-            return connection != null && !connection.isClosed();
-        } catch (SQLException e) {
-            return false;
-        }
+        return connected;
     }
 
     @Override
@@ -111,5 +137,47 @@ public class SQLiteProvider implements DatabaseProvider {
             case DOUBLE, FLOAT -> "REAL";
             case BLOB -> "BLOB";
         };
+    }
+
+    private Connection openConnection() throws SQLException {
+        Connection connection = DriverManager.getConnection(jdbcUrl);
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("PRAGMA busy_timeout = " + BUSY_TIMEOUT_MILLIS);
+            return connection;
+        } catch (SQLException exception) {
+            closeQuietly(connection);
+            throw exception;
+        }
+    }
+
+    private void enableWal(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement();
+             ResultSet ignored = statement.executeQuery("PRAGMA journal_mode = WAL")) {
+        }
+    }
+
+    private static boolean isMemoryPath(String path) {
+        String normalized = path.toLowerCase(Locale.ROOT);
+        return normalized.contains(":memory:") || normalized.contains("mode=memory");
+    }
+
+    private static boolean isReadOnlyPath(String path) {
+        String normalized = path.toLowerCase(Locale.ROOT);
+        return normalized.contains("mode=ro") || normalized.contains("immutable=1");
+    }
+
+    private static String sharedMemoryPath(String path) {
+        if (!isMemoryPath(path) || path.toLowerCase(Locale.ROOT).contains("cache=shared")) {
+            return path;
+        }
+        return path + (path.contains("?") ? "&" : "?") + "cache=shared";
+    }
+
+    private static void closeQuietly(Connection connection) {
+        if (connection == null) return;
+        try {
+            connection.close();
+        } catch (SQLException ignored) {
+        }
     }
 }
