@@ -31,6 +31,7 @@ public class ConfigItem {
     public List<ItemFlag> flags = List.of();
     @Optional
     public Boolean glow = null;
+    @Comment("Couleur RGB d'une armure en cuir : #RRGGBB ou rouge,vert,bleu.")
     @Optional
     public String color = "";
     @Optional
