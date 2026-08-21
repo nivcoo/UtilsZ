@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ScheduledFuture;
@@ -550,19 +551,17 @@ public final class DefaultMessageBus implements MessageBus {
                     throw new IllegalStateException("Endpoint must implement RpcMessage");
 
                 Object result = ra.handle();
-                if (result == null) {
-                    execution.complete(null);
+                if (result instanceof CompletionStage<?> stage) {
+                    stage.whenComplete((value, error) -> {
+                        if (error != null) {
+                            completeRequest(execution, errorResponse(env, error));
+                        } else {
+                            completeRequestResult(execution, env, value);
+                        }
+                    });
                     return;
                 }
-
-                Envelope out = new Envelope();
-                out.kind = "res";
-                out.action = env.action;
-                out.cid = env.cid;
-                out.target = env.sender;
-                out.payload = adapter(result.getClass()).serialize(result);
-
-                completeRequest(execution, out);
+                completeRequestResult(execution, env, result);
             } catch (Throwable error) {
                 completeRequest(execution, errorResponse(env, error));
             }
@@ -573,6 +572,28 @@ public final class DefaultMessageBus implements MessageBus {
             else run.run();
         } catch (Throwable error) {
             completeRequest(execution, errorResponse(env, error));
+        }
+    }
+
+    private void completeRequestResult(
+            RequestExecution execution,
+            Envelope request,
+            Object result
+    ) {
+        if (result == null) {
+            execution.complete(null);
+            return;
+        }
+        try {
+            Envelope out = new Envelope();
+            out.kind = "res";
+            out.action = request.action;
+            out.cid = request.cid;
+            out.target = request.sender;
+            out.payload = adapter(result.getClass()).serialize(result);
+            completeRequest(execution, out);
+        } catch (Throwable error) {
+            completeRequest(execution, errorResponse(request, error));
         }
     }
 

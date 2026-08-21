@@ -264,6 +264,38 @@ class DefaultMessageBusTest {
     }
 
     @Test
+    void asynchronousRpcSerializesCompletedValue() throws Exception {
+        String channel = channel();
+        DefaultMessageBus caller = bus("caller", channel, Runnable::run);
+        DefaultMessageBus responder = bus("responder", channel, Runnable::run);
+        responder.register(AsyncRequest.class);
+
+        EchoResponse response = caller.call(
+                new AsyncRequest("hello"),
+                EchoResponse.class,
+                Duration.ofSeconds(1)
+        ).get(1, TimeUnit.SECONDS);
+
+        assertEquals("HELLO", response.value());
+    }
+
+    @Test
+    void asynchronousRpcPropagatesFailure() {
+        String channel = channel();
+        DefaultMessageBus caller = bus("caller", channel, Runnable::run);
+        DefaultMessageBus responder = bus("responder", channel, Runnable::run);
+        responder.register(AsyncFailingRequest.class);
+
+        ExecutionException error = assertThrows(ExecutionException.class, () -> caller.call(
+                new AsyncFailingRequest("broken"),
+                EchoResponse.class,
+                Duration.ofSeconds(1)
+        ).get(1, TimeUnit.SECONDS));
+
+        assertEquals("broken", error.getCause().getMessage());
+    }
+
+    @Test
     void constructorDoesNotSubscribeOrStartBackend() {
         LifecycleBackend backend = new LifecycleBackend("lifecycle");
         DefaultMessageBus bus = new DefaultMessageBus(
@@ -458,6 +490,23 @@ class DefaultMessageBusTest {
         @Override
         public Object handle() {
             throw new IllegalStateException(message);
+        }
+    }
+
+    @BusAction(value = "async-request", response = EchoResponse.class)
+    private record AsyncRequest(String value) implements RpcMessage {
+        @Override
+        public Object handle() {
+            return CompletableFuture.completedFuture(
+                    new EchoResponse(value.toUpperCase(), null));
+        }
+    }
+
+    @BusAction(value = "async-failing-request", response = EchoResponse.class)
+    private record AsyncFailingRequest(String message) implements RpcMessage {
+        @Override
+        public Object handle() {
+            return CompletableFuture.failedFuture(new IllegalStateException(message));
         }
     }
 
