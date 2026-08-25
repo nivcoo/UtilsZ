@@ -52,16 +52,17 @@ public final class GuiInventoryManager implements Listener {
         updateTaskId = Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, () -> {
             if (inventories.isEmpty()) return;
 
-            var iterator = inventories.values().iterator();
-            while (iterator.hasNext()) {
-                GuiInventory inv = iterator.next();
+            for (GuiInventory inv : inventories.values()) {
                 if (!isViewing(inv.getPlayer(), inv)) continue;
 
                 int tick = 0;
                 Object currentTick = inv.get(GuiInventory.TICK);
                 if (currentTick instanceof Integer) tick = (Integer) currentTick;
                 else if (currentTick != null) {
-                    try { tick = Integer.parseInt(currentTick.toString()); } catch (Exception ignored) {}
+                    try {
+                        tick = Integer.parseInt(currentTick.toString());
+                    } catch (Exception ignored) {
+                    }
                 }
 
                 tick++;
@@ -338,9 +339,7 @@ public final class GuiInventoryManager implements Listener {
             int topSize
     ) {
         ItemStack cursor = event.getCursor();
-        if (cursor == null
-                || cursor.getType().isAir()
-                || cursor.getAmount()
+        if (cursor.getType().isAir() || cursor.getAmount()
                 >= cursor.getMaxStackSize()) {
             return false;
         }
