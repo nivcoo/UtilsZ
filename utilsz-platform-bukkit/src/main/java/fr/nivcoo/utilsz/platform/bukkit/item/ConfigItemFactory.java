@@ -2,6 +2,8 @@ package fr.nivcoo.utilsz.platform.bukkit.item;
 
 import fr.nivcoo.utilsz.core.config.ConfigManager;
 import fr.nivcoo.utilsz.platform.bukkit.gui.ConfigGuiItem;
+import io.papermc.paper.registry.RegistryAccess;
+import io.papermc.paper.registry.RegistryKey;
 import org.bukkit.Color;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -9,11 +11,16 @@ import org.bukkit.Registry;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ArmorMeta;
 import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.trim.ArmorTrim;
+import org.bukkit.inventory.meta.trim.TrimMaterial;
+import org.bukkit.inventory.meta.trim.TrimPattern;
 
-import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Logger;
@@ -43,6 +50,8 @@ public final class ConfigItemFactory {
 
         ItemMeta meta = stack.getItemMeta();
         if (meta == null) return stack;
+
+        applyArmorTrim(def, meta, logger);
 
         for (ItemFlag flag : def.flags) {
             if (flag != null) meta.addItemFlags(flag);
@@ -92,6 +101,11 @@ public final class ConfigItemFactory {
         copy.glow = def.glow;
         copy.color = def.color;
         copy.customModelData = def.customModelData;
+        if (def.trim != null) {
+            copy.trim = new ConfigItem.ArmorTrimConfig();
+            copy.trim.material = def.trim.material;
+            copy.trim.pattern = def.trim.pattern;
+        }
         return copy;
     }
 
@@ -116,6 +130,53 @@ public final class ConfigItemFactory {
         } catch (IllegalArgumentException e) {
             if (logger != null) logger.warning("Invalid skull_owner UUID: " + def.skullOwner);
         }
+    }
+
+    private static void applyArmorTrim(ConfigItem def, ItemMeta meta, Logger logger) {
+        ConfigItem.ArmorTrimConfig trim = def.trim;
+        if (trim == null) return;
+
+        String materialName = trim.material == null ? "" : trim.material.trim();
+        String patternName = trim.pattern == null ? "" : trim.pattern.trim();
+        if (materialName.isBlank() && patternName.isBlank()) return;
+
+        if (!(meta instanceof ArmorMeta armorMeta)) {
+            if (logger != null) logger.warning("Armor trim configured for non-armor material: " + def.material);
+            return;
+        }
+
+        TrimMaterial material = trimMaterial(materialName);
+        TrimPattern pattern = trimPattern(patternName);
+        if (material == null || pattern == null) {
+            if (logger != null && material == null) {
+                logger.warning("Invalid armor trim material: " + materialName);
+            }
+            if (logger != null && pattern == null) {
+                logger.warning("Invalid armor trim pattern: " + patternName);
+            }
+            return;
+        }
+
+        armorMeta.setTrim(new ArmorTrim(material, pattern));
+    }
+
+    private static TrimMaterial trimMaterial(String configured) {
+        NamespacedKey key = registryKey(configured);
+        if (key == null) return null;
+        return RegistryAccess.registryAccess().getRegistry(RegistryKey.TRIM_MATERIAL).get(key);
+    }
+
+    private static TrimPattern trimPattern(String configured) {
+        NamespacedKey key = registryKey(configured);
+        if (key == null) return null;
+        return RegistryAccess.registryAccess().getRegistry(RegistryKey.TRIM_PATTERN).get(key);
+    }
+
+    private static NamespacedKey registryKey(String configured) {
+        if (configured == null || configured.isBlank()) return null;
+
+        String value = configured.trim().toLowerCase(Locale.ROOT);
+        return NamespacedKey.fromString(value);
     }
 
     public static Enchantment enchantment(String name) {

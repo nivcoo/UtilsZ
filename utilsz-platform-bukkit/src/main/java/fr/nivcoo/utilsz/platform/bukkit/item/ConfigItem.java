@@ -37,6 +37,16 @@ public class ConfigItem {
     @Optional
     @Name("custom_model_data")
     public int customModelData = 0;
+    @Optional
+    public ArmorTrimConfig trim = null;
+
+    public static class ArmorTrimConfig {
+
+        @Optional
+        public String material = "";
+        @Optional
+        public String pattern = "";
+    }
 
     public ConfigItem() {
     }
