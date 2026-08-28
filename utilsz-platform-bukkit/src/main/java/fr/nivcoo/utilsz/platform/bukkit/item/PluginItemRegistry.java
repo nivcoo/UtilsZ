@@ -21,7 +21,9 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.LeavesDecayEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.PrepareItemCraftEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -70,6 +72,17 @@ public final class PluginItemRegistry implements Listener {
     public void onClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
         dispatchClick(event.getCurrentItem(), player, event);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onPrepareCraft(PrepareItemCraftEvent event) {
+        if (!containsPluginItem(event.getInventory().getMatrix())) return;
+        event.getInventory().setResult(new ItemStack(Material.AIR));
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onCraft(CraftItemEvent event) {
+        if (containsPluginItem(event.getInventory().getMatrix())) event.setCancelled(true);
     }
 
     @EventHandler
@@ -147,6 +160,16 @@ public final class PluginItemRegistry implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockExplode(BlockExplodeEvent event) {
         dispatchExplosion(event.blockList(), new PluginBlockDestroyContext(null, PluginBlockDestroyCause.EXPLOSION, event));
+    }
+
+    private boolean containsPluginItem(ItemStack[] matrix) {
+        for (ItemStack ingredient : matrix) {
+            if (ingredient == null || ingredient.getType().isAir()) continue;
+            for (PluginItem<?> item : items.values()) {
+                if (item.matches(ingredient)) return true;
+            }
+        }
+        return false;
     }
 
     private void dispatchClick(ItemStack stack, Player player, InventoryClickEvent event) {
