@@ -10,6 +10,7 @@ import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.Damageable;
+import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
 import org.bukkit.inventory.meta.SkullMeta;
@@ -137,7 +138,11 @@ public final class ItemBuilder {
     public ItemBuilder enchant(Enchantment e, int level) {
         if (e == null || level <= 0) return this;
         ItemMeta m = meta();
-        m.addEnchant(e, level, true);
+        if (m instanceof EnchantmentStorageMeta storageMeta) {
+            storageMeta.addStoredEnchant(e, level, true);
+        } else {
+            m.addEnchant(e, level, true);
+        }
         setMeta(m);
         return this;
     }
