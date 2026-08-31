@@ -31,7 +31,6 @@ import org.bukkit.event.inventory.PrepareItemCraftEvent;
 import org.bukkit.event.inventory.TradeSelectEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.Merchant;
 import org.bukkit.inventory.MerchantInventory;
 import org.bukkit.inventory.MerchantRecipe;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -92,9 +91,7 @@ public final class PluginItemRegistry implements Listener {
 
         event.setCancelled(true);
         if (event.getRawSlot() != 2) return;
-
-        MerchantRecipe recipe = selectedRecipe(inventory);
-        if (recipe != null) scheduleMerchantSanitize(player, inventory, inventory.getSelectedRecipeIndex(), recipe);
+        scheduleMerchantSanitize(player, inventory, inventory.getSelectedRecipeIndex());
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
@@ -104,13 +101,13 @@ public final class PluginItemRegistry implements Listener {
 
         for (Map.Entry<Integer, ItemStack> entry : event.getNewItems().entrySet()) {
             if (!isMerchantIngredientSlot(entry.getKey())) continue;
-            if (!rejectsMerchantItem(entry.getValue(), inventory.getMerchant())) continue;
+            if (!rejectsMerchantItem(entry.getValue(), inventory)) continue;
             event.setCancelled(true);
             return;
         }
     }
 
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onTradeSelect(TradeSelectEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
         if (!(event.getView().getTopInventory() instanceof MerchantInventory inventory)) return;
@@ -118,10 +115,10 @@ public final class PluginItemRegistry implements Listener {
         int selectedIndex = event.getIndex();
         List<MerchantRecipe> recipes = inventory.getMerchant().getRecipes();
         if (selectedIndex < 0 || selectedIndex >= recipes.size()) return;
-        scheduleMerchantSanitize(player, inventory, selectedIndex, recipes.get(selectedIndex));
+        scheduleMerchantSanitize(player, inventory, selectedIndex);
     }
 
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onMerchantPurchase(PlayerPurchaseEvent event) {
         Player player = event.getPlayer();
         if (!(player.getOpenInventory().getTopInventory() instanceof MerchantInventory inventory)) return;
@@ -130,7 +127,7 @@ public final class PluginItemRegistry implements Listener {
         if (!containsUnexpectedPluginItem(items.values(), merchantInputs(inventory), recipe.getIngredients())) return;
 
         event.setCancelled(true);
-        scheduleMerchantSanitize(player, inventory, inventory.getSelectedRecipeIndex(), recipe);
+        scheduleMerchantSanitize(player, inventory, inventory.getSelectedRecipeIndex());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -233,16 +230,16 @@ public final class PluginItemRegistry implements Listener {
                     || event.getAction() == InventoryAction.SWAP_WITH_CURSOR) {
                 incoming = event.getCursor();
             }
-            return rejectsMerchantItem(incoming, inventory.getMerchant());
+            return rejectsMerchantItem(incoming, inventory);
         }
 
         if (event.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY
                 && event.getClickedInventory() == event.getView().getBottomInventory()) {
-            return rejectsMerchantItem(event.getCurrentItem(), inventory.getMerchant());
+            return rejectsMerchantItem(event.getCurrentItem(), inventory);
         }
 
         if (rawSlot != 2) return false;
-        MerchantRecipe recipe = selectedRecipe(inventory);
+        MerchantRecipe recipe = inventory.getSelectedRecipe();
         return recipe != null
                 && containsUnexpectedPluginItem(items.values(), merchantInputs(inventory), recipe.getIngredients());
     }
@@ -255,21 +252,19 @@ public final class PluginItemRegistry implements Listener {
                 && event.getClickedInventory() == event.getView().getBottomInventory();
     }
 
-    private boolean rejectsMerchantItem(ItemStack stack, Merchant merchant) {
+    boolean rejectsMerchantItem(ItemStack stack, MerchantInventory inventory) {
         PluginItem<?> item = matchingPluginItem(items.values(), stack);
         if (item == null) return false;
-
-        for (MerchantRecipe recipe : merchant.getRecipes()) {
-            if (containsExplicitIngredient(item, stack, recipe.getIngredients())) return false;
-        }
-        return true;
+        MerchantRecipe recipe = hintedRecipe(inventory);
+        return recipe == null || !containsExplicitIngredient(item, stack, recipe.getIngredients());
     }
 
-    private void scheduleMerchantSanitize(Player player, MerchantInventory inventory, int selectedIndex,
-                                          MerchantRecipe recipe) {
+    private void scheduleMerchantSanitize(Player player, MerchantInventory inventory, int selectedIndex) {
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (!(player.getOpenInventory().getTopInventory() instanceof MerchantInventory openInventory)) return;
             if (openInventory != inventory || openInventory.getSelectedRecipeIndex() != selectedIndex) return;
+            MerchantRecipe recipe = activeOrHintedRecipe(openInventory);
+            if (recipe == null) return;
             sanitizeMerchantInputs(player, openInventory, recipe);
         });
     }
@@ -351,7 +346,12 @@ public final class PluginItemRegistry implements Listener {
         return rawSlot == 0 || rawSlot == 1;
     }
 
-    private static MerchantRecipe selectedRecipe(MerchantInventory inventory) {
+    private static MerchantRecipe activeOrHintedRecipe(MerchantInventory inventory) {
+        MerchantRecipe activeRecipe = inventory.getSelectedRecipe();
+        return activeRecipe == null ? hintedRecipe(inventory) : activeRecipe;
+    }
+
+    private static MerchantRecipe hintedRecipe(MerchantInventory inventory) {
         int index = inventory.getSelectedRecipeIndex();
         List<MerchantRecipe> recipes = inventory.getMerchant().getRecipes();
         return index >= 0 && index < recipes.size() ? recipes.get(index) : null;

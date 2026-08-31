@@ -2,6 +2,9 @@ package fr.nivcoo.utilsz.platform.bukkit.item;
 
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.Merchant;
+import org.bukkit.inventory.MerchantInventory;
+import org.bukkit.inventory.MerchantRecipe;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
@@ -60,6 +63,35 @@ class PluginItemRegistryTest {
 
         assertTrue(PluginItemRegistry.containsUnexpectedPluginItem(
                 Set.of(item), new ItemStack[]{questBook, null}, List.of(differentExplicitIngredient)));
+    }
+
+    @Test
+    void exactRecipeDoesNotAuthorizeAnotherGenericSelectedTrade() {
+        ItemStack questBook = stack();
+        ItemStack explicitIngredient = stack();
+        ItemStack genericBookIngredient = stack();
+        when(explicitIngredient.isSimilar(questBook)).thenReturn(true);
+        TestPluginItem item = new TestPluginItem(questBook, explicitIngredient);
+
+        MerchantRecipe exactRecipe = recipe(explicitIngredient);
+        MerchantRecipe genericRecipe = recipe(genericBookIngredient);
+        Merchant merchant = mock(Merchant.class);
+        when(merchant.getRecipes()).thenReturn(List.of(exactRecipe, genericRecipe));
+        MerchantInventory inventory = mock(MerchantInventory.class);
+        when(inventory.getMerchant()).thenReturn(merchant);
+
+        PluginItemRegistry registry = new PluginItemRegistry(null).register(item);
+        when(inventory.getSelectedRecipeIndex()).thenReturn(1);
+        assertTrue(registry.rejectsMerchantItem(questBook, inventory));
+
+        when(inventory.getSelectedRecipeIndex()).thenReturn(0);
+        assertFalse(registry.rejectsMerchantItem(questBook, inventory));
+    }
+
+    private static MerchantRecipe recipe(ItemStack ingredient) {
+        MerchantRecipe recipe = mock(MerchantRecipe.class);
+        when(recipe.getIngredients()).thenReturn(List.of(ingredient));
+        return recipe;
     }
 
     private static ItemStack stack() {
