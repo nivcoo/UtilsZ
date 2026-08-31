@@ -1,5 +1,6 @@
 package fr.nivcoo.utilsz.platform.bukkit.item;
 
+import io.papermc.paper.event.player.PlayerPurchaseEvent;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -21,13 +22,21 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.LeavesDecayEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.CraftItemEvent;
+import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.PrepareItemCraftEvent;
+import org.bukkit.event.inventory.TradeSelectEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.Merchant;
+import org.bukkit.inventory.MerchantInventory;
+import org.bukkit.inventory.MerchantRecipe;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -71,7 +80,57 @@ public final class PluginItemRegistry implements Listener {
     @EventHandler(ignoreCancelled = true)
     public void onClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
+        if (isPluginItemMovementInMerchant(event)) return;
         dispatchClick(event.getCurrentItem(), player, event);
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onMerchantClick(InventoryClickEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        if (!(event.getView().getTopInventory() instanceof MerchantInventory inventory)) return;
+        if (!shouldCancelMerchantClick(event, inventory, player)) return;
+
+        event.setCancelled(true);
+        if (event.getRawSlot() != 2) return;
+
+        MerchantRecipe recipe = selectedRecipe(inventory);
+        if (recipe != null) scheduleMerchantSanitize(player, inventory, inventory.getSelectedRecipeIndex(), recipe);
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onMerchantDrag(InventoryDragEvent event) {
+        if (!(event.getWhoClicked() instanceof Player)) return;
+        if (!(event.getView().getTopInventory() instanceof MerchantInventory inventory)) return;
+
+        for (Map.Entry<Integer, ItemStack> entry : event.getNewItems().entrySet()) {
+            if (!isMerchantIngredientSlot(entry.getKey())) continue;
+            if (!rejectsMerchantItem(entry.getValue(), inventory.getMerchant())) continue;
+            event.setCancelled(true);
+            return;
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onTradeSelect(TradeSelectEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        if (!(event.getView().getTopInventory() instanceof MerchantInventory inventory)) return;
+
+        int selectedIndex = event.getIndex();
+        List<MerchantRecipe> recipes = inventory.getMerchant().getRecipes();
+        if (selectedIndex < 0 || selectedIndex >= recipes.size()) return;
+        scheduleMerchantSanitize(player, inventory, selectedIndex, recipes.get(selectedIndex));
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onMerchantPurchase(PlayerPurchaseEvent event) {
+        Player player = event.getPlayer();
+        if (!(player.getOpenInventory().getTopInventory() instanceof MerchantInventory inventory)) return;
+
+        MerchantRecipe recipe = event.getTrade();
+        if (!containsUnexpectedPluginItem(items.values(), merchantInputs(inventory), recipe.getIngredients())) return;
+
+        event.setCancelled(true);
+        scheduleMerchantSanitize(player, inventory, inventory.getSelectedRecipeIndex(), recipe);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -160,6 +219,148 @@ public final class PluginItemRegistry implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockExplode(BlockExplodeEvent event) {
         dispatchExplosion(event.blockList(), new PluginBlockDestroyContext(null, PluginBlockDestroyCause.EXPLOSION, event));
+    }
+
+    private boolean shouldCancelMerchantClick(InventoryClickEvent event, MerchantInventory inventory, Player player) {
+        int rawSlot = event.getRawSlot();
+        if (isMerchantIngredientSlot(rawSlot)) {
+            ItemStack incoming = null;
+            if (event.getClick() == ClickType.NUMBER_KEY || event.getClick() == ClickType.SWAP_OFFHAND) {
+                incoming = hotbarItem(event, player);
+            } else if (event.getAction() == InventoryAction.PLACE_ALL
+                    || event.getAction() == InventoryAction.PLACE_ONE
+                    || event.getAction() == InventoryAction.PLACE_SOME
+                    || event.getAction() == InventoryAction.SWAP_WITH_CURSOR) {
+                incoming = event.getCursor();
+            }
+            return rejectsMerchantItem(incoming, inventory.getMerchant());
+        }
+
+        if (event.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY
+                && event.getClickedInventory() == event.getView().getBottomInventory()) {
+            return rejectsMerchantItem(event.getCurrentItem(), inventory.getMerchant());
+        }
+
+        if (rawSlot != 2) return false;
+        MerchantRecipe recipe = selectedRecipe(inventory);
+        return recipe != null
+                && containsUnexpectedPluginItem(items.values(), merchantInputs(inventory), recipe.getIngredients());
+    }
+
+    private boolean isPluginItemMovementInMerchant(InventoryClickEvent event) {
+        if (!(event.getView().getTopInventory() instanceof MerchantInventory)) return false;
+        if (matchingPluginItem(items.values(), event.getCurrentItem()) == null) return false;
+        if (isMerchantIngredientSlot(event.getRawSlot())) return true;
+        return event.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY
+                && event.getClickedInventory() == event.getView().getBottomInventory();
+    }
+
+    private boolean rejectsMerchantItem(ItemStack stack, Merchant merchant) {
+        PluginItem<?> item = matchingPluginItem(items.values(), stack);
+        if (item == null) return false;
+
+        for (MerchantRecipe recipe : merchant.getRecipes()) {
+            if (containsExplicitIngredient(item, stack, recipe.getIngredients())) return false;
+        }
+        return true;
+    }
+
+    private void scheduleMerchantSanitize(Player player, MerchantInventory inventory, int selectedIndex,
+                                          MerchantRecipe recipe) {
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!(player.getOpenInventory().getTopInventory() instanceof MerchantInventory openInventory)) return;
+            if (openInventory != inventory || openInventory.getSelectedRecipeIndex() != selectedIndex) return;
+            sanitizeMerchantInputs(player, openInventory, recipe);
+        });
+    }
+
+    private void sanitizeMerchantInputs(Player player, MerchantInventory inventory, MerchantRecipe recipe) {
+        List<Integer> rejectedSlots = unexpectedPluginItemSlots(
+                items.values(), merchantInputs(inventory), recipe.getIngredients());
+        if (rejectedSlots.isEmpty()) return;
+
+        List<ItemStack> rejectedItems = new ArrayList<>(rejectedSlots.size());
+        for (int slot : rejectedSlots) {
+            ItemStack stack = inventory.getItem(slot);
+            if (stack == null || stack.getType().isAir()) continue;
+            inventory.setItem(slot, null);
+            rejectedItems.add(stack);
+        }
+        if (!rejectedItems.isEmpty()) ItemDelivery.giveOrDrop(player, rejectedItems.toArray(ItemStack[]::new));
+    }
+
+    static boolean containsUnexpectedPluginItem(Iterable<? extends PluginItem<?>> registeredItems,
+                                                ItemStack[] inputs, List<ItemStack> ingredients) {
+        return !unexpectedPluginItemSlots(registeredItems, inputs, ingredients).isEmpty();
+    }
+
+    private static List<Integer> unexpectedPluginItemSlots(Iterable<? extends PluginItem<?>> registeredItems,
+                                                           ItemStack[] inputs, List<ItemStack> ingredients) {
+        List<Integer> unexpectedSlots = new ArrayList<>();
+        boolean[] usedIngredients = new boolean[ingredients.size()];
+
+        for (int inputSlot = 0; inputSlot < inputs.length; inputSlot++) {
+            ItemStack input = inputs[inputSlot];
+            PluginItem<?> item = matchingPluginItem(registeredItems, input);
+            if (item == null) continue;
+
+            int ingredientIndex = explicitIngredientIndex(item, input, ingredients, usedIngredients);
+            if (ingredientIndex >= 0) {
+                usedIngredients[ingredientIndex] = true;
+            } else {
+                unexpectedSlots.add(inputSlot);
+            }
+        }
+        return unexpectedSlots;
+    }
+
+    private static int explicitIngredientIndex(PluginItem<?> item, ItemStack input, List<ItemStack> ingredients,
+                                               boolean[] usedIngredients) {
+        for (int index = 0; index < ingredients.size(); index++) {
+            if (usedIngredients[index]) continue;
+            ItemStack ingredient = ingredients.get(index);
+            if (ingredient == null || ingredient.getType().isAir()) continue;
+            if (item.matches(ingredient) && ingredient.isSimilar(input)) return index;
+        }
+        return -1;
+    }
+
+    private static boolean containsExplicitIngredient(PluginItem<?> item, ItemStack input,
+                                                      List<ItemStack> ingredients) {
+        for (ItemStack ingredient : ingredients) {
+            if (ingredient == null || ingredient.getType().isAir()) continue;
+            if (item.matches(ingredient) && ingredient.isSimilar(input)) return true;
+        }
+        return false;
+    }
+
+    private static PluginItem<?> matchingPluginItem(Iterable<? extends PluginItem<?>> registeredItems,
+                                                    ItemStack stack) {
+        if (stack == null || stack.getType().isAir()) return null;
+        for (PluginItem<?> item : registeredItems) {
+            if (item.matches(stack)) return item;
+        }
+        return null;
+    }
+
+    private static ItemStack[] merchantInputs(MerchantInventory inventory) {
+        return new ItemStack[]{inventory.getItem(0), inventory.getItem(1)};
+    }
+
+    private static boolean isMerchantIngredientSlot(int rawSlot) {
+        return rawSlot == 0 || rawSlot == 1;
+    }
+
+    private static MerchantRecipe selectedRecipe(MerchantInventory inventory) {
+        int index = inventory.getSelectedRecipeIndex();
+        List<MerchantRecipe> recipes = inventory.getMerchant().getRecipes();
+        return index >= 0 && index < recipes.size() ? recipes.get(index) : null;
+    }
+
+    private static ItemStack hotbarItem(InventoryClickEvent event, Player player) {
+        if (event.getClick() == ClickType.SWAP_OFFHAND) return player.getInventory().getItemInOffHand();
+        int hotbarSlot = event.getHotbarButton();
+        return hotbarSlot >= 0 ? player.getInventory().getItem(hotbarSlot) : null;
     }
 
     private boolean containsPluginItem(ItemStack[] matrix) {
