@@ -81,16 +81,7 @@ public abstract class PluginBlock<T> {
         return true;
     }
 
-    public void onDestroy(T data, PluginBlockDestroyContext context) {
-    }
-
-    /**
-     * Destroys this managed block and reports whether its persistent state was
-     * committed. Existing implementations keep their previous behaviour through
-     * {@link #onDestroy(Object, PluginBlockDestroyContext)}.
-     */
     public boolean tryDestroy(T data, PluginBlockDestroyContext context) {
-        onDestroy(data, context);
         return true;
     }
 

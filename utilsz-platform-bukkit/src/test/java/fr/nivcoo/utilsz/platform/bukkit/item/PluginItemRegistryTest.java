@@ -18,7 +18,6 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -49,8 +48,7 @@ class PluginItemRegistryTest {
     }
 
     @Test
-    void defaultTryDestroyKeepsLegacyOnDestroyImplementationsCompatible() {
-        AtomicBoolean destroyed = new AtomicBoolean();
+    void defaultTryDestroyAllowsStatelessBlocks() {
         PluginBlock<Object> block = new PluginBlock<>(null) {
             @Override
             public String id() {
@@ -62,14 +60,9 @@ class PluginItemRegistryTest {
                 return Optional.empty();
             }
 
-            @Override
-            public void onDestroy(Object ignored, PluginBlockDestroyContext context) {
-                destroyed.set(true);
-            }
         };
 
         assertTrue(block.tryDestroy(new Object(), null));
-        assertTrue(destroyed.get());
     }
 
     @Test
