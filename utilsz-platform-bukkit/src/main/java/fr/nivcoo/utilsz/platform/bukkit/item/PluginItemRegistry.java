@@ -161,7 +161,7 @@ public final class PluginItemRegistry implements Listener {
         if (!event.isCancelled()) dispatchAdjacentPlaceGuards(event);
     }
 
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBreak(BlockBreakEvent event) {
         dispatchBreak(event);
     }
@@ -208,12 +208,12 @@ public final class PluginItemRegistry implements Listener {
         if (shouldPreventLeavesDecay(event.getBlock(), event)) event.setCancelled(true);
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onEntityExplode(EntityExplodeEvent event) {
         dispatchExplosion(event.blockList(), new PluginBlockDestroyContext(null, PluginBlockDestroyCause.EXPLOSION, event));
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockExplode(BlockExplodeEvent event) {
         dispatchExplosion(event.blockList(), new PluginBlockDestroyContext(null, PluginBlockDestroyCause.EXPLOSION, event));
     }
@@ -581,7 +581,7 @@ public final class PluginItemRegistry implements Listener {
         T value = data.get();
         PluginBlockDestroyContext context = new PluginBlockDestroyContext(target, baseContext.cause(), baseContext.event());
         if (!block.shouldDestroy(value, context)) return true;
-        block.onDestroy(value, context);
+        if (!block.tryDestroy(value, context)) return true;
         if (!target.getType().isAir()) target.setType(Material.AIR, false);
         return true;
     }

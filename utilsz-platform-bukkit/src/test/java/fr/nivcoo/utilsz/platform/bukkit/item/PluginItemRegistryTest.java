@@ -1,10 +1,16 @@
 package fr.nivcoo.utilsz.platform.bukkit.item;
 
 import org.bukkit.Material;
+import org.bukkit.block.Block;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.Merchant;
 import org.bukkit.inventory.MerchantInventory;
 import org.bukkit.inventory.MerchantRecipe;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
@@ -12,13 +18,59 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class PluginItemRegistryTest {
+
+    @Test
+    void handlesManagedBreaksAfterNormalProtectionListeners() throws NoSuchMethodException {
+        EventHandler handler = PluginItemRegistry.class
+                .getDeclaredMethod("onBreak", BlockBreakEvent.class)
+                .getAnnotation(EventHandler.class);
+
+        assertEquals(EventPriority.HIGHEST, handler.priority());
+        assertTrue(handler.ignoreCancelled());
+    }
+
+    @Test
+    void destroysManagedExplosionBlocksOnlyAfterProtectionListeners() throws NoSuchMethodException {
+        assertEquals(EventPriority.MONITOR, PluginItemRegistry.class
+                .getDeclaredMethod("onEntityExplode", EntityExplodeEvent.class)
+                .getAnnotation(EventHandler.class).priority());
+        assertEquals(EventPriority.MONITOR, PluginItemRegistry.class
+                .getDeclaredMethod("onBlockExplode", BlockExplodeEvent.class)
+                .getAnnotation(EventHandler.class).priority());
+    }
+
+    @Test
+    void defaultTryDestroyKeepsLegacyOnDestroyImplementationsCompatible() {
+        AtomicBoolean destroyed = new AtomicBoolean();
+        PluginBlock<Object> block = new PluginBlock<>(null) {
+            @Override
+            public String id() {
+                return "legacy-block";
+            }
+
+            @Override
+            public Optional<Object> read(Block ignored) {
+                return Optional.empty();
+            }
+
+            @Override
+            public void onDestroy(Object ignored, PluginBlockDestroyContext context) {
+                destroyed.set(true);
+            }
+        };
+
+        assertTrue(block.tryDestroy(new Object(), null));
+        assertTrue(destroyed.get());
+    }
 
     @Test
     void rejectsPluginItemForGenericVanillaIngredient() {
