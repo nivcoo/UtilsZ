@@ -472,7 +472,6 @@ public final class PluginItemRegistry implements Listener {
 
     private void dispatchAdjacentPlaceGuards(BlockPlaceEvent event) {
         Block placed = event.getBlockPlaced();
-        if (placed == null) return;
         for (BlockFace face : PluginBlockGuards.HORIZONTAL_FACES) {
             Block adjacent = placed.getRelative(face);
             for (PluginBlock<?> block : blocks.values()) {
@@ -617,13 +616,12 @@ public final class PluginItemRegistry implements Listener {
 
     private <T> PendingBlockDestroy pendingDestroyOne(PluginBlock<T> block, Block target) {
         Optional<T> data = block.read(target);
-        if (data.isEmpty()) return null;
-        return baseContext -> {
+        return data.<PendingBlockDestroy>map(t -> baseContext -> {
             PluginBlockDestroyContext context = new PluginBlockDestroyContext(
                     target, baseContext.cause(), baseContext.event());
-            if (!block.shouldDestroy(data.get(), context)) return;
-            block.tryDestroy(data.get(), context);
-        };
+            if (!block.shouldDestroy(t, context)) return;
+            block.tryDestroy(t, context);
+        }).orElse(null);
     }
 
     @FunctionalInterface
