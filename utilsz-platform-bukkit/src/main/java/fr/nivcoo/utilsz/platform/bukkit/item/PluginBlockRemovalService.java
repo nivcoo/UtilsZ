@@ -18,12 +18,13 @@ public final class PluginBlockRemovalService {
     }
 
     public boolean remove(Block block, Predicate<Material> expectedMaterial,
-                          BooleanSupplier commitStateRemoval, Runnable clearContents,
-                          Runnable deliverDrops) {
+                          Runnable preparePhysicalRemoval, BooleanSupplier commitStateRemoval,
+                          Runnable postCommitCleanup, Runnable deliverDrops) {
         Objects.requireNonNull(block, "block");
         Objects.requireNonNull(expectedMaterial, "expectedMaterial");
+        Objects.requireNonNull(preparePhysicalRemoval, "preparePhysicalRemoval");
         Objects.requireNonNull(commitStateRemoval, "commitStateRemoval");
-        Objects.requireNonNull(clearContents, "clearContents");
+        Objects.requireNonNull(postCommitCleanup, "postCommitCleanup");
         Objects.requireNonNull(deliverDrops, "deliverDrops");
 
         Material previousType = block.getType();
@@ -33,6 +34,7 @@ public final class PluginBlockRemovalService {
 
         BlockState previousState = block.getState();
         try {
+            preparePhysicalRemoval.run();
             block.setType(Material.AIR, false);
         } catch (RuntimeException | Error failure) {
             restore(previousState, block, previousType, failure);
@@ -55,13 +57,12 @@ public final class PluginBlockRemovalService {
         }
 
         blockChanges.recordChange(block, previousType);
-        clearContents.run();
+        postCommitCleanup.run();
         deliverDrops.run();
         return true;
     }
 
     private void restore(BlockState previousState, Block block, Material previousType, Throwable cause) {
-        if (block.getType() == previousType) return;
         try {
             boolean restored = previousState.update(true, false);
             if (restored && block.getType() == previousType) return;
