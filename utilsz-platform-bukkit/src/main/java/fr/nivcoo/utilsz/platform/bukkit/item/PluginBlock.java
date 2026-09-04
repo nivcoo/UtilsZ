@@ -81,9 +81,11 @@ public abstract class PluginBlock<T> {
         return true;
     }
 
-    public boolean tryDestroy(T data, PluginBlockDestroyContext context) {
-        return true;
-    }
+    /**
+     * Performs the complete plugin-owned destruction, including persistence,
+     * physical removal and delivery. The registry never removes the block as a fallback.
+     */
+    public abstract boolean tryDestroy(T data, PluginBlockDestroyContext context);
 
     public boolean shouldDestroy(T data, PluginBlockDestroyContext context) {
         return true;

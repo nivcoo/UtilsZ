@@ -6,6 +6,7 @@ import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -36,21 +37,31 @@ import org.bukkit.inventory.MerchantRecipe;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 @SuppressWarnings("unused")
 public final class PluginItemRegistry implements Listener {
 
     private final JavaPlugin plugin;
+    private final Consumer<Runnable> deferredExecutor;
     private final Map<String, PluginItem<?>> items = new LinkedHashMap<>();
     private final Map<String, PluginBlock<?>> blocks = new LinkedHashMap<>();
+    private final Map<Event, List<PendingBlockDestroy>> pendingExplosionBlocks = new IdentityHashMap<>();
     private boolean initialized;
 
     public PluginItemRegistry(JavaPlugin plugin) {
+        this(plugin, task -> Bukkit.getScheduler().runTask(plugin, task));
+    }
+
+    PluginItemRegistry(JavaPlugin plugin, Consumer<Runnable> deferredExecutor) {
         this.plugin = plugin;
+        this.deferredExecutor = deferredExecutor;
     }
 
     public PluginItemRegistry register(PluginItem<?> item) {
@@ -208,14 +219,26 @@ public final class PluginItemRegistry implements Listener {
         if (shouldPreventLeavesDecay(event.getBlock(), event)) event.setCancelled(true);
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onEntityExplode(EntityExplodeEvent event) {
-        dispatchExplosion(event.blockList(), new PluginBlockDestroyContext(null, PluginBlockDestroyCause.EXPLOSION, event));
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEntityExplodePrepare(EntityExplodeEvent event) {
+        prepareExplosion(event.blockList(), event);
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onBlockExplode(BlockExplodeEvent event) {
-        dispatchExplosion(event.blockList(), new PluginBlockDestroyContext(null, PluginBlockDestroyCause.EXPLOSION, event));
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onEntityExplodeCommit(EntityExplodeEvent event) {
+        commitExplosion(event, event::isCancelled,
+                new PluginBlockDestroyContext(null, PluginBlockDestroyCause.EXPLOSION, event));
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onBlockExplodePrepare(BlockExplodeEvent event) {
+        prepareExplosion(event.blockList(), event);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onBlockExplodeCommit(BlockExplodeEvent event) {
+        commitExplosion(event, event::isCancelled,
+                new PluginBlockDestroyContext(null, PluginBlockDestroyCause.EXPLOSION, event));
     }
 
     private boolean shouldCancelMerchantClick(InventoryClickEvent event, MerchantInventory inventory, Player player) {
@@ -441,6 +464,8 @@ public final class PluginItemRegistry implements Listener {
     private <T> boolean dispatchBreakOne(PluginBlock<T> block, BlockBreakEvent event) {
         Optional<T> data = block.read(event.getBlock());
         if (data.isEmpty()) return false;
+        event.setDropItems(false);
+        event.setCancelled(true);
         block.onBreak(event.getPlayer(), data.get(), event);
         return true;
     }
@@ -561,28 +586,48 @@ public final class PluginItemRegistry implements Listener {
         return data.isPresent() && block.shouldPreventLeavesDecay(target, data.get(), event);
     }
 
-    private void dispatchExplosion(List<Block> explodedBlocks, PluginBlockDestroyContext baseContext) {
+    void prepareExplosion(List<Block> explodedBlocks, Event event) {
+        List<PendingBlockDestroy> pendingBlocks = new ArrayList<>();
         for (Block explodedBlock : List.copyOf(explodedBlocks)) {
-            if (destroyBlock(explodedBlock, baseContext)) explodedBlocks.remove(explodedBlock);
+            PendingBlockDestroy pendingBlock = pendingDestroy(explodedBlock);
+            if (pendingBlock == null) continue;
+            explodedBlocks.remove(explodedBlock);
+            pendingBlocks.add(pendingBlock);
         }
+        if (!pendingBlocks.isEmpty()) pendingExplosionBlocks.put(event, pendingBlocks);
     }
 
-    private boolean destroyBlock(Block target, PluginBlockDestroyContext baseContext) {
-        if (target == null) return false;
+    void commitExplosion(Event event, BooleanSupplier cancelled, PluginBlockDestroyContext baseContext) {
+        List<PendingBlockDestroy> pendingBlocks = pendingExplosionBlocks.remove(event);
+        if (pendingBlocks == null) return;
+        deferredExecutor.accept(() -> {
+            if (cancelled.getAsBoolean()) return;
+            for (PendingBlockDestroy pendingBlock : pendingBlocks) pendingBlock.destroy(baseContext);
+        });
+    }
+
+    private PendingBlockDestroy pendingDestroy(Block target) {
+        if (target == null) return null;
         for (PluginBlock<?> block : blocks.values()) {
-            if (destroyBlockOne(block, target, baseContext)) return true;
+            PendingBlockDestroy pendingBlock = pendingDestroyOne(block, target);
+            if (pendingBlock != null) return pendingBlock;
         }
-        return false;
+        return null;
     }
 
-    private <T> boolean destroyBlockOne(PluginBlock<T> block, Block target, PluginBlockDestroyContext baseContext) {
+    private <T> PendingBlockDestroy pendingDestroyOne(PluginBlock<T> block, Block target) {
         Optional<T> data = block.read(target);
-        if (data.isEmpty()) return false;
-        T value = data.get();
-        PluginBlockDestroyContext context = new PluginBlockDestroyContext(target, baseContext.cause(), baseContext.event());
-        if (!block.shouldDestroy(value, context)) return true;
-        if (!block.tryDestroy(value, context)) return true;
-        if (!target.getType().isAir()) target.setType(Material.AIR, false);
-        return true;
+        if (data.isEmpty()) return null;
+        return baseContext -> {
+            PluginBlockDestroyContext context = new PluginBlockDestroyContext(
+                    target, baseContext.cause(), baseContext.event());
+            if (!block.shouldDestroy(data.get(), context)) return;
+            block.tryDestroy(data.get(), context);
+        };
+    }
+
+    @FunctionalInterface
+    private interface PendingBlockDestroy {
+        void destroy(PluginBlockDestroyContext context);
     }
 }
