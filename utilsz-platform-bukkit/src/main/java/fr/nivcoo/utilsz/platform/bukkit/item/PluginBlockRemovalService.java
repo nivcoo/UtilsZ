@@ -9,10 +9,6 @@ import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 
-/**
- * Applies the destructive part of a managed block removal in one fixed order.
- * Plugin-specific persistence, inventory cleanup and delivery stay in callbacks.
- */
 public final class PluginBlockRemovalService {
 
     private final BlockChangeService blockChanges;
