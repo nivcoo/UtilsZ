@@ -16,7 +16,9 @@ final class InMemoryMessageBackend implements MessageBackend {
     private final String instanceId;
     private Consumer<Throwable> errorHandler = Throwable::printStackTrace;
     private volatile JsonObject lastPublished;
+    private volatile String lastTarget;
     private final AtomicInteger publishCount = new AtomicInteger();
+    private final AtomicInteger targetedPublishCount = new AtomicInteger();
 
     InMemoryMessageBackend(String instanceId) {
         this.instanceId = instanceId;
@@ -46,7 +48,6 @@ final class InMemoryMessageBackend implements MessageBackend {
 
     @Override
     public void publish(String channel, JsonObject json) {
-        publishCount.incrementAndGet();
         lastPublished = json == null ? new JsonObject() : json.deepCopy();
         for (Consumer<JsonObject> subscriber : SUBSCRIBERS.getOrDefault(channel, List.of())) {
             try {
@@ -55,6 +56,14 @@ final class InMemoryMessageBackend implements MessageBackend {
                 errorHandler.accept(throwable);
             }
         }
+        publishCount.incrementAndGet();
+    }
+
+    @Override
+    public void publishTo(String channel, String targetInstanceId, JsonObject json) {
+        lastTarget = targetInstanceId;
+        targetedPublishCount.incrementAndGet();
+        MessageBackend.super.publishTo(channel, targetInstanceId, json);
     }
 
     @Override
@@ -68,6 +77,14 @@ final class InMemoryMessageBackend implements MessageBackend {
 
     int publishCount() {
         return publishCount.get();
+    }
+
+    int targetedPublishCount() {
+        return targetedPublishCount.get();
+    }
+
+    String lastTarget() {
+        return lastTarget;
     }
 
     void replayLast(String channel) {

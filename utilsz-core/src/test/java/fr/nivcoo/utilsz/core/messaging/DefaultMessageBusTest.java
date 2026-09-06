@@ -17,19 +17,25 @@ import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DefaultMessageBusTest {
@@ -66,6 +72,7 @@ class DefaultMessageBusTest {
 
         sender.publish(new PresenceEvent(List.of(presence), Map.of("local", presence)));
 
+        awaitTrue(() -> received.get() != null);
         assertNotNull(received.get());
         assertInstanceOf(Presence.class, received.get().presences().getFirst());
         assertEquals(presence, received.get().presences().getFirst());
@@ -82,6 +89,7 @@ class DefaultMessageBusTest {
 
         sender.publish(new ClassicEvent("handled"));
 
+        awaitTrue(() -> CLASSIC_EVENT_HANDLES.get() == 1);
         assertEquals(1, CLASSIC_EVENT_HANDLES.get());
     }
 
@@ -96,6 +104,7 @@ class DefaultMessageBusTest {
 
         sender.publish(new HandlerOnlyEvent("injected"));
 
+        awaitTrue(() -> "injected".equals(handled.get()));
         assertEquals("injected", handled.get());
     }
 
@@ -123,6 +132,7 @@ class DefaultMessageBusTest {
         receiver.register(PresenceEvent.class, event -> received.incrementAndGet());
 
         sender.publish(new PresenceEvent(List.of(presence("Nivcoo")), Map.of()));
+        awaitTrue(() -> received.get() == 1);
         senderBackend.replayLast(channel);
 
         assertEquals(1, received.get());
@@ -131,7 +141,8 @@ class DefaultMessageBusTest {
     @Test
     void publishToOnlyDeliversToTargetInstance() {
         String channel = channel();
-        DefaultMessageBus sender = bus("sender", channel, Runnable::run);
+        InMemoryMessageBackend senderBackend = new InMemoryMessageBackend("sender");
+        DefaultMessageBus sender = bus(senderBackend, channel, Runnable::run);
         DefaultMessageBus target = bus("target", channel, Runnable::run);
         DefaultMessageBus other = bus("other", channel, Runnable::run);
         AtomicInteger targetCount = new AtomicInteger();
@@ -142,8 +153,12 @@ class DefaultMessageBusTest {
 
         sender.publishTo("target", new PresenceEvent(List.of(presence("Nivcoo")), Map.of()));
 
+        awaitTrue(() -> targetCount.get() == 1);
         assertEquals(1, targetCount.get());
         assertEquals(0, otherCount.get());
+        assertEquals(1, senderBackend.publishCount());
+        assertEquals(1, senderBackend.targetedPublishCount());
+        assertEquals("target", senderBackend.lastTarget());
     }
 
     @Test
@@ -159,6 +174,7 @@ class DefaultMessageBusTest {
         bus.publish(new PresenceEvent(List.of(presence("Nivcoo")), Map.of()));
         bus.publish(new SelfEvent("ok"));
 
+        awaitTrue(() -> received.get() == 1);
         assertEquals(0, ignored.get());
         assertEquals(1, received.get());
     }
@@ -175,6 +191,7 @@ class DefaultMessageBusTest {
 
         sender.publish(new MainThreadEvent("queued"));
 
+        awaitTrue(() -> mainThread.size() == 1);
         assertNull(handled.get());
         assertEquals(1, mainThread.size());
 
@@ -254,13 +271,41 @@ class DefaultMessageBusTest {
                 EchoResponse.class,
                 Duration.ofSeconds(1)
         ).get(1, TimeUnit.SECONDS);
+        awaitTrue(() -> responderBackend.publishCount() == 1);
         int responsesBeforeReplay = responderBackend.publishCount();
 
         callerBackend.replayLast(channel);
 
+        awaitTrue(() -> responderBackend.publishCount() >= responsesBeforeReplay + 1);
         assertEquals("HELLO", response.value());
         assertEquals(1, RPC_HANDLES.get());
         assertEquals(responsesBeforeReplay + 1, responderBackend.publishCount());
+    }
+
+    @Test
+    void duplicateRpcWithoutReplayDoesNotRetainOrResendResponse() throws Exception {
+        String channel = channel();
+        InMemoryMessageBackend callerBackend = new InMemoryMessageBackend("caller");
+        InMemoryMessageBackend responderBackend = new InMemoryMessageBackend("responder");
+        DefaultMessageBus caller = bus(callerBackend, channel, Runnable::run);
+        DefaultMessageBus responder = bus(responderBackend, channel, Runnable::run);
+        responder.register(NonReplayRequest.class);
+
+        EchoResponse response = caller.call(
+                new NonReplayRequest("hello"),
+                EchoResponse.class,
+                Duration.ofSeconds(1)
+        ).get(1, TimeUnit.SECONDS);
+        awaitTrue(() -> responderBackend.publishCount() == 1);
+
+        callerBackend.replayLast(channel);
+
+        responder.publish(new PresenceEvent(List.of(presence("marker")), Map.of()));
+        awaitTrue(() -> responderBackend.publishCount() >= 2);
+
+        assertEquals("HELLO", response.value());
+        assertEquals(1, RPC_HANDLES.get());
+        assertEquals(2, responderBackend.publishCount());
     }
 
     @Test
@@ -337,6 +382,7 @@ class DefaultMessageBusTest {
 
         sender.publish(new PresenceEvent(List.of(presence("Nivcoo")), Map.of()));
 
+        awaitTrue(() -> senderBackend.publishCount() == 1 && received.get() != null);
         JsonObject wire = senderBackend.lastPublished();
         assertNotNull(wire);
         assertTrue(wire.getAsJsonObject("payload").get("__encrypted").getAsBoolean());
@@ -346,10 +392,45 @@ class DefaultMessageBusTest {
     }
 
     @Test
+    void encryptedTargetedRpcSkipsDecryptOnBystander() throws Exception {
+        String channel = channel();
+        byte[] key = "12345678901234567890123456789012".getBytes(StandardCharsets.UTF_8);
+        InMemoryMessageBackend callerBackend = new InMemoryMessageBackend("caller");
+        InMemoryMessageBackend responderBackend = new InMemoryMessageBackend("responder");
+        CountingCrypto callerCrypto = new CountingCrypto(new AesGcmMessageCrypto(key, "test"));
+        CountingCrypto responderCrypto = new CountingCrypto(new AesGcmMessageCrypto(key, "test"));
+        CountingCrypto bystanderCrypto = new CountingCrypto(new AesGcmMessageCrypto(key, "test"));
+        DefaultMessageBus caller = bus(callerBackend, channel, Runnable::run, callerCrypto);
+        DefaultMessageBus responder = bus(responderBackend, channel, Runnable::run, responderCrypto);
+        bus(new InMemoryMessageBackend("bystander"), channel, Runnable::run, bystanderCrypto);
+        Presence presence = presence("Nivcoo");
+
+        responder.register(EchoRequest.class);
+
+        EchoResponse response = caller.callTo(
+                "responder",
+                new EchoRequest("hello", List.of(presence)),
+                EchoResponse.class
+        ).get(1, TimeUnit.SECONDS);
+        awaitTrue(() -> callerBackend.publishCount() == 1 && responderBackend.publishCount() == 1);
+
+        assertEquals("HELLO", response.value());
+        assertEquals(presence, response.presence());
+        assertEquals(1, callerCrypto.decryptCount());
+        assertEquals(1, responderCrypto.decryptCount());
+        assertEquals(0, bystanderCrypto.decryptCount());
+        assertEquals(1, callerBackend.publishCount());
+        assertEquals(1, callerBackend.targetedPublishCount());
+        assertEquals(1, responderBackend.publishCount());
+        assertEquals(1, responderBackend.targetedPublishCount());
+    }
+
+    @Test
     void encryptedMessageIsIgnoredWhenReceiverHasPlaintextBus() {
         String channel = channel();
         byte[] key = "12345678901234567890123456789012".getBytes(StandardCharsets.UTF_8);
-        DefaultMessageBus sender = bus(new InMemoryMessageBackend("sender"), channel, Runnable::run, new AesGcmMessageCrypto(key, "test"));
+        InMemoryMessageBackend senderBackend = new InMemoryMessageBackend("sender");
+        DefaultMessageBus sender = bus(senderBackend, channel, Runnable::run, new AesGcmMessageCrypto(key, "test"));
         DefaultMessageBus receiver = bus("receiver", channel, Runnable::run);
         AtomicInteger received = new AtomicInteger();
 
@@ -357,6 +438,7 @@ class DefaultMessageBusTest {
 
         sender.publish(new PresenceEvent(List.of(presence("Nivcoo")), Map.of()));
 
+        awaitTrue(() -> senderBackend.publishCount() == 1);
         assertEquals(0, received.get());
     }
 
@@ -367,7 +449,7 @@ class DefaultMessageBusTest {
 
         CompletableFuture<JsonObject> future = caller.callRaw("broken", new JsonObject());
 
-        assertTrue(future.isCompletedExceptionally());
+        assertThrows(ExecutionException.class, () -> future.get(1, TimeUnit.SECONDS));
     }
 
     @Test
@@ -381,15 +463,17 @@ class DefaultMessageBusTest {
         buses.add(caller);
         caller.start();
 
-        CompletableFuture<JsonObject> future = caller.callRaw("broken", new JsonObject());
+        CompletableFuture<JsonObject> future = caller.callRaw(
+                "broken", new JsonObject(), Duration.ofMillis(25L));
 
-        assertTrue(future.isCompletedExceptionally());
+        assertThrows(ExecutionException.class, () -> future.get(1, TimeUnit.SECONDS));
     }
 
     @Test
-    void backendPublishFailureIsPropagatedForEvents() {
+    void messageWaitsForBackendRecoveryWithoutBlockingCaller() {
+        DelayedReadyBackend backend = new DelayedReadyBackend("sender");
         DefaultMessageBus sender = new DefaultMessageBus(
-                new ThrowingBackend("sender"),
+                backend,
                 channel(),
                 Runnable::run,
                 NOPLogger.NOP_LOGGER
@@ -397,8 +481,129 @@ class DefaultMessageBusTest {
         buses.add(sender);
         sender.start();
 
-        assertThrows(IllegalStateException.class,
+        assertTimeoutPreemptively(Duration.ofMillis(250),
                 () -> sender.publish(new PresenceEvent(List.of(presence("Nivcoo")), Map.of())));
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(50L));
+        assertEquals(0, backend.publishCount.get());
+        backend.ready.set(true);
+        awaitTrue(() -> backend.publishCount.get() == 1, Duration.ofSeconds(5L));
+
+        assertEquals(1, backend.publishCount.get());
+    }
+
+    @Test
+    void backendPublishFailureDoesNotEscapeOrRetryEvent() {
+        ThrowingBackend backend = new ThrowingBackend("sender");
+        DefaultMessageBus sender = new DefaultMessageBus(
+                backend,
+                channel(),
+                Runnable::run,
+                NOPLogger.NOP_LOGGER
+        );
+        buses.add(sender);
+        sender.start();
+
+        assertDoesNotThrow(
+                () -> sender.publish(new PresenceEvent(List.of(presence("Nivcoo")), Map.of())));
+        awaitTrue(() -> backend.publishCount.get() == 1);
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(600L));
+        assertEquals(1, backend.publishCount.get());
+    }
+
+    @Test
+    void eventPublishDoesNotWaitForBlockedBackend() throws Exception {
+        BlockingBackend backend = new BlockingBackend("sender");
+        DefaultMessageBus sender = new DefaultMessageBus(
+                backend,
+                channel(),
+                Runnable::run,
+                NOPLogger.NOP_LOGGER
+        );
+        buses.add(sender);
+        sender.start();
+
+        assertTimeoutPreemptively(Duration.ofMillis(250),
+                () -> sender.publish(new PresenceEvent(List.of(presence("Nivcoo")), Map.of())));
+        assertTrue(backend.entered.await(1, TimeUnit.SECONDS));
+        backend.release.countDown();
+    }
+
+    @Test
+    void expiredRpcIsNotSentAfterOutboundWorkerRecovers() throws Exception {
+        BlockingBackend backend = new BlockingBackend("sender");
+        DefaultMessageBus sender = new DefaultMessageBus(
+                backend,
+                channel(),
+                Runnable::run,
+                NOPLogger.NOP_LOGGER
+        );
+        buses.add(sender);
+        sender.start();
+
+        sender.publish(new PresenceEvent(List.of(presence("Nivcoo")), Map.of()));
+        assertTrue(backend.entered.await(1, TimeUnit.SECONDS));
+        CompletableFuture<JsonObject> expired =
+                sender.callRaw("expired", new JsonObject(), Duration.ofMillis(25L));
+        ExecutionException failure =
+                assertThrows(ExecutionException.class, () -> expired.get(1, TimeUnit.SECONDS));
+        assertInstanceOf(TimeoutException.class, failure.getCause());
+
+        backend.release.countDown();
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(50L));
+
+        assertEquals(1, backend.publishCount.get());
+    }
+
+    @Test
+    void queuedRawRpcUsesPayloadSnapshotFromCallTime() throws Exception {
+        BlockingBackend backend = new BlockingBackend("sender");
+        DefaultMessageBus sender = new DefaultMessageBus(
+                backend,
+                channel(),
+                Runnable::run,
+                NOPLogger.NOP_LOGGER
+        );
+        buses.add(sender);
+        sender.start();
+
+        sender.publish(new PresenceEvent(List.of(presence("Nivcoo")), Map.of()));
+        assertTrue(backend.entered.await(1, TimeUnit.SECONDS));
+        JsonObject payload = new JsonObject();
+        payload.addProperty("value", "before");
+        CompletableFuture<JsonObject> call =
+                sender.callRaw("snapshot", payload, Duration.ofSeconds(1L));
+        payload.addProperty("value", "after");
+        backend.release.countDown();
+        awaitTrue(() -> backend.published.size() == 2);
+
+        JsonObject wire = backend.published.stream()
+                .filter(message -> "snapshot".equals(message.get("action").getAsString()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("before", wire.getAsJsonObject("payload").get("value").getAsString());
+        call.cancel(false);
+    }
+
+    @Test
+    void closeDrainsQueuedEventsBeforeClosingBackend() throws Exception {
+        BlockingBackend backend = new BlockingBackend("sender");
+        DefaultMessageBus sender = new DefaultMessageBus(
+                backend,
+                channel(),
+                Runnable::run,
+                NOPLogger.NOP_LOGGER
+        );
+        buses.add(sender);
+        sender.start();
+
+        sender.publish(new PresenceEvent(List.of(presence("first")), Map.of()));
+        assertTrue(backend.entered.await(1, TimeUnit.SECONDS));
+        sender.publish(new PresenceEvent(List.of(presence("last")), Map.of()));
+        backend.release.countDown();
+
+        sender.close();
+
+        assertEquals(2, backend.publishCount.get());
     }
 
     private DefaultMessageBus bus(String instanceId, String channel, Consumer<Runnable> mainThreadExecutor) {
@@ -427,6 +632,18 @@ class DefaultMessageBusTest {
 
     private static Presence presence(String username) {
         return new Presence(UUID.randomUUID(), username, "eden", System.currentTimeMillis());
+    }
+
+    private static void awaitTrue(BooleanSupplier condition) {
+        awaitTrue(condition, Duration.ofSeconds(1L));
+    }
+
+    private static void awaitTrue(BooleanSupplier condition, Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (!condition.getAsBoolean() && System.nanoTime() < deadline) {
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1L));
+        }
+        assertTrue(condition.getAsBoolean());
     }
 
     private record Presence(UUID uuid, String username, String cluster, long updatedAt) {
@@ -485,6 +702,15 @@ class DefaultMessageBusTest {
         }
     }
 
+    @BusAction(value = "non-replay-request", response = EchoResponse.class, replayResponse = false)
+    private record NonReplayRequest(String value) implements RpcMessage {
+        @Override
+        public Object handle() {
+            RPC_HANDLES.incrementAndGet();
+            return new EchoResponse(value.toUpperCase(), null);
+        }
+    }
+
     @BusAction(value = "failing-request", response = EchoResponse.class)
     private record FailingRequest(String message) implements RpcMessage {
         @Override
@@ -527,8 +753,38 @@ class DefaultMessageBusTest {
         }
     }
 
+    private static final class CountingCrypto implements MessageCrypto {
+        private final MessageCrypto delegate;
+        private final AtomicInteger decryptCount = new AtomicInteger();
+
+        private CountingCrypto(MessageCrypto delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public boolean enabled() {
+            return delegate.enabled();
+        }
+
+        @Override
+        public JsonObject encrypt(JsonObject clear, byte[] associatedData) throws Exception {
+            return delegate.encrypt(clear, associatedData);
+        }
+
+        @Override
+        public JsonObject decrypt(JsonObject encrypted, byte[] associatedData) throws Exception {
+            decryptCount.incrementAndGet();
+            return delegate.decrypt(encrypted, associatedData);
+        }
+
+        private int decryptCount() {
+            return decryptCount.get();
+        }
+    }
+
     private static final class ThrowingBackend implements MessageBackend {
         private final String instanceId;
+        private final AtomicInteger publishCount = new AtomicInteger();
 
         private ThrowingBackend(String instanceId) {
             this.instanceId = instanceId;
@@ -553,7 +809,95 @@ class DefaultMessageBusTest {
 
         @Override
         public void publish(String channel, JsonObject json) {
+            publishCount.incrementAndGet();
             throw new IllegalStateException("backend failed");
+        }
+
+        @Override
+        public void onError(Consumer<Throwable> handler) {
+        }
+    }
+
+    private static final class DelayedReadyBackend implements MessageBackend {
+        private final String instanceId;
+        private final AtomicBoolean ready = new AtomicBoolean(false);
+        private final AtomicInteger publishCount = new AtomicInteger();
+
+        private DelayedReadyBackend(String instanceId) {
+            this.instanceId = instanceId;
+        }
+
+        @Override
+        public String getInstanceId() {
+            return instanceId;
+        }
+
+        @Override
+        public void start() {
+        }
+
+        @Override
+        public void close() {
+        }
+
+        @Override
+        public void subscribeRaw(String channel, Consumer<JsonObject> callback) {
+        }
+
+        @Override
+        public boolean ready() {
+            return ready.get();
+        }
+
+        @Override
+        public void publish(String channel, JsonObject json) {
+            publishCount.incrementAndGet();
+        }
+
+        @Override
+        public void onError(Consumer<Throwable> handler) {
+        }
+    }
+
+    private static final class BlockingBackend implements MessageBackend {
+        private final String instanceId;
+        private final CountDownLatch entered = new CountDownLatch(1);
+        private final CountDownLatch release = new CountDownLatch(1);
+        private final AtomicInteger publishCount = new AtomicInteger();
+        private final Queue<JsonObject> published = new ConcurrentLinkedQueue<>();
+
+        private BlockingBackend(String instanceId) {
+            this.instanceId = instanceId;
+        }
+
+        @Override
+        public String getInstanceId() {
+            return instanceId;
+        }
+
+        @Override
+        public void start() {
+        }
+
+        @Override
+        public void close() {
+            release.countDown();
+        }
+
+        @Override
+        public void subscribeRaw(String channel, Consumer<JsonObject> callback) {
+        }
+
+        @Override
+        public void publish(String channel, JsonObject json) {
+            publishCount.incrementAndGet();
+            entered.countDown();
+            try {
+                release.await();
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            published.add(json.deepCopy());
         }
 
         @Override

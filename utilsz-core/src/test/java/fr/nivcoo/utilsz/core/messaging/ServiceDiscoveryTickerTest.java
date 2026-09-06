@@ -11,7 +11,9 @@ import org.slf4j.helpers.NOPLogger;
 
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.LockSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -57,7 +59,7 @@ class ServiceDiscoveryTickerTest {
         second.start();
         first.start();
 
-        Optional<ServiceDiscoveryTicker.Service> remote = second.find("server-a");
+        Optional<ServiceDiscoveryTicker.Service> remote = awaitService(second, "server-a");
 
         assertTrue(remote.isPresent());
         assertEquals("edenplayers", remote.get().service());
@@ -102,6 +104,19 @@ class ServiceDiscoveryTickerTest {
         );
         bus.start();
         return bus;
+    }
+
+    private static Optional<ServiceDiscoveryTicker.Service> awaitService(
+            ServiceDiscoveryTicker ticker,
+            String serverId
+    ) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1L);
+        Optional<ServiceDiscoveryTicker.Service> service = ticker.find(serverId);
+        while (service.isEmpty() && System.nanoTime() < deadline) {
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1L));
+            service = ticker.find(serverId);
+        }
+        return service;
     }
 
     private static ServiceDiscoveryConfig config(boolean sameClusterOnly) {

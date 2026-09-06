@@ -14,7 +14,15 @@ public interface MessageBackend {
 
     void subscribeRaw(String channel, Consumer<JsonObject> callback);
 
+    default boolean ready() {
+        return true;
+    }
+
     void publish(String channel, JsonObject json);
+
+    default void publishTo(String channel, String targetInstanceId, JsonObject json) {
+        publish(channel, json);
+    }
 
     void onError(Consumer<Throwable> handler);
 }

@@ -19,6 +19,7 @@ import org.slf4j.helpers.NOPLogger;
 
 import java.util.Base64;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -90,7 +91,7 @@ class BukkitItemStackAdapterTest {
 
     @Test
     @Order(2)
-    void messageBusUsesAutomaticallyLoadedBukkitAdapterForPayloads() {
+    void messageBusUsesAutomaticallyLoadedBukkitAdapterForPayloads() throws Exception {
         NoopBackend backend = new NoopBackend();
         DefaultMessageBus bus = new DefaultMessageBus(
                 backend,
@@ -104,7 +105,7 @@ class BukkitItemStackAdapterTest {
             bus.start();
             bus.publish(new ItemEvent(new SerializedItemStack(payload)));
 
-            String encoded = backend.published()
+            String encoded = backend.awaitPublished()
                     .getAsJsonObject("payload")
                     .getAsJsonObject("item")
                     .get("value")
@@ -189,7 +190,12 @@ class BukkitItemStackAdapterTest {
         public void onError(Consumer<Throwable> handler) {
         }
 
-        private JsonObject published() {
+        private JsonObject awaitPublished() {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1L);
+            while (published == null && System.nanoTime() < deadline) {
+                Thread.onSpinWait();
+            }
+            if (published == null) throw new IllegalStateException("Message was not published");
             return published;
         }
     }

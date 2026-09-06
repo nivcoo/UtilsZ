@@ -16,14 +16,18 @@ import java.util.function.Consumer;
 
 public final class RedisMessageBackend implements MessageBackend {
 
+    private static final String DIRECT_INSTANCE_PREFIX = "r1:";
+    private static final String DIRECT_CHANNEL_SEGMENT = ":utilsz:direct:";
+
     private final JedisPool jedisPool;
 
     private final BackendSubscribers subscribers = new BackendSubscribers();
 
-    private final String instanceId = UUID.randomUUID().toString();
+    private final String instanceId = DIRECT_INSTANCE_PREFIX + UUID.randomUUID();
     private volatile JedisPubSub pubSub;
     private volatile Thread listenerThread;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final AtomicBoolean listenerReady = new AtomicBoolean(false);
 
     private volatile Consumer<Throwable> errorHandler;
 
@@ -64,6 +68,7 @@ public final class RedisMessageBackend implements MessageBackend {
     @Override
     public synchronized void close() {
         running.set(false);
+        listenerReady.set(false);
         try {
             if (pubSub != null) {
                 try {
@@ -89,12 +94,29 @@ public final class RedisMessageBackend implements MessageBackend {
     @Override
     public synchronized void subscribeRaw(String channel, Consumer<JsonObject> callback) {
         subscribers.add(channel, callback);
+        subscribers.add(directChannel(channel, instanceId), callback);
 
         if (running.get()) restartListener();
     }
 
     @Override
+    public boolean ready() {
+        return running.get() && listenerReady.get();
+    }
+
+    @Override
     public void publish(String channel, JsonObject json) {
+        publishOn(channel, json);
+    }
+
+    @Override
+    public void publishTo(String channel, String targetInstanceId, JsonObject json) {
+        publishOn(directCapable(targetInstanceId)
+                ? directChannel(channel, targetInstanceId)
+                : channel, json);
+    }
+
+    private void publishOn(String channel, JsonObject json) {
         if (!running.get()) {
             throw new IllegalStateException("Redis message backend is not started");
         }
@@ -108,6 +130,7 @@ public final class RedisMessageBackend implements MessageBackend {
 
     private void restartListener() {
         running.set(false);
+        listenerReady.set(false);
         try {
             if (pubSub != null) {
                 try {
@@ -133,7 +156,13 @@ public final class RedisMessageBackend implements MessageBackend {
     }
 
     private void startListenerInternal(String[] channels) {
+        int expectedSubscriptions = channels.length;
         pubSub = new JedisPubSub() {
+            @Override
+            public void onSubscribe(String channel, int subscribedChannels) {
+                listenerReady.set(subscribedChannels >= expectedSubscriptions);
+            }
+
             @Override
             public void onMessage(String channel, String message) {
                 JsonObject obj;
@@ -150,6 +179,7 @@ public final class RedisMessageBackend implements MessageBackend {
 
         listenerThread = new Thread(() -> {
             while (running.get()) {
+                listenerReady.set(false);
                 try (Jedis j = jedisPool.getResource()) {
                     j.subscribe(pubSub, channels);
                 } catch (Exception e) {
@@ -161,11 +191,27 @@ public final class RedisMessageBackend implements MessageBackend {
                         Thread.currentThread().interrupt();
                         break;
                     }
+                } finally {
+                    listenerReady.set(false);
                 }
             }
         }, "MessagingRedisListener");
 
         listenerThread.setDaemon(true);
         listenerThread.start();
+    }
+
+    static boolean directCapable(String instanceId) {
+        if (instanceId == null || !instanceId.startsWith(DIRECT_INSTANCE_PREFIX)) return false;
+        String suffix = instanceId.substring(DIRECT_INSTANCE_PREFIX.length());
+        try {
+            return UUID.fromString(suffix).toString().equals(suffix);
+        } catch (IllegalArgumentException invalid) {
+            return false;
+        }
+    }
+
+    static String directChannel(String channel, String instanceId) {
+        return channel + DIRECT_CHANNEL_SEGMENT + instanceId;
     }
 }

@@ -11,19 +11,30 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 public final class DefaultMessageBus implements MessageBus {
+
+    private static final int OUTBOUND_QUEUE_CAPACITY = 128;
+    private static final long OUTBOUND_DRAIN_TIMEOUT_MILLIS = 250L;
+    private static final long OUTBOUND_READY_TIMEOUT_MILLIS = 10_000L;
+    private static final long OUTBOUND_READY_POLL_MILLIS = 500L;
+    private static final long WARNING_INTERVAL_NANOS = TimeUnit.SECONDS.toNanos(10L);
 
     private static final class Envelope {
         String kind;
@@ -38,12 +49,17 @@ public final class DefaultMessageBus implements MessageBus {
     }
 
     private record EventEntry<T extends BusMessage>(BusTypeAdapter<T> adapter, BusHandler<T> handler) {}
-    private record RpcEntry(BusTypeAdapter<Object> reqAdapter) {}
+    private record RpcEntry(BusTypeAdapter<Object> reqAdapter, boolean replayResponse) {}
     private record RequestKey(String sender, String correlationId) {}
 
     private static final class RequestExecution {
         private final CompletableFuture<Envelope> response = new CompletableFuture<>();
+        private final boolean replayResponse;
         private volatile long completedAt;
+
+        private RequestExecution(boolean replayResponse) {
+            this.replayResponse = replayResponse;
+        }
 
         private void complete(Envelope envelope) {
             if (response.complete(envelope)) {
@@ -59,6 +75,7 @@ public final class DefaultMessageBus implements MessageBus {
     private final MessageCrypto crypto;
     private final Duration defaultRpcTimeout;
     private final ScheduledThreadPoolExecutor rpcTimeouts;
+    private final ThreadPoolExecutor outbound;
 
     private final ConcurrentMap<String, EventEntry<?>> eventHandlers = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, RpcEntry> rpcHandlers = new ConcurrentHashMap<>();
@@ -70,6 +87,7 @@ public final class DefaultMessageBus implements MessageBus {
     private final AtomicBoolean started = new AtomicBoolean(false);
     private final AtomicBoolean subscribed = new AtomicBoolean(false);
     private final AtomicBoolean closed = new AtomicBoolean(false);
+    private final AtomicLong nextWarningNanos = new AtomicLong();
     private volatile long lastGcAt = 0L;
 
     public DefaultMessageBus(MessageBackend backend,
@@ -103,13 +121,12 @@ public final class DefaultMessageBus implements MessageBus {
         this.crypto = crypto == null ? NoopMessageCrypto.INSTANCE : crypto;
         this.defaultRpcTimeout = requireTimeout(defaultRpcTimeout);
         this.rpcTimeouts = createTimeoutExecutor();
+        this.outbound = createOutboundExecutor();
 
         UtilsZModules.load();
         BusAdapterRegistry.registerBuiltins();
 
-        backend.onError(t ->
-                logger.warn("[MessageBus] Backend error: {}", t.getMessage())
-        );
+        backend.onError(t -> warnOutboundFailure("Backend error", null, t));
     }
 
     @Override
@@ -142,7 +159,6 @@ public final class DefaultMessageBus implements MessageBus {
     public synchronized void close() {
         if (!closed.compareAndSet(false, true)) return;
 
-        started.set(false);
         pending.forEach((cid, fut) ->
                 fut.completeExceptionally(new CancellationException("Bus closed"))
         );
@@ -150,6 +166,16 @@ public final class DefaultMessageBus implements MessageBus {
         requestExecutions.forEach((key, execution) -> execution.complete(null));
         requestExecutions.clear();
         rpcTimeouts.shutdownNow();
+        outbound.shutdown();
+        try {
+            if (!outbound.awaitTermination(OUTBOUND_DRAIN_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
+                outbound.shutdownNow();
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            outbound.shutdownNow();
+        }
+        started.set(false);
         backend.close();
     }
 
@@ -193,7 +219,7 @@ public final class DefaultMessageBus implements MessageBus {
         env.action = action;
         env.cid = cid;
         env.target = targetInstanceId;
-        env.payload = payload;
+        env.payload = payload == null ? null : payload.deepCopy();
 
         CompletableFuture<JsonObject> fut = new CompletableFuture<>();
         pending.put(cid, fut);
@@ -217,11 +243,11 @@ public final class DefaultMessageBus implements MessageBus {
             timeoutTask.cancel(false);
         });
 
-        if (!send(env)) {
-            if (pending.remove(cid, fut)) {
+        sendAsync(env, () -> pending.get(cid) == fut).thenAccept(sent -> {
+            if (!sent && pending.remove(cid, fut)) {
                 fut.completeExceptionally(new IllegalStateException("Failed to send message " + action));
             }
-        }
+        });
 
         return fut;
     }
@@ -314,9 +340,7 @@ public final class DefaultMessageBus implements MessageBus {
         env.target = targetInstanceId;
         env.payload = adapter(eventType).serialize(event);
 
-        if (!send(env)) {
-            throw new IllegalStateException("Failed to publish message " + env.action);
-        }
+        sendAsync(env);
     }
 
     private <R> CompletableFuture<R> callRpcTo(String targetInstanceId, RpcMessage request, Duration timeout) {
@@ -392,7 +416,7 @@ public final class DefaultMessageBus implements MessageBus {
 
         if (RpcMessage.class.isAssignableFrom(clazz) && a.response() != Void.class) {
             selfReceive.put(a.value(), a.receiveOwnMessages());
-            rpcHandlers.put(a.value(), new RpcEntry(adapter(clazz)));
+            rpcHandlers.put(a.value(), new RpcEntry(adapter(clazz), a.replayResponse()));
 
         } else if (BusMessage.class.isAssignableFrom(clazz)) {
             @SuppressWarnings("unchecked")
@@ -448,6 +472,17 @@ public final class DefaultMessageBus implements MessageBus {
 
     private void onIncoming(JsonObject wire) {
         if (!isRunning()) return;
+
+        String wireTarget;
+        try {
+            wireTarget = wire.has("__target") && !wire.get("__target").isJsonNull()
+                    ? wire.get("__target").getAsString()
+                    : null;
+        } catch (RuntimeException malformedTarget) {
+            return;
+        }
+        if (wireTarget != null && !wireTarget.equals(backend.getInstanceId())) return;
+
         maybeGcSeen();
 
         Envelope env = fromWire(wire);
@@ -518,13 +553,13 @@ public final class DefaultMessageBus implements MessageBus {
         RpcEntry re = rpcHandlers.get(env.action);
         if (re == null || env.cid == null) return;
 
-        RequestExecution execution = new RequestExecution();
+        RequestExecution execution = new RequestExecution(re.replayResponse());
         if (env.sender != null && !env.sender.isBlank()) {
             RequestKey key = new RequestKey(env.sender, env.cid);
             RequestExecution existing = requestExecutions.putIfAbsent(key, execution);
             if (existing != null) {
                 existing.response.thenAccept(response -> {
-                    if (response != null) send(response);
+                    if (response != null) sendAsync(response);
                 });
                 return;
             }
@@ -598,8 +633,8 @@ public final class DefaultMessageBus implements MessageBus {
     }
 
     private void completeRequest(RequestExecution execution, Envelope response) {
-        if (response != null) send(response);
-        execution.complete(response);
+        if (response != null) sendAsync(response);
+        execution.complete(execution.replayResponse ? response : null);
     }
 
     private Envelope errorResponse(Envelope request, Throwable error) {
@@ -613,8 +648,51 @@ public final class DefaultMessageBus implements MessageBus {
         return out;
     }
 
-    private boolean send(Envelope env) {
-        if (!isRunning()) return false;
+    private CompletableFuture<Boolean> sendAsync(Envelope env) {
+        return sendAsync(env, () -> true);
+    }
+
+    private CompletableFuture<Boolean> sendAsync(Envelope env, BooleanSupplier stillRelevant) {
+        if (!isRunning()) return CompletableFuture.completedFuture(false);
+
+        CompletableFuture<Boolean> result = new CompletableFuture<>();
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(OUTBOUND_READY_TIMEOUT_MILLIS);
+        try {
+            outbound.execute(() -> result.complete(sendWhenReady(env, stillRelevant, deadline)));
+        } catch (RejectedExecutionException rejected) {
+            warnOutboundFailure("Outbound queue is full; dropping message", env.action, rejected);
+            result.complete(false);
+        }
+        return result;
+    }
+
+    private boolean sendWhenReady(Envelope env, BooleanSupplier stillRelevant, long deadline) {
+        while (stillRelevant.getAsBoolean()) {
+            long remaining = deadline - System.nanoTime();
+            if (remaining <= 0L) return false;
+            if (backend.ready()) return sendNow(env);
+            if (closed.get()) return false;
+            long delay = Math.min(
+                    OUTBOUND_READY_POLL_MILLIS,
+                    Math.max(1L, TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime()))
+            );
+            if (!pause(delay)) return false;
+        }
+        return false;
+    }
+
+    private boolean pause(long millis) {
+        try {
+            TimeUnit.MILLISECONDS.sleep(millis);
+            return true;
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private boolean sendNow(Envelope env) {
+        if (!started.get()) return false;
 
         JsonObject o = new JsonObject();
 
@@ -646,12 +724,25 @@ public final class DefaultMessageBus implements MessageBus {
         }
 
         try {
-            backend.publish(channel, o);
+            if (env.target == null || env.target.isEmpty()) {
+                backend.publish(channel, o);
+            } else {
+                backend.publishTo(channel, env.target, o);
+            }
             return true;
         } catch (Exception ex) {
-            logger.warn("[MessageBus] Failed to publish message {}: {}", env.action, message(ex));
+            warnOutboundFailure("Failed to publish message", env.action, ex);
             return false;
         }
+    }
+
+    private void warnOutboundFailure(String prefix, String action, Throwable error) {
+        long now = System.nanoTime();
+        long next = nextWarningNanos.get();
+        if (now < next || !nextWarningNanos.compareAndSet(next, now + WARNING_INTERVAL_NANOS)) return;
+
+        String actionSuffix = action == null ? "" : " " + action;
+        logger.warn("[MessageBus] {}{}: {}", prefix, actionSuffix, message(error));
     }
 
     private Envelope fromWire(JsonObject o) {
@@ -779,6 +870,22 @@ public final class DefaultMessageBus implements MessageBus {
         executor.setRemoveOnCancelPolicy(true);
         executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
         return executor;
+    }
+
+    private static ThreadPoolExecutor createOutboundExecutor() {
+        return new ThreadPoolExecutor(
+                1,
+                1,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(OUTBOUND_QUEUE_CAPACITY),
+                runnable -> {
+                    Thread thread = new Thread(runnable, "UtilsZ-MessageBus-Outbound");
+                    thread.setDaemon(true);
+                    return thread;
+                },
+                new ThreadPoolExecutor.AbortPolicy()
+        );
     }
 
     private static <T> CompletableFuture<T> failedFuture(Throwable error) {
