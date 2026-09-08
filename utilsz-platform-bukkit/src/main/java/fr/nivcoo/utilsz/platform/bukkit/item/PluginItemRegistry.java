@@ -34,6 +34,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.MerchantInventory;
 import org.bukkit.inventory.MerchantRecipe;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
@@ -283,7 +284,7 @@ public final class PluginItemRegistry implements Listener {
     }
 
     private void scheduleMerchantSanitize(Player player, MerchantInventory inventory, int selectedIndex) {
-        Bukkit.getScheduler().runTask(plugin, () -> {
+        deferredExecutor.accept(() -> {
             if (!(player.getOpenInventory().getTopInventory() instanceof MerchantInventory openInventory)) return;
             if (openInventory != inventory || openInventory.getSelectedRecipeIndex() != selectedIndex) return;
             MerchantRecipe recipe = activeOrHintedRecipe(openInventory);
@@ -303,8 +304,39 @@ public final class PluginItemRegistry implements Listener {
             if (stack == null || stack.getType().isAir()) continue;
             inventory.setItem(slot, null);
             rejectedItems.add(stack);
+            refillMerchantInput(player.getInventory(), inventory, slot, stack.getType(), recipe.getIngredients());
         }
         if (!rejectedItems.isEmpty()) ItemDelivery.giveOrDrop(player, rejectedItems.toArray(ItemStack[]::new));
+    }
+
+    private void refillMerchantInput(PlayerInventory source, MerchantInventory inventory, int inputSlot,
+                                     Material material, List<ItemStack> ingredients) {
+        ItemStack replacement = null;
+        int storageSize = source.getStorageContents().length;
+        for (int slot = 0; slot < storageSize; slot++) {
+            ItemStack candidate = source.getItem(slot);
+            if (candidate == null || candidate.getType() != material || candidate.getAmount() <= 0) continue;
+            if (matchingPluginItem(items.values(), candidate) != null) continue;
+            if (replacement == null) {
+                if (ingredients.stream().noneMatch(ingredient -> ingredient != null && ingredient.isSimilar(candidate))) {
+                    continue;
+                }
+            } else if (!replacement.isSimilar(candidate)) {
+                continue;
+            }
+
+            int currentAmount = replacement == null ? 0 : replacement.getAmount();
+            int capacity = Math.min(candidate.getMaxStackSize(), inventory.getMaxStackSize());
+            int amount = Math.min(candidate.getAmount(), capacity - currentAmount);
+            if (amount <= 0) break;
+            ItemStack remaining = candidate.clone();
+            remaining.setAmount(candidate.getAmount() - amount);
+            source.setItem(slot, remaining.getAmount() == 0 ? null : remaining);
+            if (replacement == null) replacement = candidate.clone();
+            replacement.setAmount(currentAmount + amount);
+            if (replacement.getAmount() == capacity) break;
+        }
+        if (replacement != null) inventory.setItem(inputSlot, replacement);
     }
 
     static boolean containsUnexpectedPluginItem(Iterable<? extends PluginItem<?>> registeredItems,
