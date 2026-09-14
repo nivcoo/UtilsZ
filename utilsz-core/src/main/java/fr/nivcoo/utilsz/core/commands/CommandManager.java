@@ -7,6 +7,7 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -211,11 +212,11 @@ public final class CommandManager implements CommandDispatcher {
 
     private static Component fmtComp(Component template, String... args) {
         if (template == null) return Component.empty();
-        String plain = PLAIN.serialize(template);
+        LinkedHashMap<String, Component> placeholders = new LinkedHashMap<>();
         for (int i = 0; i < args.length; i++) {
-            plain = plain.replace("{" + i + "}", args[i] == null ? "" : args[i]);
+            placeholders.put(Integer.toString(i), Component.text(args[i] == null ? "" : args[i]));
         }
-        return ConfigManager.parseDynamic(plain);
+        return ConfigManager.fmt(template, placeholders);
     }
 
     public void help(Sender sender) {

@@ -1,6 +1,9 @@
 package fr.nivcoo.utilsz.core.commands;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.junit.jupiter.api.Test;
 
@@ -445,17 +448,27 @@ class CommandManagerNestedCommandTest {
     }
 
     @Test
-    void checksTheDefaultCommandUsageOnEmptyArguments() {
-        Command defaultCommand = command(List.of(""), "", "<value>", 1, 1,
+    void preservesRichDefaultCommandUsageOnInvalidArguments() {
+        Component prefix = Component.text("Usage: ", NamedTextColor.RED)
+                .decorate(TextDecoration.BOLD)
+                .hoverEvent(Component.text("Click to complete", NamedTextColor.GREEN))
+                .clickEvent(ClickEvent.suggestCommand("/auction "));
+        CommandsConfigProvider messages = new SimpleCommandsConfig(
+                Component.empty(), prefix.append(Component.text("{0}", NamedTextColor.GOLD)), List.of());
+        Command defaultCommand = command(List.of(""), "", "<red>", 1, 1,
                 ctx -> { }, ctx -> List.of());
         CommandManager manager = new CommandManager(
-                (rootLabel, dispatcher) -> { }, MESSAGES,
+                (rootLabel, dispatcher) -> { }, messages,
                 "auction", "auction.root", defaultCommand);
         TestSender sender = new TestSender("auction.root");
 
         manager.dispatch(sender, "auction", new String[0]);
+        manager.dispatch(sender, "auction", new String[]{"one", "two"});
 
-        assertEquals(List.of("Usage: auction <value>"), sender.messages());
+        Component expected = prefix.append(Component.text("auction <red>", NamedTextColor.GOLD));
+        assertEquals(List.of(expected.compact(), expected.compact()),
+                sender.components.stream().map(Component::compact).toList());
+        assertEquals(List.of("Usage: auction <red>", "Usage: auction <red>"), sender.messages());
     }
 
     @Test
@@ -583,7 +596,7 @@ class CommandManagerNestedCommandTest {
 
     private static final class TestSender implements Sender {
         private final Set<String> permissions;
-        private final List<String> messages = new ArrayList<>();
+        private final List<Component> components = new ArrayList<>();
         private final boolean console;
 
         private TestSender(String... permissions) {
@@ -607,11 +620,11 @@ class CommandManagerNestedCommandTest {
 
         @Override
         public void sendMessage(Component component) {
-            messages.add(PLAIN.serialize(component));
+            components.add(component);
         }
 
         private List<String> messages() {
-            return messages;
+            return components.stream().map(PLAIN::serialize).toList();
         }
     }
 }
