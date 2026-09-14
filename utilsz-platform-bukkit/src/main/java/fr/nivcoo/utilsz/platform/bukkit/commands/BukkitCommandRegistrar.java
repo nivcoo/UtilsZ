@@ -11,10 +11,16 @@ import org.bukkit.command.TabExecutor;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jspecify.annotations.NonNull;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 
 @SuppressWarnings("unused")
-public record BukkitCommandRegistrar(JavaPlugin plugin) implements CommandRegistrar {
+public record BukkitCommandRegistrar(JavaPlugin plugin, boolean overrideExisting) implements CommandRegistrar {
+
+    public BukkitCommandRegistrar(JavaPlugin plugin) {
+        this(plugin, false);
+    }
 
     @Override
     public void registerRoot(String rootLabel, CommandDispatcher dispatcher) {
@@ -31,10 +37,16 @@ public record BukkitCommandRegistrar(JavaPlugin plugin) implements CommandRegist
         }
 
         if (pc == null) {
-            registerDynamic(rootLabel, rootAliases, dispatcher);
+            registerDynamic(rootLabel, overrideExisting ? List.of() : rootAliases, dispatcher);
+            if (overrideExisting) {
+                for (String alias : rootAliases) {
+                    registerDynamic(alias, List.of(), dispatcher);
+                }
+            }
             return;
         }
-        requireDeclaredAliases(rootLabel, rootAliases, pc);
+        List<String> declaredAliases = declaredAliases(pc);
+        requireDeclaredAliases(rootLabel, rootAliases, declaredAliases);
 
         TabExecutor exec = new TabExecutor() {
             @Override
@@ -50,15 +62,33 @@ public record BukkitCommandRegistrar(JavaPlugin plugin) implements CommandRegist
 
         pc.setExecutor(exec);
         pc.setTabCompleter(exec);
+
+        if (overrideExisting) {
+            LinkedHashSet<String> labels = new LinkedHashSet<>();
+            labels.add(rootLabel);
+            labels.addAll(declaredAliases);
+            for (String label : labels) {
+                registerPreferred(label, pc);
+            }
+        }
+    }
+
+    private List<String> declaredAliases(PluginCommand command) {
+        Object aliases = plugin.getDescription().getCommands()
+                .getOrDefault(command.getName(), Map.of()).get("aliases");
+        if (aliases instanceof List<?> values) {
+            return values.stream().map(Object::toString).toList();
+        }
+        return aliases == null ? List.of() : List.of(aliases.toString());
     }
 
     private static void requireDeclaredAliases(
             String rootLabel,
             List<String> rootAliases,
-            PluginCommand command
+            List<String> declaredAliases
     ) {
         for (String alias : rootAliases) {
-            boolean declared = command.getAliases().stream()
+            boolean declared = declaredAliases.stream()
                     .anyMatch(candidate -> candidate.equalsIgnoreCase(alias));
             if (!declared) {
                 throw new IllegalStateException(
@@ -67,6 +97,31 @@ public record BukkitCommandRegistrar(JavaPlugin plugin) implements CommandRegist
                 );
             }
         }
+    }
+
+    private void registerPreferred(String label, PluginCommand command) {
+        plugin.registerCommand(label, command.getDescription(), new BasicCommand() {
+            @Override
+            public void execute(CommandSourceStack source, String[] args) {
+                command.execute(source.getSender(), label, args);
+            }
+
+            @Override
+            public List<String> suggest(CommandSourceStack source, String[] args) {
+                return canUse(source.getSender())
+                        ? command.tabComplete(source.getSender(), label, args) : List.of();
+            }
+
+            @Override
+            public boolean canUse(CommandSender sender) {
+                return plugin.isEnabled() && command.testPermissionSilent(sender);
+            }
+
+            @Override
+            public String permission() {
+                return command.getPermission();
+            }
+        });
     }
 
     private void registerDynamic(String rootLabel, List<String> rootAliases, CommandDispatcher dispatcher) {

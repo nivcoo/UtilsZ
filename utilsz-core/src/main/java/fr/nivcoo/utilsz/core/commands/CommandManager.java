@@ -378,7 +378,7 @@ public final class CommandManager implements CommandDispatcher {
             }
         }
 
-        if (args.length <= 1) {
+        if (args.length <= 1 || match == null && findDeepestSection(args) == null) {
             ArrayList<String> defaults = new ArrayList<>();
             appendDefaultSuggestions(defaults, sender, label, args);
             suggestions.addAll(defaults);
