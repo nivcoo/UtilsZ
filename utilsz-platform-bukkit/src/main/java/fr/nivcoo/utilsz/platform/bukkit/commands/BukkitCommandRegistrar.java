@@ -109,7 +109,7 @@ public record BukkitCommandRegistrar(JavaPlugin plugin, boolean overrideExisting
             @Override
             public List<String> suggest(CommandSourceStack source, String[] args) {
                 return canUse(source.getSender())
-                        ? command.tabComplete(source.getSender(), label, args) : List.of();
+                        ? command.tabComplete(source.getSender(), label, completionArgs(args)) : List.of();
             }
 
             @Override
@@ -133,8 +133,13 @@ public record BukkitCommandRegistrar(JavaPlugin plugin, boolean overrideExisting
 
             @Override
             public List<String> suggest(CommandSourceStack commandSourceStack, String[] args) {
-                return dispatcher.tabComplete(new BukkitSender(commandSourceStack.getSender()), rootLabel, args);
+                return dispatcher.tabComplete(new BukkitSender(commandSourceStack.getSender()), rootLabel, completionArgs(args));
             }
         });
     }
+
+    private static String[] completionArgs(String[] args) {
+        return args.length == 0 ? new String[]{""} : args;
+    }
+
 }
