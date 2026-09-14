@@ -14,6 +14,8 @@ import fr.nivcoo.utilsz.core.config.text.TextMode;
 import fr.nivcoo.utilsz.core.config.validation.Validatable;
 import fr.nivcoo.utilsz.core.conversion.Converter;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.junit.jupiter.api.Test;
@@ -419,6 +421,23 @@ class ConfigManagerTest {
         assertTrue(yaml.toLowerCase(Locale.ROOT).contains("&#12abef"));
     }
 
+    @Test
+    void multilineValuesKeepExactTextAndComponentEventsAcrossGeneratedYamlReloads() {
+        ConfigManager manager = manager();
+        MultilineConfig generated = manager.load("multiline.yml", MultilineConfig.class);
+        MultilineConfig reloaded = manager.load("multiline.yml", MultilineConfig.class);
+        MultilineConfig reloadedAgain = manager.load("multiline.yml", MultilineConfig.class);
+
+        for (MultilineConfig config : List.of(reloaded, reloadedAgain)) {
+            assertEquals(PlainTextComponentSerializer.plainText().serialize(generated.message),
+                    PlainTextComponentSerializer.plainText().serialize(config.message));
+            assertEquals(generated.message.compact(), config.message.compact());
+            assertEquals(generated.mapped, config.mapped);
+            assertEquals(generated.list, config.list);
+            assertEquals(generated.terminated, config.terminated);
+        }
+    }
+
     private ConfigManager manager() {
         return new ConfigManager(tempDir.toFile());
     }
@@ -704,6 +723,15 @@ class ConfigManagerTest {
             this.enabled = enabled;
             this.slots = slots;
         }
+    }
+
+    public static final class MultilineConfig {
+        public Component message = Component.text("Première ligne\nDeuxième ligne", TextColor.color(0x12ABEF))
+                .clickEvent(ClickEvent.openUrl("https://example.com/vote"))
+                .hoverEvent(HoverEvent.showText(Component.text("Clique pour voter !")));
+        public Map<String, String> mapped = Map.of("message", "Première ligne\nDeuxième ligne");
+        public List<String> list = List.of("Première ligne\nDeuxième ligne");
+        public String terminated = "Première ligne\nDeuxième ligne\n";
     }
 
     public static final class AutoHexConfig {

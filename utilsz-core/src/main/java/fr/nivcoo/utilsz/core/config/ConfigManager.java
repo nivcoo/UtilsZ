@@ -806,7 +806,7 @@ public final class ConfigManager {
             }
 
             if (v instanceof String s && s.contains("\n")) {
-                sb.repeat("  ", indent).append(formatMapKey(k)).append(": |2\n");
+                sb.repeat("  ", indent).append(formatMapKey(k)).append(s.endsWith("\n") ? ": |2\n" : ": |2-\n");
                 for (String line : s.split("\n", -1))
                     sb.repeat("  ", indent + 1).append(line).append("\n");
             } else {
@@ -825,7 +825,7 @@ public final class ConfigManager {
             }
             case String s -> {
                 if (s.contains("\n")) {
-                    sb.append("|2\n");
+                    sb.append(s.endsWith("\n") ? "|2\n" : "|2-\n");
                     for (String line : s.split("\n", -1))
                         sb.repeat("  ", indent + 1).append(line).append("\n");
                 } else {
