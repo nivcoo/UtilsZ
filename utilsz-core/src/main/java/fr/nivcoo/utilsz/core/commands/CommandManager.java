@@ -584,7 +584,8 @@ public final class CommandManager implements CommandDispatcher {
     }
 
     private String invokedRoot(String label) {
-        return label == null || label.isBlank() ? globalCommand : label.trim();
+        String root = label == null || label.isBlank() ? globalCommand : label.trim();
+        return root.substring(root.lastIndexOf(':') + 1);
     }
 
     private static String suffixAfterRoute(String value, String route) {

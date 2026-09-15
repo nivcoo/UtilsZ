@@ -729,8 +729,16 @@ class ConfigManagerTest {
         public Component message = Component.text("Première ligne\nDeuxième ligne", TextColor.color(0x12ABEF))
                 .clickEvent(ClickEvent.openUrl("https://example.com/vote"))
                 .hoverEvent(HoverEvent.showText(Component.text("Clique pour voter !")));
-        public Map<String, String> mapped = Map.of("message", "Première ligne\nDeuxième ligne");
-        public List<String> list = List.of("Première ligne\nDeuxième ligne");
+        public Map<String, String> mapped = Map.of(
+                "message", "Première ligne\nDeuxième ligne",
+                "leading_blank_lines", "\n\n  Première ligne\nDeuxième ligne",
+                "leading_spaces", "  Première ligne\nDeuxième ligne",
+                "inner_blank_line", "Première ligne\n\nDeuxième ligne");
+        public List<String> list = List.of(
+                "Première ligne\nDeuxième ligne",
+                "\n\n  Première ligne\nDeuxième ligne",
+                "  Première ligne\nDeuxième ligne",
+                "Première ligne\n\nDeuxième ligne");
         public String terminated = "Première ligne\nDeuxième ligne\n";
     }
 

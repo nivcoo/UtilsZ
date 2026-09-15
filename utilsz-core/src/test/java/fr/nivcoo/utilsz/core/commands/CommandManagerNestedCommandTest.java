@@ -188,10 +188,45 @@ class CommandManagerNestedCommandTest {
         TestSender sender = new TestSender();
 
         manager.dispatch(sender, "ah", new String[]{"a", "l", "clear"});
+        manager.dispatch(sender, "otherplugin:ah", new String[]{"a", "l", "clear"});
+        manager.dispatch(sender, "otherplugin:ah", new String[]{"a", "l", "unknown"});
+        CommandContext context = new CommandContext(sender, "otherplugin:hdv", new String[]{"clear"});
+        manager.sendUsage(purge, context);
 
-        assertEquals(List.of("Usage: ah a l clear <days>"), sender.messages());
-        assertEquals("hdv admin logs clear <days>", manager.getUsage(purge,
-                new CommandContext(sender, "hdv", new String[]{"clear"})));
+        assertEquals(List.of(
+                "Usage: ah a l clear <days>",
+                "Usage: ah a l clear <days>",
+                "Usage: ah a l <purge>",
+                "Usage: hdv admin logs clear <days>"
+        ), sender.messages());
+        assertEquals("hdv admin logs clear <days>", manager.getUsage(purge, context));
+    }
+
+    @Test
+    void defaultUsageOmitsNamespacesWithoutChangingTheCommandContext() {
+        List<CommandContext> calls = new ArrayList<>();
+        Command defaultCommand = command(List.of(""), "", "<target> [minecraft:overworld]", 1, 1,
+                calls::add, ctx -> List.of());
+        CommandManager manager = new CommandManager(
+                (rootLabel, dispatcher) -> { }, MESSAGES,
+                "tp", List.of("teleport"), "", defaultCommand);
+        TestSender sender = new TestSender();
+
+        manager.dispatch(sender, "edensync:tp", new String[0]);
+        manager.dispatch(sender, "edensync:tp", new String[]{"one", "two"});
+        manager.dispatch(sender, "edensync:tp", new String[]{"minecraft:stone"});
+        CommandContext context = new CommandContext(sender, "minecraft:teleport", new String[0]);
+        manager.sendUsage(defaultCommand, context);
+
+        assertEquals(List.of(
+                "Usage: tp <target> [minecraft:overworld]",
+                "Usage: tp <target> [minecraft:overworld]",
+                "Usage: teleport <target> [minecraft:overworld]"
+        ), sender.messages());
+        assertEquals("teleport <target> [minecraft:overworld]", manager.getUsage(defaultCommand, context));
+        assertEquals(1, calls.size());
+        assertEquals("edensync:tp", calls.getFirst().label());
+        assertArrayEquals(new String[]{"minecraft:stone"}, calls.getFirst().args());
     }
 
     @Test
