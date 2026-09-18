@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 
 @SuppressWarnings("unused")
@@ -30,6 +31,7 @@ public final class CommandManager implements CommandDispatcher {
     private final boolean sendHelp;
     private final Consumer<Sender> onEmptyArgsHandler;
     private Command defaultCommand;
+    private BiPredicate<Command, CommandContext> executionGuard;
 
     public CommandManager(
             CommandRegistrar registrar,
@@ -189,6 +191,10 @@ public final class CommandManager implements CommandDispatcher {
         this.defaultCommand = command;
     }
 
+    public void setExecutionGuard(BiPredicate<Command, CommandContext> executionGuard) {
+        this.executionGuard = executionGuard;
+    }
+
     public Command getCommand(String arg) {
         for (Command c : commands) {
             if (matchesAlias(aliasesOf(c), arg)) return c;
@@ -269,7 +275,7 @@ public final class CommandManager implements CommandDispatcher {
                     if (isNotEmpty(message)) sender.sendMessage(message);
                     return true;
                 }
-                defaultCommand.execute(context);
+                execute(defaultCommand, context);
                 return true;
             }
 
@@ -329,7 +335,7 @@ public final class CommandManager implements CommandDispatcher {
                 return true;
             }
 
-            sub.execute(context);
+            execute(sub, context);
             return true;
         }
 
@@ -359,12 +365,19 @@ public final class CommandManager implements CommandDispatcher {
                 return true;
             }
 
-            defaultCommand.execute(new CommandContext(sender, label, args));
+            execute(defaultCommand, new CommandContext(sender, label, args));
             return true;
         }
 
         if (isNotEmpty(noPermission)) sender.sendMessage(noPermission);
         return true;
+    }
+
+    private void execute(Command command, CommandContext context) {
+        if (!command.validate(context)) return;
+        if (executionGuard == null || executionGuard.test(command, context)) {
+            command.execute(context);
+        }
     }
 
     @Override

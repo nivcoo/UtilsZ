@@ -118,6 +118,9 @@ class CommandManagerNestedCommandTest {
     @Test
     void completesNestedRoutesByPermissionAndDelegatesLocalArguments() {
         CommandManager manager = manager();
+        manager.setExecutionGuard((command, context) -> {
+            throw new AssertionError("Tab completion must not execute the guard");
+        });
         List<String[]> completionCalls = new ArrayList<>();
         CommandSection admin = manager.addSection("admin");
         admin.addCommand(command(List.of("reload", "rl"), "admin.reload", "", 1, 1,
@@ -543,6 +546,92 @@ class CommandManagerNestedCommandTest {
         assertEquals(List.of("Usage: auction auction <value>"), invalidUsage.messages());
     }
 
+    @Test
+    void guardsEveryExecutionRouteAndCanBeCleared() {
+        List<Command> guarded = new ArrayList<>();
+        List<CommandContext> contexts = new ArrayList<>();
+        List<CommandContext> executions = new ArrayList<>();
+        Command defaultCommand = command(List.of("open"), "", "[player]", 0, 1,
+                executions::add, ctx -> List.of());
+        Command directCommand = command(List.of("clear", "ci"), "", "", 1, 1,
+                executions::add, ctx -> List.of());
+        Command nestedCommand = command(List.of("purge", "delete"), "", "<days>", 2, 2,
+                executions::add, ctx -> List.of());
+        CommandManager manager = new CommandManager(
+                (rootLabel, dispatcher) -> { }, MESSAGES, "auction", "", defaultCommand);
+        manager.addCommand(directCommand);
+        manager.addSection("admin", "a").addCommand(nestedCommand);
+        manager.setExecutionGuard((command, context) -> {
+            guarded.add(command);
+            contexts.add(context);
+            return false;
+        });
+        TestSender sender = new TestSender();
+
+        assertTrue(manager.dispatch(sender, "ah", new String[0]));
+        assertTrue(manager.dispatch(sender, "ah", new String[]{"player"}));
+        assertTrue(manager.dispatch(sender, "ah", new String[]{"ci"}));
+        assertTrue(manager.dispatch(sender, "ah", new String[]{"a", "delete", "30"}));
+
+        assertTrue(executions.isEmpty());
+        assertEquals(List.of(defaultCommand, defaultCommand, directCommand, nestedCommand), guarded);
+        assertArrayEquals(new String[0], contexts.get(0).args());
+        assertArrayEquals(new String[]{"player"}, contexts.get(1).args());
+        assertArrayEquals(new String[]{"ci"}, contexts.get(2).args());
+        assertArrayEquals(new String[]{"delete", "30"}, contexts.get(3).args());
+        assertTrue(contexts.stream().allMatch(context -> context.sender() == sender && context.label().equals("ah")));
+
+        manager.setExecutionGuard((command, context) -> true);
+        manager.dispatch(sender, "ah", new String[0]);
+        manager.setExecutionGuard(null);
+        manager.dispatch(sender, "ah", new String[]{"a", "delete", "30"});
+
+        assertEquals(2, executions.size());
+        assertArrayEquals(new String[0], executions.get(0).args());
+        assertArrayEquals(new String[]{"delete", "30"}, executions.get(1).args());
+    }
+
+    @Test
+    void validatesCommandsBeforeCallingTheExecutionGuard() {
+        int[] guarded = {0};
+        Command defaultCommand = playerCommand(List.of("open"), "auction.open", "[player]", 0, 1);
+        CommandManager manager = new CommandManager(
+                (rootLabel, dispatcher) -> { }, MESSAGES, "auction", "auction.root", defaultCommand);
+        manager.addSection("admin").addCommand(playerCommand(
+                List.of("purge"), "auction.purge", "<days>", 2, 2));
+        manager.setExecutionGuard((command, context) -> {
+            guarded[0]++;
+            return false;
+        });
+        TestSender permitted = new TestSender("auction.root", "auction.open", "auction.purge");
+        TestSender console = new TestSender(true, "auction.root", "auction.open", "auction.purge");
+
+        manager.dispatch(new TestSender(), "auction", new String[0]);
+        manager.dispatch(new TestSender("auction.root"), "auction", new String[0]);
+        manager.dispatch(new TestSender("auction.root"), "auction", new String[]{"player"});
+        manager.dispatch(console, "auction", new String[0]);
+        manager.dispatch(console, "auction", new String[]{"player"});
+        manager.dispatch(permitted, "auction", new String[]{"player", "extra"});
+        manager.dispatch(new TestSender(), "auction", new String[]{"admin", "purge", "30"});
+        manager.dispatch(console, "auction", new String[]{"admin", "purge", "30"});
+        manager.dispatch(permitted, "auction", new String[]{"admin", "purge"});
+
+        assertEquals(0, guarded[0]);
+
+        manager.dispatch(permitted, "auction", new String[0]);
+        manager.dispatch(permitted, "auction", new String[]{"admin", "purge", "30"});
+
+        assertEquals(2, guarded[0]);
+
+        manager.setDefaultCommand(new TestCommand(List.of("open"), "auction.open", "[player]", 0, 1, false,
+                ctx -> { throw new AssertionError("Rejected validation must not execute the command"); },
+                ctx -> List.of(), false));
+        manager.dispatch(permitted, "auction", new String[0]);
+        manager.dispatch(permitted, "auction", new String[]{"player"});
+
+        assertEquals(2, guarded[0]);
+    }
+
     private static CommandManager manager() {
         return manager(MESSAGES);
     }
@@ -560,7 +649,7 @@ class CommandManagerNestedCommandTest {
             Consumer<CommandContext> execute,
             Function<CommandContext, List<String>> tabComplete
     ) {
-        return new TestCommand(aliases, permission, usage, minArgs, maxArgs, true, execute, tabComplete);
+        return new TestCommand(aliases, permission, usage, minArgs, maxArgs, true, execute, tabComplete, true);
     }
 
     private static TestCommand playerCommand(
@@ -570,7 +659,7 @@ class CommandManagerNestedCommandTest {
             int minArgs,
             int maxArgs
     ) {
-        return new TestCommand(aliases, permission, usage, minArgs, maxArgs, false, ctx -> { }, ctx -> List.of());
+        return new TestCommand(aliases, permission, usage, minArgs, maxArgs, false, ctx -> { }, ctx -> List.of(), true);
     }
 
     private record TestCommand(
@@ -581,7 +670,8 @@ class CommandManagerNestedCommandTest {
             int maxArgs,
             boolean console,
             Consumer<CommandContext> execution,
-            Function<CommandContext, List<String>> completion
+            Function<CommandContext, List<String>> completion,
+            boolean valid
     ) implements Command {
         @Override
         public List<String> getAliases() {
@@ -616,6 +706,11 @@ class CommandManagerNestedCommandTest {
         @Override
         public boolean canBeExecutedByConsole() {
             return console;
+        }
+
+        @Override
+        public boolean validate(CommandContext ctx) {
+            return valid;
         }
 
         @Override

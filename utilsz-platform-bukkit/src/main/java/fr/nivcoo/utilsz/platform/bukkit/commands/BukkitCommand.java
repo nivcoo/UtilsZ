@@ -12,9 +12,19 @@ public interface BukkitCommand extends Command {
         return getUsage();
     }
 
+    default boolean validate(CommandSender sender, String label, String[] args) {
+        return true;
+    }
+
     void execute(CommandSender sender, String label, String[] args);
 
     List<String> tabComplete(CommandSender sender, String label, String[] args);
+
+    @Override
+    default boolean validate(CommandContext ctx) {
+        BukkitSender sender = ctx.senderAs(BukkitSender.class);
+        return validate(sender.sender(), ctx.label(), ctx.args());
+    }
 
     @Override
     default void execute(CommandContext ctx) {

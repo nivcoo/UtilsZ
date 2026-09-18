@@ -12,6 +12,8 @@ public interface Command {
     int getMaxArgs();
     boolean canBeExecutedByConsole();
 
+    default boolean validate(CommandContext ctx) { return true; }
+
     void execute(CommandContext ctx);
 
     List<String> tabComplete(CommandContext ctx);
