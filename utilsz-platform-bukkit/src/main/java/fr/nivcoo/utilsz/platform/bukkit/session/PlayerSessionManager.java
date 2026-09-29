@@ -2,6 +2,7 @@ package fr.nivcoo.utilsz.platform.bukkit.session;
 
 import io.papermc.paper.event.player.AsyncChatEvent;
 import io.papermc.paper.event.player.PlayerArmSwingEvent;
+import io.papermc.paper.event.player.PrePlayerAttackEntityEvent;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -13,7 +14,6 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -115,12 +115,12 @@ public final class PlayerSessionManager implements Listener {
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
-    public void onDamage(EntityDamageByEntityEvent event) {
-        if (!(event.getDamager() instanceof Player player)) return;
+    public void onAttack(PrePlayerAttackEntityEvent event) {
+        Player player = event.getPlayer();
         TargetSession<?> session = targetSession(player);
         if (session == null) return;
         event.setCancelled(true);
-        handleEntity(player, session, event.getEntity());
+        handleEntity(player, session, event.getAttacked());
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
