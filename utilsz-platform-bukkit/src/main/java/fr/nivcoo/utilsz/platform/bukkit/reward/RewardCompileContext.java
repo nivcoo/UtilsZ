@@ -4,6 +4,7 @@ import fr.nivcoo.utilsz.core.config.ConfigManager;
 import fr.nivcoo.utilsz.platform.bukkit.item.ConfigItem;
 import fr.nivcoo.utilsz.platform.bukkit.item.ConfigItemFactory;
 import fr.nivcoo.utilsz.platform.bukkit.item.ItemDelivery;
+import org.bukkit.Material;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -55,7 +56,9 @@ public record RewardCompileContext(RewardDefinition definition, ConfigManager co
         } else {
             throw invalid("items must contain item definitions");
         }
-        if (item == null || item.material == null || item.material.isAir()) throw invalid("invalid item material");
+        if (item == null || item.material == null || item.material == Material.AIR
+                || item.material == Material.CAVE_AIR || item.material == Material.VOID_AIR)
+            throw invalid("invalid item material");
         if (item.amount < 1 || item.amount > ItemDelivery.MAX_DELIVERY_AMOUNT)
             throw invalid("item amount must be between 1 and " + ItemDelivery.MAX_DELIVERY_AMOUNT);
         if (item.customModelData < 0 || item.lore != null && item.lore.stream().anyMatch(Objects::isNull)
