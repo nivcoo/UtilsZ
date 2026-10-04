@@ -40,8 +40,9 @@ public final class RewardDelivery {
                 logger.log(Level.WARNING, "Could not prepare reward action " + action.type()
                         + " for " + context.playerId() + '.', error);
             }
-            prepared.add(new PreparedAction(action.type(), steps, result));
-            if (check.allowed() && !result.allowed()) check = CheckReport.failure(index, action.type(), result.reason());
+            prepared.add(new PreparedAction(action.type().name(), steps, result));
+            if (check.allowed() && !result.allowed())
+                check = CheckReport.failure(index, action.type().name(), result.reason());
         }
         return new PreparedRewards(context, prepared, check);
     }
@@ -130,7 +131,8 @@ public final class RewardDelivery {
                 RewardAction.DeliveryResult outcome;
                 try {
                     outcome = step.delivery().get();
-                    if (outcome == null) outcome = RewardAction.DeliveryResult.partialFailure("Delivery returned no result.");
+                    if (outcome == null)
+                        outcome = RewardAction.DeliveryResult.partialFailure("Delivery returned no result.");
                 } catch (RuntimeException | LinkageError error) {
                     outcome = RewardAction.DeliveryResult.partialFailure(RewardAction.message(error));
                     logger.log(Level.SEVERE, "Reward action " + action.type() + " failed for "
@@ -183,10 +185,11 @@ public final class RewardDelivery {
     }
 
     private static void requireServerThread() {
-        if (!Bukkit.isPrimaryThread()) throw new IllegalStateException("Reward preparation and delivery require the server thread.");
+        if (!Bukkit.isPrimaryThread())
+            throw new IllegalStateException("Reward preparation and delivery require the server thread.");
     }
 
-    public enum FailurePolicy { STOP, CONTINUE }
+    public enum FailurePolicy {STOP, CONTINUE}
 
     public static final class PreparedRewards {
         private final RewardExecutionContext context;
@@ -201,11 +204,15 @@ public final class RewardDelivery {
             this.check = check;
         }
 
-        public CheckReport check() { return check; }
+        public CheckReport check() {
+            return check;
+        }
     }
 
     public record CheckReport(boolean allowed, int actionIndex, String actionType, String reason) {
-        public static CheckReport ready() { return new CheckReport(true, -1, "", ""); }
+        public static CheckReport ready() {
+            return new CheckReport(true, -1, "", "");
+        }
 
         public static CheckReport failure(int index, String type, String reason) {
             return new CheckReport(false, index, type, reason == null ? "" : reason);
@@ -214,7 +221,9 @@ public final class RewardDelivery {
 
     public record DeliveryReport(boolean success, boolean attempted, int completedActions, int totalActions,
                                  String failedType, boolean partialWithinAction, String reason) {
-        public boolean partial() { return !success && (completedActions > 0 || partialWithinAction); }
+        public boolean partial() {
+            return !success && (completedActions > 0 || partialWithinAction);
+        }
     }
 
     private record PreparedAction(String type, List<RewardStep> steps, RewardAction.CheckResult check) {

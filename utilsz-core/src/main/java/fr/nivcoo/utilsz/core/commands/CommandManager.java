@@ -4,13 +4,7 @@ import fr.nivcoo.utilsz.core.config.ConfigManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 
@@ -182,7 +176,9 @@ public final class CommandManager implements CommandDispatcher {
         requireSection(path).consoleAllowed = allowed;
     }
 
-    public List<Command> getCommands() { return List.copyOf(commands); }
+    public List<Command> getCommands() {
+        return List.copyOf(commands);
+    }
 
     public void setDefaultCommand(Command command) {
         if (command != null && findRegistration(command) != null) {
@@ -253,7 +249,10 @@ public final class CommandManager implements CommandDispatcher {
         Component noPermission = provider.noPermission();
 
         if (args.length == 0) {
-            if (onEmptyArgsHandler != null) { onEmptyArgsHandler.accept(sender); return true; }
+            if (onEmptyArgsHandler != null) {
+                onEmptyArgsHandler.accept(sender);
+                return true;
+            }
             boolean rootAllowed = commandPermission == null
                     || commandPermission.isBlank()
                     || sender.hasPermission(commandPermission);

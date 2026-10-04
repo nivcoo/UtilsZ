@@ -2,14 +2,7 @@ package fr.nivcoo.utilsz.platform.bukkit;
 
 import fr.nivcoo.utilsz.core.conversion.Converter;
 import fr.nivcoo.utilsz.core.module.UtilsZModule;
-import fr.nivcoo.utilsz.platform.bukkit.conversion.ItemStackConv;
-import fr.nivcoo.utilsz.platform.bukkit.conversion.MaterialConv;
-import fr.nivcoo.utilsz.platform.bukkit.conversion.ParticleConv;
-import fr.nivcoo.utilsz.platform.bukkit.conversion.PotionEffectTypeConv;
-import fr.nivcoo.utilsz.platform.bukkit.conversion.SoundConv;
-import fr.nivcoo.utilsz.platform.bukkit.conversion.StoredLocationConv;
-import fr.nivcoo.utilsz.platform.bukkit.conversion.VillagerProfessionConv;
-import fr.nivcoo.utilsz.platform.bukkit.conversion.VillagerTypeConv;
+import fr.nivcoo.utilsz.platform.bukkit.conversion.*;
 import fr.nivcoo.utilsz.platform.bukkit.location.StoredLocation;
 import fr.nivcoo.utilsz.platform.bukkit.messaging.BukkitMessagingAdapters;
 import org.bukkit.Material;

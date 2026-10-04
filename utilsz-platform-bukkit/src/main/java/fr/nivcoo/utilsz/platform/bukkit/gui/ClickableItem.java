@@ -12,7 +12,8 @@ public final class ClickableItem {
 
     private ClickableItem(ItemStack item, Consumer<InventoryClickEvent> event) {
         this.item = item;
-        this.event = event != null ? event : e -> {};
+        this.event = event != null ? event : e -> {
+        };
     }
 
     public void run(InventoryClickEvent e) {

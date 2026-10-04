@@ -29,7 +29,8 @@ public final class ConfigGuiRenderer<T> {
     }
 
     public void set(GuiInventory inv, ConfigGuiItem item, T context, int page) {
-        set(inv, item, context, page, event -> {});
+        set(inv, item, context, page, event -> {
+        });
     }
 
     public void set(GuiInventory inv, ConfigGuiItem item, T context, int page, Consumer<InventoryClickEvent> click) {

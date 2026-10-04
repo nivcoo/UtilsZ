@@ -7,19 +7,11 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class CommandManagerNestedCommandTest {
 
@@ -107,7 +99,8 @@ class CommandManagerNestedCommandTest {
         CommandManager manager = manager();
         manager.addSection("admin").addSection("logs").addCommand(command(
                 List.of("purge"), "", "<days> [player]", 2, 3,
-                ctx -> { }, ctx -> List.of()));
+                ctx -> {
+                }, ctx -> List.of()));
         TestSender sender = new TestSender();
 
         manager.dispatch(sender, "auction", new String[]{"admin", "logs", "purge"});
@@ -124,15 +117,18 @@ class CommandManagerNestedCommandTest {
         List<String[]> completionCalls = new ArrayList<>();
         CommandSection admin = manager.addSection("admin");
         admin.addCommand(command(List.of("reload", "rl"), "admin.reload", "", 1, 1,
-                ctx -> { }, ctx -> {
+                ctx -> {
+                }, ctx -> {
                     completionCalls.add(ctx.args());
                     return List.of("now");
                 }));
         CommandSection logs = admin.addSection("logs");
         logs.addCommand(command(List.of("purge"), "admin.logs.purge", "", 1, 3,
-                ctx -> { }, ctx -> List.of()));
+                ctx -> {
+                }, ctx -> List.of()));
         logs.addCommand(command(List.of("player"), "admin.logs.player", "", 1, 2,
-                ctx -> { }, ctx -> List.of()));
+                ctx -> {
+                }, ctx -> List.of()));
         TestSender sender = new TestSender("admin.reload", "admin.logs.player");
 
         assertEquals(List.of("admin"), manager.tabComplete(sender, "auction", new String[]{""}));
@@ -167,7 +163,8 @@ class CommandManagerNestedCommandTest {
         CommandSection admin = manager.addSection("admin", "a");
         admin.addSection("logs", "l", "journal").addCommand(command(
                 List.of("purge", "clear"), "", "", 1, 2,
-                ctx -> { }, ctx -> List.of()));
+                ctx -> {
+                }, ctx -> List.of()));
         TestSender sender = new TestSender();
 
         assertEquals(List.of("admin", "a"),
@@ -186,7 +183,8 @@ class CommandManagerNestedCommandTest {
         CommandSection admin = manager.addSection("admin", "a");
         CommandSection logs = admin.addSection("logs", "l");
         TestCommand purge = command(List.of("purge", "clear"), "", "<days>", 2, 2,
-                ctx -> { }, ctx -> List.of());
+                ctx -> {
+                }, ctx -> List.of());
         logs.addCommand(purge);
         TestSender sender = new TestSender();
 
@@ -211,7 +209,8 @@ class CommandManagerNestedCommandTest {
         Command defaultCommand = command(List.of(""), "", "<target> [minecraft:overworld]", 1, 1,
                 calls::add, ctx -> List.of());
         CommandManager manager = new CommandManager(
-                (rootLabel, dispatcher) -> { }, MESSAGES,
+                (rootLabel, dispatcher) -> {
+                }, MESSAGES,
                 "tp", List.of("teleport"), "", defaultCommand);
         TestSender sender = new TestSender();
 
@@ -235,10 +234,12 @@ class CommandManagerNestedCommandTest {
     @Test
     void rootAndLeafAliasesProduceTheInvokedUsage() {
         CommandManager manager = new CommandManager(
-                (rootLabel, dispatcher) -> { }, MESSAGES,
+                (rootLabel, dispatcher) -> {
+                }, MESSAGES,
                 "auction", List.of("ah", "hdv"), "");
         manager.addCommand(command(List.of("sell", "s"), "", "<price>", 2, 2,
-                ctx -> { }, ctx -> List.of()));
+                ctx -> {
+                }, ctx -> List.of()));
         TestSender sender = new TestSender();
 
         manager.dispatch(sender, "hdv", new String[]{"sell"});
@@ -263,11 +264,13 @@ class CommandManagerNestedCommandTest {
     void rejectsOverlappingLeafAliasesAtTheSameLevel() {
         CommandSection admin = manager().addSection("admin");
         admin.addCommand(command(List.of("reload", "rl"), "", "", 1, 1,
-                ctx -> { }, ctx -> List.of()));
+                ctx -> {
+                }, ctx -> List.of()));
 
         assertThrows(IllegalArgumentException.class, () -> admin.addCommand(command(
                 List.of("refresh", "RL"), "", "", 1, 1,
-                ctx -> { }, ctx -> List.of())));
+                ctx -> {
+                }, ctx -> List.of())));
     }
 
     @Test
@@ -278,12 +281,14 @@ class CommandManagerNestedCommandTest {
 
         assertThrows(IllegalArgumentException.class, () -> sectionFirstAdmin.addCommand(command(
                 List.of("list", "l"), "", "", 1, 1,
-                ctx -> { }, ctx -> List.of())));
+                ctx -> {
+                }, ctx -> List.of())));
 
         CommandManager commandFirst = manager();
         CommandSection commandFirstAdmin = commandFirst.addSection("admin");
         commandFirstAdmin.addCommand(command(List.of("logs"), "", "", 1, 1,
-                ctx -> { }, ctx -> List.of()));
+                ctx -> {
+                }, ctx -> List.of()));
 
         assertThrows(IllegalArgumentException.class,
                 () -> commandFirstAdmin.addSection("logs", "l"));
@@ -293,10 +298,12 @@ class CommandManagerNestedCommandTest {
     void completesAnExecutableNodeAndItsChildrenTogether() {
         CommandManager manager = manager();
         manager.addCommand(command(List.of("admin"), "", "", 1, Integer.MAX_VALUE,
-                ctx -> { }, ctx -> List.of("argument")));
+                ctx -> {
+                }, ctx -> List.of("argument")));
         manager.addSection("admin").addCommand(command(
                 List.of("reload"), "", "", 1, 1,
-                ctx -> { }, ctx -> List.of()));
+                ctx -> {
+                }, ctx -> List.of()));
 
         assertEquals(List.of("reload", "argument"),
                 manager.tabComplete(new TestSender(), "auction", new String[]{"admin", ""}));
@@ -306,10 +313,12 @@ class CommandManagerNestedCommandTest {
     void executableSectionNodeKeepsItsOwnUsageWhenArgumentsAreMissing() {
         CommandManager manager = manager();
         manager.addCommand(command(List.of("sell"), "", "<price>", 2, 2,
-                ctx -> { }, ctx -> List.of()));
+                ctx -> {
+                }, ctx -> List.of()));
         manager.addSection("sell").addCommand(command(
                 List.of("inventory"), "", "<price>", 2, 2,
-                ctx -> { }, ctx -> List.of()));
+                ctx -> {
+                }, ctx -> List.of()));
         TestSender sender = new TestSender();
 
         manager.dispatch(sender, "auction", new String[]{"sell"});
@@ -326,10 +335,12 @@ class CommandManagerNestedCommandTest {
         CommandManager manager = manager();
         CommandSection admin = manager.addSection("admin");
         admin.addCommand(command(List.of("logs"), "", "", 1, 1,
-                ctx -> { }, ctx -> List.of()));
+                ctx -> {
+                }, ctx -> List.of()));
         admin.addSection("logs").addCommand(command(
                 List.of("player"), "", "<player>", 2, 2,
-                ctx -> { }, ctx -> List.of()));
+                ctx -> {
+                }, ctx -> List.of()));
         TestSender sender = new TestSender();
 
         manager.dispatch(sender, "auction", new String[]{"admin", "logs", "unknown"});
@@ -343,7 +354,8 @@ class CommandManagerNestedCommandTest {
         CommandSection admin = manager.addSection("admin");
         CommandSection staff = manager.addSection("staff");
         TestCommand reload = command(List.of("reload"), "", "", 1, 1,
-                ctx -> { }, ctx -> List.of());
+                ctx -> {
+                }, ctx -> List.of());
         admin.addCommand(reload);
 
         assertThrows(IllegalArgumentException.class, () -> staff.addCommand(reload));
@@ -365,7 +377,8 @@ class CommandManagerNestedCommandTest {
         assertThrows(UnsupportedOperationException.class,
                 () -> manager.getCommands().add(command(
                         List.of("other"), "", "", 1, 1,
-                        ctx -> { }, ctx -> List.of())));
+                        ctx -> {
+                        }, ctx -> List.of())));
     }
 
     @Test
@@ -383,12 +396,15 @@ class CommandManagerNestedCommandTest {
         CommandManager manager = manager();
         CommandSection admin = manager.addSection("admin").permission("admin.section");
         admin.addCommand(command(List.of("reload"), "admin.reload", "", 1, 1,
-                ctx -> { }, ctx -> List.of()));
+                ctx -> {
+                }, ctx -> List.of()));
         CommandSection option = admin.addSection("option").permission("admin.option");
         option.addCommand(command(List.of("set"), "admin.option", "<player>", 2, 2,
-                ctx -> { }, ctx -> List.of()));
+                ctx -> {
+                }, ctx -> List.of()));
         option.addCommand(command(List.of("reset"), "admin.option", "<player>", 2, 2,
-                ctx -> { }, ctx -> List.of()));
+                ctx -> {
+                }, ctx -> List.of()));
         TestSender sender = new TestSender("admin.section", "admin.reload", "admin.option");
 
         manager.dispatch(sender, "auction", new String[]{"admin"});
@@ -403,7 +419,8 @@ class CommandManagerNestedCommandTest {
     @Test
     void aLeafUsageFollowsTheSectionWhereItIsMounted() {
         TestCommand command = command(List.of("reload", "rl"), "", "[force]", 1, 2,
-                ctx -> { }, ctx -> List.of());
+                ctx -> {
+                }, ctx -> List.of());
         CommandManager adminManager = manager();
         adminManager.addSection("admin").addCommand(command);
         CommandManager staffManager = manager();
@@ -451,7 +468,8 @@ class CommandManagerNestedCommandTest {
     void rootCommandsCanDeclareOnlyTheirArgumentUsage() {
         CommandManager manager = manager();
         manager.addCommand(command(List.of("sell"), "", "<price>", 2, 2,
-                ctx -> { }, ctx -> List.of()));
+                ctx -> {
+                }, ctx -> List.of()));
         TestSender sender = new TestSender();
 
         manager.dispatch(sender, "auction", new String[]{"sell"});
@@ -473,7 +491,8 @@ class CommandManagerNestedCommandTest {
                 Component.text("denied"), Component.text("Usage: {0}"),
                 Component.text("players only"), List.of());
         Command defaultCommand = playerCommand(List.of(""), "auction.open", "", 0, 0);
-        CommandManager manager = new CommandManager((rootLabel, dispatcher) -> { }, messages,
+        CommandManager manager = new CommandManager((rootLabel, dispatcher) -> {
+        }, messages,
                 "auction", "auction.root", defaultCommand);
         TestSender player = new TestSender("auction.root");
         TestSender console = new TestSender(true, "auction.root", "auction.open");
@@ -494,9 +513,11 @@ class CommandManagerNestedCommandTest {
         CommandsConfigProvider messages = new SimpleCommandsConfig(
                 Component.empty(), prefix.append(Component.text("{0}", NamedTextColor.GOLD)), List.of());
         Command defaultCommand = command(List.of(""), "", "<red>", 1, 1,
-                ctx -> { }, ctx -> List.of());
+                ctx -> {
+                }, ctx -> List.of());
         CommandManager manager = new CommandManager(
-                (rootLabel, dispatcher) -> { }, messages,
+                (rootLabel, dispatcher) -> {
+                }, messages,
                 "auction", "auction.root", defaultCommand);
         TestSender sender = new TestSender("auction.root");
 
@@ -512,12 +533,15 @@ class CommandManagerNestedCommandTest {
     @Test
     void doesNotLeakOrDuplicateDefaultSuggestions() {
         Command defaultCommand = command(List.of(""), "", "", 0, Integer.MAX_VALUE,
-                ctx -> { }, ctx -> List.of("sell", "root-value"));
+                ctx -> {
+                }, ctx -> List.of("sell", "root-value"));
         CommandManager manager = new CommandManager(
-                (rootLabel, dispatcher) -> { }, MESSAGES,
+                (rootLabel, dispatcher) -> {
+                }, MESSAGES,
                 "auction", "", defaultCommand);
         manager.addCommand(command(List.of("sell"), "", "", 1, 1,
-                ctx -> { }, ctx -> List.of()));
+                ctx -> {
+                }, ctx -> List.of()));
         manager.addSection("admin");
         TestSender sender = new TestSender();
 
@@ -531,7 +555,8 @@ class CommandManagerNestedCommandTest {
     void validatesTheLegacyEmptyRootFallback() {
         boolean[] called = {false};
         CommandManager manager = new CommandManager(
-                (rootLabel, dispatcher) -> { }, MESSAGES,
+                (rootLabel, dispatcher) -> {
+                }, MESSAGES,
                 "auction", "auction.root", false);
         manager.addCommand(command(List.of("auction"), "auction.run", "<value>", 2, 2,
                 ctx -> called[0] = true, ctx -> List.of()));
@@ -558,7 +583,8 @@ class CommandManagerNestedCommandTest {
         Command nestedCommand = command(List.of("purge", "delete"), "", "<days>", 2, 2,
                 executions::add, ctx -> List.of());
         CommandManager manager = new CommandManager(
-                (rootLabel, dispatcher) -> { }, MESSAGES, "auction", "", defaultCommand);
+                (rootLabel, dispatcher) -> {
+                }, MESSAGES, "auction", "", defaultCommand);
         manager.addCommand(directCommand);
         manager.addSection("admin", "a").addCommand(nestedCommand);
         manager.setExecutionGuard((command, context) -> {
@@ -596,7 +622,8 @@ class CommandManagerNestedCommandTest {
         int[] guarded = {0};
         Command defaultCommand = playerCommand(List.of("open"), "auction.open", "[player]", 0, 1);
         CommandManager manager = new CommandManager(
-                (rootLabel, dispatcher) -> { }, MESSAGES, "auction", "auction.root", defaultCommand);
+                (rootLabel, dispatcher) -> {
+                }, MESSAGES, "auction", "auction.root", defaultCommand);
         manager.addSection("admin").addCommand(playerCommand(
                 List.of("purge"), "auction.purge", "<days>", 2, 2));
         manager.setExecutionGuard((command, context) -> {
@@ -624,7 +651,9 @@ class CommandManagerNestedCommandTest {
         assertEquals(2, guarded[0]);
 
         manager.setDefaultCommand(new TestCommand(List.of("open"), "auction.open", "[player]", 0, 1, false,
-                ctx -> { throw new AssertionError("Rejected validation must not execute the command"); },
+                ctx -> {
+                    throw new AssertionError("Rejected validation must not execute the command");
+                },
                 ctx -> List.of(), false));
         manager.dispatch(permitted, "auction", new String[0]);
         manager.dispatch(permitted, "auction", new String[]{"player"});
@@ -637,7 +666,8 @@ class CommandManagerNestedCommandTest {
     }
 
     private static CommandManager manager(CommandsConfigProvider messages) {
-        return new CommandManager((rootLabel, dispatcher) -> { }, messages, "auction", "");
+        return new CommandManager((rootLabel, dispatcher) -> {
+        }, messages, "auction", "");
     }
 
     private static TestCommand command(
@@ -659,7 +689,8 @@ class CommandManagerNestedCommandTest {
             int minArgs,
             int maxArgs
     ) {
-        return new TestCommand(aliases, permission, usage, minArgs, maxArgs, false, ctx -> { }, ctx -> List.of(), true);
+        return new TestCommand(aliases, permission, usage, minArgs, maxArgs, false, ctx -> {
+        }, ctx -> List.of(), true);
     }
 
     private record TestCommand(

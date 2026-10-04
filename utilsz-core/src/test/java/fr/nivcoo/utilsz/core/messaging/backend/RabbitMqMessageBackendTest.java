@@ -29,7 +29,9 @@ class RabbitMqMessageBackendTest {
     void startFailsWhenInitialConnectionCannotBeEstablished() {
         RabbitMqMessageBackend backend = new RabbitMqMessageBackend(
                 "localhost", 5672, "/", "guest", "guest",
-                () -> { throw new IOException("offline"); });
+                () -> {
+                    throw new IOException("offline");
+                });
 
         assertThrows(IllegalStateException.class, backend::start);
         assertThrows(IllegalStateException.class,
@@ -50,7 +52,8 @@ class RabbitMqMessageBackendTest {
                 "localhost", 5672, "/", "guest", "guest",
                 () -> connections.get(connectionIndex.getAndIncrement()));
 
-        backend.subscribeRaw("auction-events", ignored -> { });
+        backend.subscribeRaw("auction-events", ignored -> {
+        });
         backend.start();
         assertEquals(1, bindings.get());
 
@@ -72,9 +75,18 @@ class RabbitMqMessageBackendTest {
                 Channel.class.getClassLoader(), new Class<?>[]{Channel.class}, (proxy, method, args) -> {
                     return switch (method.getName()) {
                         case "isOpen" -> open.get();
-                        case "close" -> { open.set(false); yield null; }
-                        case "queueBind" -> { bindings.incrementAndGet(); yield null; }
-                        case "waitForConfirmsOrDie" -> { confirms.incrementAndGet(); yield null; }
+                        case "close" -> {
+                            open.set(false);
+                            yield null;
+                        }
+                        case "queueBind" -> {
+                            bindings.incrementAndGet();
+                            yield null;
+                        }
+                        case "waitForConfirmsOrDie" -> {
+                            confirms.incrementAndGet();
+                            yield null;
+                        }
                         case "basicConsume" -> "consumer";
                         default -> defaultValue(method.getReturnType());
                     };
@@ -87,7 +99,10 @@ class RabbitMqMessageBackendTest {
                     return switch (method.getName()) {
                         case "isOpen" -> open.get();
                         case "createChannel" -> channel;
-                        case "close" -> { open.set(false); yield null; }
+                        case "close" -> {
+                            open.set(false);
+                            yield null;
+                        }
                         default -> defaultValue(method.getReturnType());
                     };
                 });

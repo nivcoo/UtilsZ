@@ -37,7 +37,7 @@ public interface MessageBus {
     }
 
     default CompletableFuture<JsonObject> callRawTo(String targetInstanceId, String action, JsonObject payload,
-                                                      Duration timeout) {
+                                                    Duration timeout) {
         return callRawTo(targetInstanceId, action, payload)
                 .orTimeout(timeout.toNanos(), TimeUnit.NANOSECONDS);
     }
@@ -55,7 +55,7 @@ public interface MessageBus {
     }
 
     default <Req, Res> CompletableFuture<Res> callTo(String targetInstanceId, Req request,
-                                                      Class<Res> responseType, Duration timeout) {
+                                                     Class<Res> responseType, Duration timeout) {
         return callTo(targetInstanceId, request, responseType)
                 .orTimeout(timeout.toNanos(), TimeUnit.NANOSECONDS);
     }

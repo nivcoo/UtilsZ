@@ -9,8 +9,12 @@ import java.lang.annotation.Target;
 @Target(ElementType.TYPE)
 public @interface BusAction {
     String value();
+
     Class<?> response() default Void.class;
+
     boolean replayResponse() default true;
+
     boolean receiveOwnMessages() default false;
+
     boolean runOnMainThread() default false;
 }

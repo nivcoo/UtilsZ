@@ -2,6 +2,7 @@ package fr.nivcoo.utilsz.platform.bukkit.reward;
 
 import fr.nivcoo.utilsz.core.config.annotations.Required;
 import fr.nivcoo.utilsz.core.config.annotations.Section;
+import fr.nivcoo.utilsz.platform.bukkit.reward.type.RewardTypeId;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -14,9 +15,9 @@ public class RewardDefinition {
     @Required
     public Map<String, Object> options = new LinkedHashMap<>();
 
-    public static RewardDefinition of(String type, Map<String, Object> options) {
+    public static RewardDefinition of(RewardTypeId type, Map<String, Object> options) {
         RewardDefinition definition = new RewardDefinition();
-        definition.type = type;
+        definition.type = type.name();
         definition.options = new LinkedHashMap<>(options);
         return definition;
     }

@@ -15,12 +15,12 @@ public enum DatabaseType {
     /**
      * Returns the appropriate DatabaseProvider for the given DatabaseType.
      *
-     * @param type the database type
-     * @param host the host for MYSQL and MARIADB
-     * @param port the port for MYSQL and MARIADB
-     * @param database the database name for MYSQL and MARIADB
-     * @param username the username for MYSQL and MARIADB
-     * @param password the password for MYSQL and MARIADB
+     * @param type       the database type
+     * @param host       the host for MYSQL and MARIADB
+     * @param port       the port for MYSQL and MARIADB
+     * @param database   the database name for MYSQL and MARIADB
+     * @param username   the username for MYSQL and MARIADB
+     * @param password   the password for MYSQL and MARIADB
      * @param sqlitePath the SQLite database file path
      * @return the corresponding DatabaseProvider
      */

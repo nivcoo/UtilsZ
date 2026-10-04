@@ -1,5 +1,7 @@
 package fr.nivcoo.utilsz.platform.bukkit.item;
 
+import com.destroystokyo.paper.profile.PlayerProfile;
+import com.destroystokyo.paper.profile.ProfileProperty;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
@@ -9,13 +11,7 @@ import org.bukkit.Material;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.Damageable;
-import org.bukkit.inventory.meta.EnchantmentStorageMeta;
-import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.inventory.meta.LeatherArmorMeta;
-import org.bukkit.inventory.meta.SkullMeta;
-import com.destroystokyo.paper.profile.PlayerProfile;
-import com.destroystokyo.paper.profile.ProfileProperty;
+import org.bukkit.inventory.meta.*;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -114,7 +110,10 @@ public final class ItemBuilder {
         ArrayList<Component> out = new ArrayList<>(legacyLines.size());
 
         for (String s : legacyLines) {
-            if (s == null) { out.add(style(Component.empty())); continue; }
+            if (s == null) {
+                out.add(style(Component.empty()));
+                continue;
+            }
             Component c = (s.indexOf('§') >= 0 ? sec : amp).deserialize(s);
             out.add(style(c));
         }

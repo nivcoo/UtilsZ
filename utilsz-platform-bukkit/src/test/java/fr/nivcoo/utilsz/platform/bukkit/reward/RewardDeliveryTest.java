@@ -1,5 +1,6 @@
 package fr.nivcoo.utilsz.platform.bukkit.reward;
 
+import fr.nivcoo.utilsz.platform.bukkit.reward.type.RewardTypeId;
 import org.bukkit.Bukkit;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
@@ -15,6 +16,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mockStatic;
 
 class RewardDeliveryTest {
+    private enum TestType implements RewardTypeId {MISSING, PACK, CUSTOM}
+
     private final RewardExecutionContext context = RewardExecutionContext.offline(UUID.randomUUID());
 
     @Test
@@ -22,10 +25,16 @@ class RewardDeliveryTest {
         try (MockedStatic<Bukkit> bukkit = serverThread()) {
             AtomicInteger mutations = new AtomicInteger();
             AtomicInteger dirty = new AtomicInteger();
-            RewardAction first = action(() -> { mutations.incrementAndGet(); return RewardAction.DeliveryResult.success(); });
-            RewardAction missing = new RewardAction("MISSING", List.of(),
+            RewardAction first = action(() -> {
+                mutations.incrementAndGet();
+                return RewardAction.DeliveryResult.success();
+            });
+            RewardAction missing = new RewardAction(TestType.MISSING, List.of(),
                     ignored -> RewardAction.CheckResult.failure("unavailable"),
-                    ignored -> { fail("Unavailable action must not execute"); return null; });
+                    ignored -> {
+                        fail("Unavailable action must not execute");
+                        return null;
+                    });
             RewardDelivery.DeliveryReport report = delivery().deliver(List.of(first, missing), context, () -> true, dirty::incrementAndGet);
             assertFalse(report.success());
             assertFalse(report.attempted());
@@ -40,8 +49,11 @@ class RewardDeliveryTest {
             AtomicInteger mutations = new AtomicInteger();
             AtomicInteger dirty = new AtomicInteger();
             RewardStep step = new RewardStep(RewardAction.CheckResult::ready,
-                    () -> { mutations.incrementAndGet(); return RewardAction.DeliveryResult.success(); });
-            RewardAction reward = new RewardAction("PACK", List.of(), ignored -> List.of(step, step));
+                    () -> {
+                        mutations.incrementAndGet();
+                        return RewardAction.DeliveryResult.success();
+                    });
+            RewardAction reward = new RewardAction(TestType.PACK, List.of(), ignored -> List.of(step, step));
             RewardDelivery delivery = delivery();
             RewardDelivery.PreparedRewards plan = delivery.prepare(List.of(reward), context);
             RewardDelivery.DeliveryReport report = delivery.deliver(plan, () -> mutations.get() == 0, dirty::incrementAndGet);
@@ -59,7 +71,10 @@ class RewardDeliveryTest {
         try (MockedStatic<Bukkit> bukkit = serverThread()) {
             AtomicInteger mutations = new AtomicInteger();
             AtomicInteger dirty = new AtomicInteger();
-            RewardAction reward = action(() -> { mutations.incrementAndGet(); throw new IllegalStateException("after mutation"); });
+            RewardAction reward = action(() -> {
+                mutations.incrementAndGet();
+                throw new IllegalStateException("after mutation");
+            });
             RewardDelivery.DeliveryReport report = delivery().deliver(List.of(reward), context, () -> true, dirty::incrementAndGet);
             assertFalse(report.success());
             assertTrue(report.partial());
@@ -75,7 +90,10 @@ class RewardDeliveryTest {
             AtomicInteger mutations = new AtomicInteger();
             AtomicInteger dirty = new AtomicInteger();
             RewardAction failed = action(() -> RewardAction.DeliveryResult.failure("rejected"));
-            RewardAction next = action(() -> { mutations.incrementAndGet(); return RewardAction.DeliveryResult.success(); });
+            RewardAction next = action(() -> {
+                mutations.incrementAndGet();
+                return RewardAction.DeliveryResult.success();
+            });
             RewardDelivery.DeliveryReport report = new RewardDelivery(logger(), RewardDelivery.FailurePolicy.CONTINUE)
                     .deliver(List.of(failed, next), context, () -> true, dirty::incrementAndGet);
             assertFalse(report.success());
@@ -87,7 +105,7 @@ class RewardDeliveryTest {
     }
 
     private static RewardAction action(Supplier<RewardAction.DeliveryResult> delivery) {
-        return new RewardAction("CUSTOM", List.of(), ignored -> RewardAction.CheckResult.ready(), ignored -> delivery.get());
+        return new RewardAction(TestType.CUSTOM, List.of(), ignored -> RewardAction.CheckResult.ready(), ignored -> delivery.get());
     }
 
     private static MockedStatic<Bukkit> serverThread() {
@@ -96,7 +114,9 @@ class RewardDeliveryTest {
         return bukkit;
     }
 
-    private static RewardDelivery delivery() { return new RewardDelivery(logger()); }
+    private static RewardDelivery delivery() {
+        return new RewardDelivery(logger());
+    }
 
     private static Logger logger() {
         Logger logger = Logger.getAnonymousLogger();

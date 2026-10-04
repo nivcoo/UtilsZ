@@ -2,45 +2,27 @@ package fr.nivcoo.utilsz.platform.bukkit.item;
 
 import io.papermc.paper.event.player.PlayerPurchaseEvent;
 import org.bukkit.Material;
-import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.InventoryAction;
-import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.TradeSelectEvent;
-import org.bukkit.inventory.PlayerInventory;
-import org.bukkit.inventory.view.MerchantView;
 import org.bukkit.block.Block;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.Merchant;
-import org.bukkit.inventory.MerchantInventory;
-import org.bukkit.inventory.MerchantRecipe;
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.inventory.InventoryAction;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.TradeSelectEvent;
+import org.bukkit.inventory.*;
+import org.bukkit.inventory.view.MerchantView;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.mockStatic;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 class PluginItemRegistryTest {
 

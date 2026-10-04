@@ -1,19 +1,7 @@
 package fr.nivcoo.utilsz.core.database;
 
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.SQLFeatureNotSupportedException;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.StringJoiner;
+import java.sql.*;
+import java.util.*;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 
@@ -225,14 +213,14 @@ public class DatabaseManager {
 
     private <T> List<T> query(PreparedStatement statement, RowMapper<T> mapper, ModelSchema<?> schema,
                               Object... params) throws SQLException {
-            bind(statement, params);
-            try (ResultSet rs = statement.executeQuery()) {
-                List<T> out = new ArrayList<>();
-                while (rs.next()) {
-                    out.add(mapper.map(DatabaseRow.from(rs, schema)));
-                }
-                return out;
+        bind(statement, params);
+        try (ResultSet rs = statement.executeQuery()) {
+            List<T> out = new ArrayList<>();
+            while (rs.next()) {
+                out.add(mapper.map(DatabaseRow.from(rs, schema)));
             }
+            return out;
+        }
     }
 
     public <T> Optional<T> queryOne(String query, RowMapper<T> mapper, Object... params) throws SQLException {

@@ -6,7 +6,9 @@ import fr.nivcoo.utilsz.core.messaging.BusTypeAdapter;
 public final class EnumAnyAdapter implements BusTypeAdapter<Object> {
     private final Class<? extends Enum<?>> type;
 
-    public EnumAnyAdapter(Class<? extends Enum<?>> type) { this.type = type; }
+    public EnumAnyAdapter(Class<? extends Enum<?>> type) {
+        this.type = type;
+    }
 
     @Override
     public JsonObject serialize(Object value) {
@@ -17,7 +19,7 @@ public final class EnumAnyAdapter implements BusTypeAdapter<Object> {
     }
 
     @Override
-    @SuppressWarnings({ "rawtypes", "unchecked" })
+    @SuppressWarnings({"rawtypes", "unchecked"})
     public Object deserialize(JsonObject json) {
         if (json == null || !json.has("name") || json.get("name").isJsonNull()) return null;
         String name = json.get("name").getAsString();

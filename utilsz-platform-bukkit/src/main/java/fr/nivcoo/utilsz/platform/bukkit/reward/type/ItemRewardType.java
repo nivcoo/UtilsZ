@@ -1,12 +1,11 @@
 package fr.nivcoo.utilsz.platform.bukkit.reward.type;
 
-import fr.nivcoo.utilsz.platform.bukkit.reward.RewardAction;
-import fr.nivcoo.utilsz.platform.bukkit.reward.RewardCompileContext;
-import fr.nivcoo.utilsz.platform.bukkit.reward.RewardStep;
-
 import fr.nivcoo.utilsz.platform.bukkit.item.ConfigItem;
 import fr.nivcoo.utilsz.platform.bukkit.item.ConfigItemFactory;
 import fr.nivcoo.utilsz.platform.bukkit.item.ItemDelivery;
+import fr.nivcoo.utilsz.platform.bukkit.reward.RewardAction;
+import fr.nivcoo.utilsz.platform.bukkit.reward.RewardCompileContext;
+import fr.nivcoo.utilsz.platform.bukkit.reward.RewardStep;
 import org.bukkit.Bukkit;
 import org.bukkit.inventory.ItemStack;
 
@@ -18,10 +17,12 @@ import java.util.logging.Logger;
 
 @SuppressWarnings("unused")
 public final class ItemRewardType implements RewardType {
-    public static final String ID = "ITEM";
+    public static final BuiltinRewardType ID = BuiltinRewardType.ITEM;
 
     @Override
-    public String id() { return ID; }
+    public RewardTypeId id() {
+        return ID;
+    }
 
     @Override
     public RewardAction compile(RewardCompileContext context) {
@@ -65,9 +66,11 @@ public final class ItemRewardType implements RewardType {
         private ItemStack item() {
             if (!Bukkit.isPrimaryThread()) throw new IllegalStateException("Reward items require the server thread.");
             if (template == null) {
-                if (!definition.material.isItem()) throw new IllegalArgumentException("Reward material must be an item.");
+                if (!definition.material.isItem())
+                    throw new IllegalArgumentException("Reward material must be an item.");
                 ItemStack item = ConfigItemFactory.create(definition, logger);
-                if (item == null || item.getType().isAir()) throw new IllegalArgumentException("Reward item could not be created.");
+                if (item == null || item.getType().isAir())
+                    throw new IllegalArgumentException("Reward item could not be created.");
                 template = item.clone();
             }
             return template.clone();

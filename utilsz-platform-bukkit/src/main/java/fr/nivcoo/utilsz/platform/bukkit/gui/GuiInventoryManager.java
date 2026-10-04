@@ -5,26 +5,15 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.inventory.ClickType;
-import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.InventoryCloseEvent;
-import org.bukkit.event.inventory.InventoryDragEvent;
-import org.bukkit.event.inventory.InventoryAction;
-import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.*;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Consumer;
 
 @SuppressWarnings("unused")
@@ -350,10 +339,10 @@ public final class GuiInventoryManager implements Listener {
                 new java.util.ArrayList<>();
         boolean topChanged = false;
         for (int raw = 0;
-                raw < event.getView()
-                .countSlots()
-                        && remaining > 0;
-                raw++) {
+             raw < event.getView()
+                     .countSlots()
+                     && remaining > 0;
+             raw++) {
             if (raw < topSize
                     && !editableTopSlot(
                     inventory.getEditableSlots()
@@ -518,7 +507,8 @@ public final class GuiInventoryManager implements Listener {
     private boolean isManagedInventory(Inventory inventory) {
         if (inventory == null) return false;
         if (inventory.getHolder() instanceof GuiInventory) return true;
-        if (inventory.getHolder() instanceof ManagedGuiInventoryHolder holder && holder.isManagedGuiInventory()) return true;
+        if (inventory.getHolder() instanceof ManagedGuiInventoryHolder holder && holder.isManagedGuiInventory())
+            return true;
         return inventories.values().stream().anyMatch(inv -> inventory.equals(inv.getBukkitInventory()));
     }
 

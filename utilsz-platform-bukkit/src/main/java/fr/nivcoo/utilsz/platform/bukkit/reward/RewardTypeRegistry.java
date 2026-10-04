@@ -1,17 +1,11 @@
 package fr.nivcoo.utilsz.platform.bukkit.reward;
 
 import fr.nivcoo.utilsz.core.config.ConfigManager;
-import fr.nivcoo.utilsz.platform.bukkit.reward.type.CommandRewardType;
-import fr.nivcoo.utilsz.platform.bukkit.reward.type.ExperienceRewardType;
-import fr.nivcoo.utilsz.platform.bukkit.reward.type.ItemRewardType;
+import fr.nivcoo.utilsz.platform.bukkit.reward.type.BuiltinRewardType;
 import fr.nivcoo.utilsz.platform.bukkit.reward.type.RewardType;
+import fr.nivcoo.utilsz.platform.bukkit.reward.type.RewardTypeId;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.logging.Logger;
 
 @SuppressWarnings("unused")
@@ -23,13 +17,18 @@ public final class RewardTypeRegistry {
     }
 
     public static RewardTypeRegistry builtins(int maximumExperience) {
-        return new RewardTypeRegistry().register(new ItemRewardType())
-                .register(new CommandRewardType()).register(new ExperienceRewardType(maximumExperience));
+        RewardTypeRegistry registry = new RewardTypeRegistry();
+        for (BuiltinRewardType type : BuiltinRewardType.values()) registry.register(type.create(maximumExperience));
+        return registry;
+    }
+
+    public List<RewardTypeId> identifiers() {
+        return types.values().stream().map(RewardType::id).toList();
     }
 
     public RewardTypeRegistry register(RewardType type) {
         Objects.requireNonNull(type, "type");
-        String id = normalize(type.id());
+        String id = normalize(type.id().name());
         if (id.isEmpty()) throw new IllegalArgumentException("Reward type id cannot be blank.");
         if (types.putIfAbsent(id, type) != null)
             throw new IllegalArgumentException("Reward type already registered: " + id);
@@ -44,6 +43,7 @@ public final class RewardTypeRegistry {
         if (type == null) throw context.invalid("unknown type '" + definition.type + "'");
         RewardAction action = type.compile(context);
         if (action == null) throw context.invalid("type returned no action");
+        if (!type.id().equals(action.type())) throw context.invalid("type returned an action with another identifier");
         return action;
     }
 

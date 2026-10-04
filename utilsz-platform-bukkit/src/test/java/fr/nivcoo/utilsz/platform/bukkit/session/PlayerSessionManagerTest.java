@@ -204,12 +204,14 @@ class PlayerSessionManagerTest {
         for (Method method : PlayerSessionManager.class.getDeclaredMethods()) {
             EventHandler handler = method.getAnnotation(EventHandler.class);
             if (handler == null || !method.getParameterTypes()[0].isInstance(event)) continue;
-            if (handler.ignoreCancelled() && event instanceof Cancellable cancellable && cancellable.isCancelled()) continue;
+            if (handler.ignoreCancelled() && event instanceof Cancellable cancellable && cancellable.isCancelled())
+                continue;
             method.invoke(manager, event);
         }
         for (Registration registration : registrations) {
             if (!registration.type().isInstance(event)) continue;
-            if (registration.ignoreCancelled() && event instanceof Cancellable cancellable && cancellable.isCancelled()) continue;
+            if (registration.ignoreCancelled() && event instanceof Cancellable cancellable && cancellable.isCancelled())
+                continue;
             registration.executor().execute(manager, event);
         }
     }

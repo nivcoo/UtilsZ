@@ -3,14 +3,7 @@ package fr.nivcoo.utilsz.platform.bukkit.gui;
 import net.kyori.adventure.text.Component;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 @SuppressWarnings("unused")
 public final class GuiEditableSlots {
@@ -124,7 +117,8 @@ public final class GuiEditableSlots {
             List<Integer> copy = List.copyOf(slots);
             for (Integer slot : copy) {
                 if (slot == null || slot < 0) throw new IllegalArgumentException("invalid editable slot: " + slot);
-                if (!occupied.add(slot)) throw new IllegalArgumentException("editable slot belongs to multiple regions: " + slot);
+                if (!occupied.add(slot))
+                    throw new IllegalArgumentException("editable slot belongs to multiple regions: " + slot);
             }
             regions.add(new Region(copy, allowDrag, allowShiftClick,
                     Objects.requireNonNull(validator, "validator")));

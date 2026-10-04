@@ -11,18 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
@@ -48,9 +37,14 @@ public final class DefaultMessageBus implements MessageBus {
         long ts;
     }
 
-    private record EventEntry<T extends BusMessage>(BusTypeAdapter<T> adapter, BusHandler<T> handler) {}
-    private record RpcEntry(BusTypeAdapter<Object> reqAdapter, boolean replayResponse) {}
-    private record RequestKey(String sender, String correlationId) {}
+    private record EventEntry<T extends BusMessage>(BusTypeAdapter<T> adapter, BusHandler<T> handler) {
+    }
+
+    private record RpcEntry(BusTypeAdapter<Object> reqAdapter, boolean replayResponse) {
+    }
+
+    private record RequestKey(String sender, String correlationId) {
+    }
 
     private static final class RequestExecution {
         private final CompletableFuture<Envelope> response = new CompletableFuture<>();
@@ -206,7 +200,7 @@ public final class DefaultMessageBus implements MessageBus {
 
     @Override
     public CompletableFuture<JsonObject> callRawTo(String targetInstanceId, String action, JsonObject payload,
-                                                    Duration timeout) {
+                                                   Duration timeout) {
         Duration resolvedTimeout = requireTimeout(timeout);
         if (!isRunning()) {
             return failedFuture(new IllegalStateException("Message bus is not started"));

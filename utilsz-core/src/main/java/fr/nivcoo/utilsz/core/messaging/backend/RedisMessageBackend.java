@@ -3,11 +3,7 @@ package fr.nivcoo.utilsz.core.messaging.backend;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import fr.nivcoo.utilsz.core.messaging.MessageBackend;
-import redis.clients.jedis.DefaultJedisClientConfig;
-import redis.clients.jedis.HostAndPort;
-import redis.clients.jedis.Jedis;
-import redis.clients.jedis.JedisPool;
-import redis.clients.jedis.JedisPubSub;
+import redis.clients.jedis.*;
 
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;

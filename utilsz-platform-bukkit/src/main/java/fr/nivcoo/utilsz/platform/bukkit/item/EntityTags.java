@@ -33,7 +33,8 @@ public final class EntityTags {
     }
 
     public void setBoolean(PersistentDataHolder holder, String key, boolean value) {
-        if (holder != null) holder.getPersistentDataContainer().set(key(key), PersistentDataType.BYTE, (byte) (value ? 1 : 0));
+        if (holder != null)
+            holder.getPersistentDataContainer().set(key(key), PersistentDataType.BYTE, (byte) (value ? 1 : 0));
     }
 
     public void setEnum(PersistentDataHolder holder, String key, Enum<?> value) {

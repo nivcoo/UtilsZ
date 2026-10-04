@@ -4,15 +4,28 @@ import java.util.List;
 
 public interface Command {
     List<String> getAliases();
+
     String getPermission();
-    default String getUsage() { return ""; }
-    default String getUsage(CommandContext ctx) { return getUsage(); }
+
+    default String getUsage() {
+        return "";
+    }
+
+    default String getUsage(CommandContext ctx) {
+        return getUsage();
+    }
+
     String getDescription();
+
     int getMinArgs();
+
     int getMaxArgs();
+
     boolean canBeExecutedByConsole();
 
-    default boolean validate(CommandContext ctx) { return true; }
+    default boolean validate(CommandContext ctx) {
+        return true;
+    }
 
     void execute(CommandContext ctx);
 

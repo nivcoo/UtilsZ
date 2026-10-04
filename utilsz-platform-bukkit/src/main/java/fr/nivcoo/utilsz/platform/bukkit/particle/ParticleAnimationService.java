@@ -1,20 +1,12 @@
 package fr.nivcoo.utilsz.platform.bukkit.particle;
 
-import fr.nivcoo.utilsz.platform.bukkit.particle.animation.ParticleAnimationRenderContext;
-import fr.nivcoo.utilsz.platform.bukkit.particle.animation.ParticleAnimationRenderer;
-import fr.nivcoo.utilsz.platform.bukkit.particle.animation.SmoothSpiralParticleAnimation;
-import fr.nivcoo.utilsz.platform.bukkit.particle.animation.StaticParticleAnimation;
-import fr.nivcoo.utilsz.platform.bukkit.particle.animation.TrailSpiralParticleAnimation;
+import fr.nivcoo.utilsz.platform.bukkit.particle.animation.*;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
-import java.util.ArrayDeque;
-import java.util.Collection;
-import java.util.EnumMap;
-import java.util.Map;
-import java.util.Queue;
+import java.util.*;
 import java.util.function.Function;
 import java.util.function.Supplier;
 

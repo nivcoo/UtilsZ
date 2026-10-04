@@ -6,15 +6,7 @@ import fr.nivcoo.utilsz.platform.bukkit.item.ConfigItemFactory;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
 
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -42,7 +34,8 @@ public final class ConfigGuiRegistry {
     }
 
     public synchronized ConfigGuiRegistry registerMenu(String id, Supplier<? extends ConfigGuiMenu> defaults) {
-        return registerMenu(id, defaults, registration -> { });
+        return registerMenu(id, defaults, registration -> {
+        });
     }
 
     public synchronized ConfigGuiRegistry registerMenu(
@@ -201,7 +194,8 @@ public final class ConfigGuiRegistry {
         Set<String> localIds = new HashSet<>();
         for (Map.Entry<String, List<Integer>> entry : source.entrySet()) {
             String id = normalizeItemId(entry.getKey(), location);
-            if (!localIds.add(id)) throw new IllegalArgumentException("Duplicate region id '" + id + "' in " + location);
+            if (!localIds.add(id))
+                throw new IllegalArgumentException("Duplicate region id '" + id + "' in " + location);
             target.put(id, entry.getValue() == null ? List.of() : List.copyOf(entry.getValue()));
         }
     }

@@ -92,13 +92,15 @@ class CommandManagerTabCompleteTest {
     }
 
     private static CommandManager manager() {
-        return new CommandManager((rootLabel, dispatcher) -> { }, MESSAGES, "tradegui", "");
+        return new CommandManager((rootLabel, dispatcher) -> {
+        }, MESSAGES, "tradegui", "");
     }
 
     private record TestCommand(String alias, Function<CommandContext, List<String>> completion) implements Command {
         private TestCommand(String alias, List<String> suggestions) {
             this(alias, context -> suggestions);
         }
+
         @Override
         public List<String> getAliases() {
             return List.of(alias);

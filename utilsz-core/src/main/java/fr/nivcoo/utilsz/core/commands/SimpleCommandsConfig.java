@@ -1,6 +1,7 @@
 package fr.nivcoo.utilsz.core.commands;
 
 import net.kyori.adventure.text.Component;
+
 import java.util.List;
 
 public record SimpleCommandsConfig(
@@ -14,8 +15,23 @@ public record SimpleCommandsConfig(
         this(noPermission, incorrectUsage, noPermission, help);
     }
 
-    @Override public Component noPermission() { return noPermission; }
-    @Override public Component incorrectUsage() { return incorrectUsage; }
-    @Override public Component playerOnly() { return playerOnly; }
-    @Override public List<Component> help() { return help; }
+    @Override
+    public Component noPermission() {
+        return noPermission;
+    }
+
+    @Override
+    public Component incorrectUsage() {
+        return incorrectUsage;
+    }
+
+    @Override
+    public Component playerOnly() {
+        return playerOnly;
+    }
+
+    @Override
+    public List<Component> help() {
+        return help;
+    }
 }

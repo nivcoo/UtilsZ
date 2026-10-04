@@ -8,10 +8,7 @@ import java.sql.SQLException;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class DatabaseManagerTest {
 
@@ -170,22 +167,22 @@ class DatabaseManagerTest {
             repository.insert(new AtomicValues("quest", 4L, 10L, 0L, "PENDING"));
 
             assertEquals(1, repository.updateAtomic(Map.of(
-                            "progress", AtomicUpdate.add(6L),
-                            "target", AtomicUpdate.max(20L),
-                            "revision", AtomicUpdate.add(1L),
-                            "state", AtomicUpdate.set("ACTIVE")
-                    ), "`key` = ? AND `revision` = ?", "quest", 0L));
+                    "progress", AtomicUpdate.add(6L),
+                    "target", AtomicUpdate.max(20L),
+                    "revision", AtomicUpdate.add(1L),
+                    "state", AtomicUpdate.set("ACTIVE")
+            ), "`key` = ? AND `revision` = ?", "quest", 0L));
             assertEquals(
                     new AtomicValues("quest", 10L, 20L, 1L, "ACTIVE"),
                     repository.find().where("key", "quest").all().getFirst()
             );
 
             int transactionUpdate = database.transaction(connection -> repository.updateAtomic(connection, Map.of(
-                            "progress", AtomicUpdate.add(2L),
-                            "target", AtomicUpdate.max(15L),
-                            "revision", AtomicUpdate.add(1L),
-                            "state", AtomicUpdate.set("READY")
-                    ), "`key` = ? AND `revision` = ?", "quest", 1L));
+                    "progress", AtomicUpdate.add(2L),
+                    "target", AtomicUpdate.max(15L),
+                    "revision", AtomicUpdate.add(1L),
+                    "state", AtomicUpdate.set("READY")
+            ), "`key` = ? AND `revision` = ?", "quest", 1L));
             assertEquals(1, transactionUpdate);
             AtomicValues committed = new AtomicValues("quest", 12L, 20L, 2L, "READY");
             assertEquals(committed, repository.find().where("key", "quest").all().getFirst());

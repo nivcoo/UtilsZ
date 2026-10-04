@@ -1,10 +1,9 @@
 package fr.nivcoo.utilsz.platform.bukkit.reward.type;
 
 import fr.nivcoo.utilsz.platform.bukkit.reward.RewardAction;
+import fr.nivcoo.utilsz.platform.bukkit.reward.RewardCommands;
 import fr.nivcoo.utilsz.platform.bukkit.reward.RewardCompileContext;
 import fr.nivcoo.utilsz.platform.bukkit.reward.RewardStep;
-import fr.nivcoo.utilsz.platform.bukkit.reward.RewardCommands;
-
 import org.bukkit.Bukkit;
 
 import java.util.ArrayList;
@@ -13,10 +12,12 @@ import java.util.Set;
 
 @SuppressWarnings("unused")
 public final class CommandRewardType implements RewardType {
-    public static final String ID = "COMMAND";
+    public static final BuiltinRewardType ID = BuiltinRewardType.COMMAND;
 
     @Override
-    public String id() { return ID; }
+    public RewardTypeId id() {
+        return ID;
+    }
 
     @Override
     public RewardAction compile(RewardCompileContext context) {

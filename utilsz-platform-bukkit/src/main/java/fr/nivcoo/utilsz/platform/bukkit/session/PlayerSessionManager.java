@@ -9,22 +9,12 @@ import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
-import org.bukkit.event.Cancellable;
-import org.bukkit.event.Event;
-import org.bukkit.event.EventException;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
+import org.bukkit.event.*;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.hanging.HangingBreakByEntityEvent;
-import org.bukkit.event.player.PlayerCommandPreprocessEvent;
-import org.bukkit.event.player.PlayerInteractEntityEvent;
-import org.bukkit.event.player.PlayerInteractEvent;
-import org.bukkit.event.player.PlayerMoveEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerTeleportEvent;
+import org.bukkit.event.player.*;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -258,7 +248,8 @@ public final class PlayerSessionManager implements Listener {
     private void checkBounds(Player player, Location to) {
         if (to == null) return;
         TargetSession<?> session = targetSession(player);
-        if (session == null || session.origin() == null || session.origin().getWorld() == null || to.getWorld() == null) return;
+        if (session == null || session.origin() == null || session.origin().getWorld() == null || to.getWorld() == null)
+            return;
         if (!session.origin().getWorld().equals(to.getWorld())) {
             cancelTarget(player, session, session.onWorldChanged());
             return;

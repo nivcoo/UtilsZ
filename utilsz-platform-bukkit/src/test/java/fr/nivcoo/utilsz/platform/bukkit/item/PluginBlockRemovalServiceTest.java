@@ -12,16 +12,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 class PluginBlockRemovalServiceTest {
 
@@ -86,11 +79,14 @@ class PluginBlockRemovalServiceTest {
         AtomicInteger commits = new AtomicInteger();
 
         boolean removed = removals.remove(block, material -> material == Material.CHEST,
-                () -> { },
+                () -> {
+                },
                 () -> {
                     commits.incrementAndGet();
                     return true;
-                }, () -> { }, () -> { });
+                }, () -> {
+                }, () -> {
+                });
 
         assertFalse(removed);
         assertEquals(0, commits.get());
@@ -124,7 +120,8 @@ class PluginBlockRemovalServiceTest {
                 () -> {
                     commits.incrementAndGet();
                     return true;
-                }, () -> { }, delivered::incrementAndGet);
+                }, () -> {
+                }, delivered::incrementAndGet);
 
         assertFalse(removed);
         assertEquals(0, commits.get());
@@ -145,10 +142,13 @@ class PluginBlockRemovalServiceTest {
 
         IllegalStateException thrown = assertThrows(IllegalStateException.class, () -> removals.remove(
                 block, material -> material == Material.CHEST,
-                () -> { },
+                () -> {
+                },
                 () -> {
                     throw failure;
-                }, () -> { }, () -> { }));
+                }, () -> {
+                }, () -> {
+                }));
 
         assertEquals(failure, thrown);
         assertEquals(Material.CHEST, type.get());
@@ -165,7 +165,8 @@ class PluginBlockRemovalServiceTest {
         AtomicInteger deliveries = new AtomicInteger();
 
         assertThrows(IllegalStateException.class, () -> removals.remove(
-                block, material -> material == Material.CHEST, () -> { }, () -> true,
+                block, material -> material == Material.CHEST, () -> {
+                }, () -> true,
                 () -> {
                     throw new IllegalStateException("cleanup failed");
                 }, deliveries::incrementAndGet));
@@ -192,7 +193,8 @@ class PluginBlockRemovalServiceTest {
 
         assertTrue(removals.remove(block, material -> material == Material.HOPPER,
                 () -> contentsPresent.set(false), () -> true,
-                () -> { }, deliveries::incrementAndGet));
+                () -> {
+                }, deliveries::incrementAndGet));
 
         assertEquals(0, nativeDrops.get());
         assertEquals(1, deliveries.get());
@@ -208,17 +210,21 @@ class PluginBlockRemovalServiceTest {
         AtomicInteger deliveries = new AtomicInteger();
 
         assertTrue(removals.remove(block, material -> material == Material.CHEST,
-                () -> { },
+                () -> {
+                },
                 () -> {
                     commits.incrementAndGet();
                     return true;
-                }, () -> { }, deliveries::incrementAndGet));
+                }, () -> {
+                }, deliveries::incrementAndGet));
         assertFalse(removals.remove(block, material -> material == Material.CHEST,
-                () -> { },
+                () -> {
+                },
                 () -> {
                     commits.incrementAndGet();
                     return true;
-                }, () -> { }, deliveries::incrementAndGet));
+                }, () -> {
+                }, deliveries::incrementAndGet));
 
         assertEquals(1, commits.get());
         assertEquals(1, deliveries.get());

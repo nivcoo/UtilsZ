@@ -5,7 +5,7 @@ import fr.nivcoo.utilsz.platform.bukkit.reward.RewardCompileContext;
 
 @SuppressWarnings("unused")
 public interface RewardType {
-    String id();
+    RewardTypeId id();
 
     RewardAction compile(RewardCompileContext context);
 }

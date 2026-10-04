@@ -2,12 +2,8 @@ package fr.nivcoo.utilsz.core.messaging.backend;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.rabbitmq.client.*;
 import fr.nivcoo.utilsz.core.messaging.MessageBackend;
-import com.rabbitmq.client.BuiltinExchangeType;
-import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
-import com.rabbitmq.client.DeliverCallback;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -242,7 +238,8 @@ public final class RabbitMqMessageBackend implements MessageBackend {
                 subscribers.dispatch(channelName, obj, this::report);
             };
 
-            channel.basicConsume(queue, true, deliverCallback, consumerTag -> {});
+            channel.basicConsume(queue, true, deliverCallback, consumerTag -> {
+            });
             subscribedChannels.put(channelName, Boolean.TRUE);
 
         } catch (IOException e) {

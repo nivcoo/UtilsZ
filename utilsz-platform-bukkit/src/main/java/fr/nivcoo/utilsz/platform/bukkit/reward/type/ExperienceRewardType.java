@@ -2,15 +2,15 @@ package fr.nivcoo.utilsz.platform.bukkit.reward.type;
 
 import fr.nivcoo.utilsz.platform.bukkit.reward.RewardAction;
 import fr.nivcoo.utilsz.platform.bukkit.reward.RewardCompileContext;
-import fr.nivcoo.utilsz.platform.bukkit.reward.RewardStep;
 import fr.nivcoo.utilsz.platform.bukkit.reward.RewardNumbers;
+import fr.nivcoo.utilsz.platform.bukkit.reward.RewardStep;
 
 import java.util.List;
 import java.util.Set;
 
 @SuppressWarnings("unused")
 public final class ExperienceRewardType implements RewardType {
-    public static final String ID = "EXP";
+    public static final BuiltinRewardType ID = BuiltinRewardType.EXP;
     private final int maximum;
 
     public ExperienceRewardType(int maximum) {
@@ -19,7 +19,9 @@ public final class ExperienceRewardType implements RewardType {
     }
 
     @Override
-    public String id() { return ID; }
+    public RewardTypeId id() {
+        return ID;
+    }
 
     @Override
     public RewardAction compile(RewardCompileContext context) {

@@ -11,11 +11,7 @@ import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.HashMap;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -172,7 +168,7 @@ public final class GuiInventory implements InventoryHolder {
                             + items.length);
         }
         for (int slot = 0;
-                slot < items.length; slot++) {
+             slot < items.length; slot++) {
             ClickableItem item =
                     snapshot.get(slot);
             items[slot] = item == null
@@ -220,7 +216,8 @@ public final class GuiInventory implements InventoryHolder {
         if (row < 1 || row > rows) throw new IllegalArgumentException("row must be between 1 and rows");
         if (width < 1 || width > columns + 1 - col) throw new IllegalArgumentException(
                 "width must be between 1 and " + (columns + 1 - col));
-        if (height < 1 || height > rows + 1 - row) throw new IllegalArgumentException("height must be between 1 and " + (rows + 1 - row));
+        if (height < 1 || height > rows + 1 - row)
+            throw new IllegalArgumentException("height must be between 1 and " + (rows + 1 - row));
         rectangle(locToPos(col, row), width, height, item);
     }
 
@@ -324,7 +321,7 @@ public final class GuiInventory implements InventoryHolder {
     }
 
     public int[] posToLoc(int pos) {
-        return new int[]{ (pos % columns) + 1, (pos / columns) + 1 };
+        return new int[]{(pos % columns) + 1, (pos / columns) + 1};
     }
 
     public int locToPos(int col, int row) {

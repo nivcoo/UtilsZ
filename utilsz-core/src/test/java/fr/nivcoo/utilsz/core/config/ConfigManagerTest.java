@@ -1,15 +1,7 @@
 package fr.nivcoo.utilsz.core.config;
 
-import fr.nivcoo.utilsz.core.config.annotations.Comment;
+import fr.nivcoo.utilsz.core.config.annotations.*;
 import fr.nivcoo.utilsz.core.config.annotations.Optional;
-import fr.nivcoo.utilsz.core.config.annotations.Range;
-import fr.nivcoo.utilsz.core.config.annotations.RejectUnknownKeys;
-import fr.nivcoo.utilsz.core.config.annotations.Required;
-import fr.nivcoo.utilsz.core.config.annotations.ConfigStructure;
-import fr.nivcoo.utilsz.core.config.annotations.DefaultConfig;
-import fr.nivcoo.utilsz.core.config.annotations.Section;
-import fr.nivcoo.utilsz.core.config.annotations.TextFormat;
-import fr.nivcoo.utilsz.core.config.annotations.WithConverter;
 import fr.nivcoo.utilsz.core.config.text.TextMode;
 import fr.nivcoo.utilsz.core.config.validation.Validatable;
 import fr.nivcoo.utilsz.core.conversion.Converter;
@@ -21,24 +13,14 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.File;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class ConfigManagerTest {
 

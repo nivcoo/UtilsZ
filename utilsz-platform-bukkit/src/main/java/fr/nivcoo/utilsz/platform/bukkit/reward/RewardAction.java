@@ -1,5 +1,6 @@
 package fr.nivcoo.utilsz.platform.bukkit.reward;
 
+import fr.nivcoo.utilsz.platform.bukkit.reward.type.RewardTypeId;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.List;
@@ -9,18 +10,18 @@ import java.util.function.Supplier;
 
 @SuppressWarnings("unused")
 public final class RewardAction {
-    private final String type;
+    private final RewardTypeId type;
     private final List<Supplier<ItemStack>> displaySuppliers;
     private final Function<RewardExecutionContext, List<RewardStep>> preparation;
 
-    public RewardAction(String type, List<Supplier<ItemStack>> displaySuppliers,
+    public RewardAction(RewardTypeId type, List<Supplier<ItemStack>> displaySuppliers,
                         Function<RewardExecutionContext, List<RewardStep>> preparation) {
         this.type = Objects.requireNonNull(type, "type");
         this.displaySuppliers = List.copyOf(displaySuppliers);
         this.preparation = Objects.requireNonNull(preparation, "preparation");
     }
 
-    public RewardAction(String type, List<Supplier<ItemStack>> displaySuppliers,
+    public RewardAction(RewardTypeId type, List<Supplier<ItemStack>> displaySuppliers,
                         Function<RewardExecutionContext, CheckResult> preflight,
                         Function<RewardExecutionContext, DeliveryResult> delivery) {
         this(type, displaySuppliers, context -> List.of(new RewardStep(
@@ -29,7 +30,7 @@ public final class RewardAction {
         Objects.requireNonNull(delivery, "delivery");
     }
 
-    public String type() {
+    public RewardTypeId type() {
         return type;
     }
 
@@ -50,9 +51,13 @@ public final class RewardAction {
             reason = reason == null ? "" : reason;
         }
 
-        public static CheckResult ready() { return new CheckResult(true, ""); }
+        public static CheckResult ready() {
+            return new CheckResult(true, "");
+        }
 
-        public static CheckResult failure(String reason) { return new CheckResult(false, reason); }
+        public static CheckResult failure(String reason) {
+            return new CheckResult(false, reason);
+        }
     }
 
     public record DeliveryResult(boolean delivered, boolean partial, String reason) {
@@ -61,10 +66,16 @@ public final class RewardAction {
             reason = reason == null ? "" : reason;
         }
 
-        public static DeliveryResult success() { return new DeliveryResult(true, false, ""); }
+        public static DeliveryResult success() {
+            return new DeliveryResult(true, false, "");
+        }
 
-        public static DeliveryResult failure(String reason) { return new DeliveryResult(false, false, reason); }
+        public static DeliveryResult failure(String reason) {
+            return new DeliveryResult(false, false, reason);
+        }
 
-        public static DeliveryResult partialFailure(String reason) { return new DeliveryResult(false, true, reason); }
+        public static DeliveryResult partialFailure(String reason) {
+            return new DeliveryResult(false, true, reason);
+        }
     }
 }

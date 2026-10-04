@@ -5,10 +5,10 @@ import fr.nivcoo.utilsz.core.config.annotations.Optional;
 import fr.nivcoo.utilsz.core.config.reload.ConfigReloadListener;
 import fr.nivcoo.utilsz.core.config.reload.ConfigReloadOptions;
 import fr.nivcoo.utilsz.core.config.reload.ConfigReloadTicker;
-import fr.nivcoo.utilsz.core.conversion.Converter;
-import fr.nivcoo.utilsz.core.conversion.ConverterRegistry;
 import fr.nivcoo.utilsz.core.config.text.TextMode;
 import fr.nivcoo.utilsz.core.config.validation.Validatable;
+import fr.nivcoo.utilsz.core.conversion.Converter;
+import fr.nivcoo.utilsz.core.conversion.ConverterRegistry;
 import fr.nivcoo.utilsz.core.scheduler.PluginScheduler;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextReplacementConfig;
@@ -19,15 +19,11 @@ import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
-import java.lang.reflect.Array;
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
+import java.lang.reflect.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.time.Duration;
 import java.util.*;
 import java.util.function.Consumer;
@@ -124,15 +120,15 @@ public final class ConfigManager {
     }
 
     public <T> ConfigReloadTicker<T> watch(String relativePath, Class<T> cfgClass, T current,
-                                            PluginScheduler scheduler, ConfigReloadListener<T> listener,
-                                            Consumer<Throwable> errorHandler) {
+                                           PluginScheduler scheduler, ConfigReloadListener<T> listener,
+                                           Consumer<Throwable> errorHandler) {
         return watch(relativePath, cfgClass, current, scheduler, listener, errorHandler,
                 ConfigReloadOptions.DEFAULT);
     }
 
     public <T> ConfigReloadTicker<T> watch(String relativePath, Class<T> cfgClass, T current,
-                                            PluginScheduler scheduler, ConfigReloadListener<T> listener,
-                                            Consumer<Throwable> errorHandler, ConfigReloadOptions options) {
+                                           PluginScheduler scheduler, ConfigReloadListener<T> listener,
+                                           Consumer<Throwable> errorHandler, ConfigReloadOptions options) {
         Objects.requireNonNull(cfgClass, "cfgClass");
         File file = resolveFile(relativePath);
         return new ConfigReloadTicker<>(scheduler, file.toPath(), current,
@@ -1080,7 +1076,8 @@ public final class ConfigManager {
         return switch (value) {
             case null -> true;
             case Map<?, ?> map -> map.isEmpty() || map.values().stream().allMatch(ConfigManager::isEmptyYamlNode);
-            case Collection<?> collection -> collection.isEmpty() || collection.stream().allMatch(ConfigManager::isEmptyYamlNode);
+            case Collection<?> collection ->
+                    collection.isEmpty() || collection.stream().allMatch(ConfigManager::isEmptyYamlNode);
             default -> false;
         };
     }

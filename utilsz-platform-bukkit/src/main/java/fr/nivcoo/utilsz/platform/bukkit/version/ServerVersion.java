@@ -22,7 +22,8 @@ public enum ServerVersion {
                         return sv;
                     }
                 }
-            } catch (NumberFormatException ignored) {}
+            } catch (NumberFormatException ignored) {
+            }
         }
         return UNKNOWN;
     }

@@ -1,28 +1,11 @@
 package fr.nivcoo.utilsz.core.messaging.adapter;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonNull;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonPrimitive;
+import com.google.gson.*;
 import fr.nivcoo.utilsz.core.messaging.BusAdapterRegistry;
 import fr.nivcoo.utilsz.core.messaging.BusTypeAdapter;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Modifier;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
-import java.lang.reflect.WildcardType;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Queue;
-import java.util.Set;
-import java.util.UUID;
+import java.lang.reflect.*;
+import java.util.*;
 
 final class TypedJsonAdapter {
 

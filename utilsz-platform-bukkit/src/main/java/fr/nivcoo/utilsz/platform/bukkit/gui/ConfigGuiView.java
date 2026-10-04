@@ -6,12 +6,7 @@ import net.kyori.adventure.text.Component;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.ItemStack;
 
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
 
@@ -78,7 +73,8 @@ public final class ConfigGuiView {
 
     public List<Integer> region(String id) {
         List<Integer> slots = menu.regions().get(normalizeItemId(id));
-        if (slots == null) throw new IllegalArgumentException("Unknown region '" + id + "' in menu '" + menu.id() + "'");
+        if (slots == null)
+            throw new IllegalArgumentException("Unknown region '" + id + "' in menu '" + menu.id() + "'");
         return slots;
     }
 
@@ -126,7 +122,8 @@ public final class ConfigGuiView {
     }
 
     public void action(ConfigGuiItem item, Consumer<InventoryClickEvent> click) {
-        renderer.set(inventory, item, placeholders, 0, click == null ? ignored -> { } : click);
+        renderer.set(inventory, item, placeholders, 0, click == null ? ignored -> {
+        } : click);
     }
 
     public void action(ConfigGuiItem item, int slot, Consumer<InventoryClickEvent> click) {

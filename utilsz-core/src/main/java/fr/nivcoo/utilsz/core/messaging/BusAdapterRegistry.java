@@ -1,15 +1,7 @@
 package fr.nivcoo.utilsz.core.messaging;
 
 import fr.nivcoo.utilsz.core.messaging.adapter.*;
-import fr.nivcoo.utilsz.core.messaging.adapter.primitive.BooleanAdapter;
-import fr.nivcoo.utilsz.core.messaging.adapter.primitive.ByteAdapter;
-import fr.nivcoo.utilsz.core.messaging.adapter.primitive.CharAdapter;
-import fr.nivcoo.utilsz.core.messaging.adapter.primitive.DoubleAdapter;
-import fr.nivcoo.utilsz.core.messaging.adapter.primitive.FloatAdapter;
-import fr.nivcoo.utilsz.core.messaging.adapter.primitive.IntegerAdapter;
-import fr.nivcoo.utilsz.core.messaging.adapter.primitive.LongAdapter;
-import fr.nivcoo.utilsz.core.messaging.adapter.primitive.ShortAdapter;
-import fr.nivcoo.utilsz.core.messaging.adapter.primitive.StringAdapter;
+import fr.nivcoo.utilsz.core.messaging.adapter.primitive.*;
 
 import java.util.List;
 import java.util.Map;

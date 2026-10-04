@@ -100,7 +100,8 @@ public final class ConfigDialogProvider implements DialogProvider {
     private DialogBody body(ConfigDialogBody body) {
         ConfigDialogBodyType type = body.type == null ? ConfigDialogBodyType.TEXT : body.type;
         return switch (type) {
-            case TEXT -> DialogBody.plainMessage(body.text == null ? Component.empty() : body.text, clamp(body.width, 1, 1024));
+            case TEXT ->
+                    DialogBody.plainMessage(body.text == null ? Component.empty() : body.text, clamp(body.width, 1, 1024));
             case ITEM -> {
                 PlainMessageDialogBody description = body.itemDescription == null
                         ? null

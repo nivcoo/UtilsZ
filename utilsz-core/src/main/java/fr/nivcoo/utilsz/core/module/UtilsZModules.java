@@ -9,7 +9,8 @@ public final class UtilsZModules {
     private static volatile List<UtilsZModule> cached;
     private static volatile boolean loaded;
 
-    private UtilsZModules() {}
+    private UtilsZModules() {
+    }
 
     public static List<UtilsZModule> all() {
         List<UtilsZModule> modules = cached;

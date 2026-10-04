@@ -2,7 +2,8 @@ package fr.nivcoo.utilsz.core.config.tools;
 
 import fr.nivcoo.utilsz.core.config.ConfigManager;
 
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 public final class ConfigGenerator {
     public static void generate(String baseDir, String outRelPath, String cfgClassName, boolean overwrite) {
