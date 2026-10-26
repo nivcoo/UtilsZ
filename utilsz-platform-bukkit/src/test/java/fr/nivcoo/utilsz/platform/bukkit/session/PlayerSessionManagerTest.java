@@ -1,5 +1,7 @@
 package fr.nivcoo.utilsz.platform.bukkit.session;
 
+import io.papermc.paper.event.entity.EntityBreakByEntityEvent;
+import io.papermc.paper.event.entity.EntityBreakEvent;
 import io.papermc.paper.event.player.PrePlayerAttackEntityEvent;
 import org.bukkit.Bukkit;
 import org.bukkit.damage.DamageSource;
@@ -11,9 +13,9 @@ import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityEvent;
 import org.bukkit.event.hanging.HangingBreakByEntityEvent;
 import org.bukkit.event.hanging.HangingBreakEvent;
-import org.bukkit.plugin.EventExecutor;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,28 +29,22 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class PlayerSessionManagerTest {
 
-    private static final String BREAK_EVENT = "io.papermc.paper.event.entity.EntityBreakEvent";
-
-    private final List<Registration> registrations = new ArrayList<>();
+    private JavaPlugin plugin;
+    private PluginManager plugins;
     private PlayerSessionManager manager;
     private Player player;
 
     @BeforeEach
     void prepare() {
-        JavaPlugin plugin = mock(JavaPlugin.class);
-        PluginManager plugins = mock(PluginManager.class);
+        plugin = mock(JavaPlugin.class);
+        plugins = mock(PluginManager.class);
         player = mock(Player.class);
         when(player.getUniqueId()).thenReturn(UUID.randomUUID());
         manager = new PlayerSessionManager(plugin);
-        doAnswer(invocation -> {
-            registrations.add(new Registration(invocation.getArgument(0), invocation.getArgument(3), invocation.getArgument(5)));
-            return null;
-        }).when(plugins).registerEvent(any(), same(manager), any(), any(), same(plugin), anyBoolean());
         try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
             bukkit.when(Bukkit::getPluginManager).thenReturn(plugins);
             manager.init();
@@ -58,22 +54,25 @@ class PlayerSessionManagerTest {
 
     @Test
     void cancelsDestructionBeforeCompletedSelectionConsumesTheSession() throws Exception {
-        for (Event early : earlyEvents(player)) {
-            AtomicInteger selected = new AtomicInteger();
-            TargetSession<String> session = session(true, selected, new AtomicInteger());
-            manager.start(player, session);
+        for (boolean cancelled : List.of(false, true)) {
+            for (Event early : earlyEvents(player)) {
+                AtomicInteger selected = new AtomicInteger();
+                TargetSession<String> session = session(true, selected, new AtomicInteger());
+                manager.start(player, session);
+                ((Cancellable) early).setCancelled(cancelled);
 
-            dispatch(early);
-            boolean destroyed = !((Cancellable) early).isCancelled();
+                dispatch(early);
+                boolean destroyed = !((Cancellable) early).isCancelled();
 
-            assertFalse(destroyed, early.getEventName());
-            assertSame(session, manager.get(player));
-            assertEquals(0, selected.get());
-            PrePlayerAttackEntityEvent attack = new PrePlayerAttackEntityEvent(player, target(early), false);
-            dispatch(attack);
-            assertTrue(attack.isCancelled());
-            assertEquals(1, selected.get());
-            assertNull(manager.get(player));
+                assertFalse(destroyed, early.getEventName());
+                assertSame(session, manager.get(player));
+                assertEquals(0, selected.get());
+                PrePlayerAttackEntityEvent attack = new PrePlayerAttackEntityEvent(player, target(early), false);
+                dispatch(attack);
+                assertTrue(attack.isCancelled());
+                assertEquals(1, selected.get());
+                assertNull(manager.get(player));
+            }
         }
     }
 
@@ -88,13 +87,12 @@ class PlayerSessionManagerTest {
 
         dispatch(first);
         assertTrue(first.isCancelled());
-        if (hasBreakEvent()) {
-            Event second = breakByEntity(hanging, player);
-            ((Cancellable) second).setCancelled(first.isCancelled());
-            dispatch(second);
-            assertTrue(((Cancellable) second).isCancelled());
-        }
+        EntityBreakByEntityEvent second = breakByEntity(hanging, player);
+        second.setCancelled(first.isCancelled());
+        dispatch(second);
+        assertTrue(second.isCancelled());
         assertEquals(0, selected.get());
+        assertEquals(0, invalid.get());
         PrePlayerAttackEntityEvent attack = new PrePlayerAttackEntityEvent(player, hanging, false);
         dispatch(attack);
 
@@ -143,22 +141,18 @@ class PlayerSessionManagerTest {
     }
 
     @Test
-    void optionalListenerRegistersOnceWhenAvailableAndIgnoresUnrelatedRemoval() throws Exception {
-        assertEquals(hasBreakEvent() ? 1 : 0, registrations.size());
-        if (!hasBreakEvent()) return;
-        assertEquals(BREAK_EVENT, registrations.getFirst().type().getName());
+    void listenerRegistersOnceAndIgnoresUnrelatedRemoval() throws Exception {
+        verify(plugins, times(1)).registerEvents(manager, plugin);
+        verifyNoMoreInteractions(plugins);
         manager.start(player, session(true, new AtomicInteger(), new AtomicInteger()));
-        Class<?> causeClass = Class.forName(BREAK_EVENT + "$RemoveCause");
-        Object cause = causeClass.getField("PHYSICS").get(null);
-        Event physics = (Event) Class.forName(BREAK_EVENT)
-                .getConstructor(Entity.class, causeClass).newInstance(mock(Entity.class), cause);
+        EntityBreakEvent physics = new EntityBreakEvent(mock(Entity.class), EntityBreakEvent.RemoveCause.PHYSICS);
 
         dispatch(physics);
-        Event nonPlayer = breakByEntity(mock(Entity.class), mock(Entity.class));
+        EntityBreakByEntityEvent nonPlayer = breakByEntity(mock(Entity.class), mock(Entity.class));
         dispatch(nonPlayer);
 
-        assertFalse(((Cancellable) physics).isCancelled());
-        assertFalse(((Cancellable) nonPlayer).isCancelled());
+        assertFalse(physics.isCancelled());
+        assertFalse(nonPlayer.isCancelled());
         assertNotNull(manager.get(player));
     }
 
@@ -169,35 +163,24 @@ class PlayerSessionManagerTest {
         }, context -> invalid.incrementAndGet(), null, null, null);
     }
 
-    private List<Event> earlyEvents(Player attacker) throws Exception {
+    private List<Event> earlyEvents(Player attacker) {
         List<Event> events = new ArrayList<>();
         events.add(new EntityDamageByEntityEvent(attacker, mock(Entity.class),
                 EntityDamageEvent.DamageCause.ENTITY_ATTACK, mock(DamageSource.class), 1));
         events.add(new HangingBreakByEntityEvent(mock(Hanging.class), attacker, mock(DamageSource.class),
                 HangingBreakEvent.RemoveCause.ENTITY));
-        if (hasBreakEvent()) events.add(breakByEntity(mock(Entity.class), attacker));
+        events.add(breakByEntity(mock(Entity.class), attacker));
         return events;
     }
 
-    private Event breakByEntity(Entity target, Entity attacker) throws Exception {
-        Class<?> causeClass = Class.forName(BREAK_EVENT + "$RemoveCause");
-        Object cause = causeClass.getField("ENTITY").get(null);
-        return (Event) Class.forName("io.papermc.paper.event.entity.EntityBreakByEntityEvent")
-                .getConstructor(Entity.class, Entity.class, DamageSource.class, causeClass)
-                .newInstance(target, attacker, mock(DamageSource.class), cause);
+    private EntityBreakByEntityEvent breakByEntity(Entity target, Entity attacker) {
+        return new EntityBreakByEntityEvent(target, attacker, mock(DamageSource.class),
+                EntityBreakEvent.RemoveCause.ENTITY);
     }
 
-    private boolean hasBreakEvent() {
-        try {
-            Class.forName(BREAK_EVENT);
-            return true;
-        } catch (ClassNotFoundException ignored) {
-            return false;
-        }
-    }
-
-    private Entity target(Event event) throws Exception {
-        return (Entity) event.getClass().getMethod("getEntity").invoke(event);
+    private Entity target(Event event) {
+        if (event instanceof HangingBreakByEntityEvent hanging) return hanging.getEntity();
+        return ((EntityEvent) event).getEntity();
     }
 
     private void dispatch(Event event) throws Exception {
@@ -208,14 +191,5 @@ class PlayerSessionManagerTest {
                 continue;
             method.invoke(manager, event);
         }
-        for (Registration registration : registrations) {
-            if (!registration.type().isInstance(event)) continue;
-            if (registration.ignoreCancelled() && event instanceof Cancellable cancellable && cancellable.isCancelled())
-                continue;
-            registration.executor().execute(manager, event);
-        }
-    }
-
-    private record Registration(Class<? extends Event> type, EventExecutor executor, boolean ignoreCancelled) {
     }
 }

@@ -1,5 +1,7 @@
 package fr.nivcoo.utilsz.platform.bukkit.session;
 
+import io.papermc.paper.event.entity.EntityBreakByEntityEvent;
+import io.papermc.paper.event.entity.EntityBreakEvent;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import io.papermc.paper.event.player.PlayerArmSwingEvent;
 import io.papermc.paper.event.player.PrePlayerAttackEntityEvent;
@@ -18,8 +20,6 @@ import org.bukkit.event.player.*;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,35 +42,7 @@ public final class PlayerSessionManager implements Listener {
     public void init() {
         if (initialized) return;
         Bukkit.getPluginManager().registerEvents(this, plugin);
-        registerEntityBreakProtection();
         initialized = true;
-    }
-
-    private void registerEntityBreakProtection() {
-        // TODO: Use a typed EntityBreakEvent listener when Paper 26.2 support is dropped.
-        Class<? extends Event> breakEventClass;
-        Class<?> breakByEntityClass;
-        Method getRemover;
-        try {
-            ClassLoader classLoader = PlayerSessionManager.class.getClassLoader();
-            breakEventClass = Class.forName("io.papermc.paper.event.entity.EntityBreakEvent", false, classLoader).asSubclass(Event.class);
-            breakByEntityClass = Class.forName("io.papermc.paper.event.entity.EntityBreakByEntityEvent", false, classLoader);
-            getRemover = breakByEntityClass.getMethod("getRemover");
-        } catch (ClassNotFoundException ignored) {
-            return;
-        } catch (NoSuchMethodException exception) {
-            throw new IllegalStateException("Unsupported entity break event API", exception);
-        }
-        Bukkit.getPluginManager().registerEvent(breakEventClass, this, EventPriority.LOWEST, (listener, event) -> {
-            if (!breakByEntityClass.isInstance(event)) return;
-            try {
-                if (getRemover.invoke(event) instanceof Player player && targetSession(player) != null) {
-                    ((Cancellable) event).setCancelled(true);
-                }
-            } catch (IllegalAccessException | InvocationTargetException exception) {
-                throw new EventException(exception);
-            }
-        }, plugin, false);
     }
 
     public void start(Player player, PlayerSession<?> session) {
@@ -158,6 +130,14 @@ public final class PlayerSessionManager implements Listener {
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onHangingBreak(HangingBreakByEntityEvent event) {
         if (event.getRemover() instanceof Player player && targetSession(player) != null) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
+    public void onEntityBreak(EntityBreakEvent event) {
+        if (event instanceof EntityBreakByEntityEvent byEntity
+                && byEntity.getRemover() instanceof Player player && targetSession(player) != null) {
             event.setCancelled(true);
         }
     }
